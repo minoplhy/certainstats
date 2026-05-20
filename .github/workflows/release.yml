@@ -59,9 +59,9 @@ jobs:
           targets=(
             "linux/amd64/certainstats-linux-amd64"
             "linux/arm64/certainstats-linux-arm64"
-            "windows/amd64/certainstats-windows-amd64.exe"
-            "darwin/amd64/certainstats-darwin-amd64"
-            "darwin/arm64/certainstats-darwin-arm64"
+          #  "windows/amd64/certainstats-windows-amd64.exe"
+          #  "darwin/amd64/certainstats-darwin-amd64"
+          #  "darwin/arm64/certainstats-darwin-arm64"
           )
 
           for target in "${targets[@]}"; do
