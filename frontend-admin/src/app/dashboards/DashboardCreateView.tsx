@@ -42,7 +42,7 @@ export default function DashboardCreateView() {
 
     try {
       await fetchAPI("/api/dashboard", { method: "POST", body: JSON.stringify(payload) });
-      navigate("/alerts");
+      navigate("/dashboards");
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to create dashboard");
       setSubmitting(false);
