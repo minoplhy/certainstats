@@ -260,15 +260,10 @@ func (e *Routine) PulseSync(ctx context.Context) {
 			continue
 		}
 
-		allowedMetrics := make(map[string]bool)
-		for _, m := range rule.AllowedMetrics {
-			allowedMetrics[m] = true
-		}
-
 		filteredData := make(map[string]any)
 		for _, agentID := range agents {
 			if snap, ok := allSnaps[agentID.AgentID]; ok {
-				filteredData[agentID.PublicAgentID] = e.filterSnapshot(snap, allowedMetrics)
+				filteredData[agentID.PublicAgentID] = e.filterSnapshot(snap, rule.MetricSet())
 			}
 		}
 
@@ -281,50 +276,61 @@ func (e *Routine) PulseSync(ctx context.Context) {
 	}
 }
 
-func (e *Routine) filterSnapshot(snap *metrics.AgentSnapshot, allowed map[string]bool) map[string]any {
+func (e *Routine) filterSnapshot(snap *metrics.AgentSnapshot, allowed map[string]struct{}) map[string]any {
 	out := make(map[string]any)
 	out["Timestamp"] = snap.Timestamp
 
-	if allowed["uptime"] && snap.Metadata != nil {
+	_, allowedUptime := allowed["uptime"]
+	_, allowedCPUUsage := allowed["agent_cpu_usage"]
+	_, allowedCPUIOWait := allowed["agent_cpu_iowait"]
+	_, allowedCPUSteal := allowed["agent_cpu_steal"]
+	_, allowedRAMUsed := allowed["agent_ram_used"]
+	_, allowedSWAPUsed := allowed["agent_swap_used"]
+	_, allowedDiskUsed := allowed["agent_disk_used"]
+	_, allowedDiskReadBytes := allowed["agent_disk_read_bytes"]
+	_, allowedDiskWriteBytes := allowed["agent_disk_write_bytes"]
+	_, allowedRXBytes := allowed["agent_rx_bytes"]
+	_, allowedTXBytes := allowed["agent_tx_bytes"]
+
+	if allowedUptime && snap.Metadata != nil {
 		out["Uptime"] = snap.Metadata.Uptime
 	}
 
-	if allowed["agent_cpu_usage"] {
+	if allowedCPUUsage {
 		out["CPUUsagePercent"] = snap.CPUUsagePercent
 	}
 
-	if allowed["agent_cpu_iowait"] {
+	if allowedCPUIOWait {
 		out["CPUIOWaitPercent"] = snap.CPUIOWaitPercent
 	}
-
-	if allowed["agent_cpu_steal"] {
+	if allowedCPUSteal {
 		out["CPUStealPercent"] = snap.CPUStealPercent
 	}
 
-	if allowed["agent_ram_used"] {
+	if allowedRAMUsed {
 		out["RAMUsedBytes"] = snap.RAMUsedBytes
 	}
 
-	if allowed["agent_swap_used"] {
+	if allowedSWAPUsed {
 		out["RAMSwapUsedBytes"] = snap.RAMSwapUsedBytes
 	}
 
-	if allowed["agent_disk_used"] {
+	if allowedDiskUsed {
 		out["DiskUsedBytes"] = snap.DiskUsedBytes
 		out["DiskTotalBytes"] = snap.DiskTotalBytes
 		out["Disks"] = snap.Disks
 	}
-	if allowed["agent_disk_read_bytes"] {
+	if allowedDiskReadBytes {
 		out["DiskReadBps"] = snap.DiskReadBps
 	}
-	if allowed["agent_disk_write_bytes"] {
+	if allowedDiskWriteBytes {
 		out["DiskWriteBps"] = snap.DiskWriteBps
 	}
-	if allowed["agent_rx_bytes"] {
+	if allowedRXBytes {
 		out["RXBytes"] = snap.RXBytes
 		out["RXBps"] = snap.RXBps
 	}
-	if allowed["agent_tx_bytes"] {
+	if allowedTXBytes {
 		out["TXBytes"] = snap.TXBytes
 		out["TXBps"] = snap.TXBps
 	}
