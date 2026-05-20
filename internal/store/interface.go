@@ -97,6 +97,7 @@ type DashboardStore interface {
 	DashboardCreate(ctx context.Context, d Dashboard) error
 	DashboardList(ctx context.Context, userID string) ([]Dashboard, error)
 	DashboardGetBySlug(ctx context.Context, slug string) (*Dashboard, error)
+	DashboardGetByID(ctx context.Context, dashboard_id string) (*Dashboard, error)
 	DashboardGetInfo(ctx context.Context, dashboard_id string, userID string) (Dashboard, error)
 	DashboardAddAgents(ctx context.Context, d Dashboard, a []baseresponse.CreateDashboardReqAgent) error
 	DashboardUpdate(ctx context.Context, d Dashboard, newAgents []baseresponse.CreateDashboardReqAgent) error
