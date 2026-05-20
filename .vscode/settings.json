@@ -1,0 +1,10 @@
+{
+    "terminal.integrated.env.linux": {
+        "GOPATH": "${workspaceFolder}/.go",
+        "GOBIN": "${workspaceFolder}/.go-bin",
+        "GOCACHE": "${workspaceFolder}/.go-build",
+        "MY_PROJECT_DIR": "${workspaceFolder}",
+        "npm_config_cache": "${workspaceFolder}/.npm-cache",
+        "PATH": "${workspaceFolder}/bin:${workspaceFolder}/node_modules/.bin:${env:PATH}",
+    }
+}

@@ -1,0 +1,13 @@
+.git
+.vscode
+node_modules
+frontend-public/node_modules
+frontend-admin/node_modules
+frontend-public/out
+frontend-admin/out
+data
+.go
+.go-build
+.npm-cache
+*.db
+*.log
