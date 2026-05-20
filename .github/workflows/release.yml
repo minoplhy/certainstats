@@ -1,0 +1,137 @@
+name: Release and Docker Build
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  # Job 1: Build and publish cross-compiled single binaries on version tag push
+  build-binaries:
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+          cache-dependency-path: |
+            frontend-admin/package-lock.json
+            frontend-public/package-lock.json
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+          cache: true
+
+      - name: Build Admin Frontend
+        run: |
+          cd frontend-admin
+          npm ci
+          npm run build
+
+      - name: Build Public Frontend
+        run: |
+          cd frontend-public
+          npm ci
+          npm run build
+
+      - name: Compile and Package Binaries
+        env:
+          CGO_ENABLED: 0
+        run: |
+          TAG_NAME="${{ github.ref_name }}"
+          mkdir -p dist
+
+          # Target architectures to compile
+          targets=(
+            "linux/amd64/certainstats-linux-amd64"
+            "linux/arm64/certainstats-linux-arm64"
+            "windows/amd64/certainstats-windows-amd64.exe"
+            "darwin/amd64/certainstats-darwin-amd64"
+            "darwin/arm64/certainstats-darwin-arm64"
+          )
+
+          for target in "${targets[@]}"; do
+            IFS="/" read -r goos goarch binary_name <<< "$target"
+            echo "Compiling for $goos/$goarch..."
+            
+            GOOS=$goos GOARCH=$goarch go build \
+              -tags embed \
+              -ldflags="-w -s -X main.version=$TAG_NAME" \
+              -o "$binary_name" \
+              ./cmd/certainstats
+
+            # Package the binary as a tar.gz (or .zip for Windows)
+            if [ "$goos" = "windows" ]; then
+              zip "dist/${binary_name%.exe}.zip" "$binary_name"
+              rm "$binary_name"
+            else
+              tar -czf "dist/${binary_name}.tar.gz" "$binary_name"
+              rm "$binary_name"
+            fi
+          done
+
+      - name: Create GitHub Release and Upload Assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Job 2: Build and Push Multi-Architecture Docker Image
+  build-docker:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract Docker Metadata (Tags/Labels)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/minoplhy/certainstats
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+            type=raw,value=dev,enable=${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' }}
+
+      - name: Build and Push Production Image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ id.meta.outputs.tags }}
+          labels: ${{ id.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

@@ -1,0 +1,12 @@
+.go
+.go-build
+.npm-cache
+.sqlite
+node_modules
+out
+frontend-public/node_modules
+frontend-admin/node_modules
+frontend-public/out
+frontend-admin/out
+artifacts
+data
