@@ -77,7 +77,7 @@ export default function SettingsView() {
     return { browser, platform };
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.SubmitEvent) => {
     e.preventDefault();
     if (newPassword !== confirmPassword) {
       setMessage({ type: "error", text: "New passwords do not match" });

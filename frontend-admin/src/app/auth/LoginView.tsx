@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { fetchAPI } from "../../lib/api";
-import { resolvePanelPath } from "../../lib/env";
 
 export default function LoginView() {
   const navigate = useNavigate();

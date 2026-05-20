@@ -3,7 +3,6 @@ import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import { fetchAPI } from "../../lib/api";
 import { Agent, MetricResponse, AgentSnapshot } from "../../types";
-import { UsageBar } from "../../lib/UsageBar";
 import { TelemetryChart } from "./TelemetryChart";
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -260,7 +259,7 @@ function MetricChart({
         <div className="flex gap-4 text-[11px] font-mono">
           {cfg.series.map((s: any) => {
             const val = lastPoint[s.label];
-            const displayVal = val != null ? cfg.fmt(val) : "–";
+            const displayVal = val != null ? cfg.fmt(val) : "-";
             return (
               <div key={s.label} className="flex items-center gap-2">
                 <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: s.color }} />
@@ -741,7 +740,7 @@ export function AgentDetail({
       <div className="grid-cards mobile-grid-1" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px', marginTop: '8px' }}>
         <HwCard
           label="CPU Cores"
-          value={agent.cpu_cores || "–"}
+          value={agent.cpu_cores || "-"}
           unit="vCPU"
           icon="memory"
           colorHex="var(--accent-primary)"

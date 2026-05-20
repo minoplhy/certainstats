@@ -27,7 +27,7 @@ func NewAgentBroadcaster() *AgentBroadcaster {
 	}
 }
 
-// SubscribeUser adds a browser connection for a specific user (Admin)
+// SubscribeUser adds a browser connection for a specific user
 func (b *AgentBroadcaster) SubscribeUser(userID string, conn *websocket.Conn) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -38,7 +38,7 @@ func (b *AgentBroadcaster) SubscribeUser(userID string, conn *websocket.Conn) {
 	b.userClients[userID][conn] = true
 }
 
-// UnsubscribeUser removes an admin connection
+// UnsubscribeUser removes a user connection
 func (b *AgentBroadcaster) UnsubscribeUser(userID string, conn *websocket.Conn) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -75,7 +75,7 @@ func (b *AgentBroadcaster) UnsubscribeDash(dashID string, conn *websocket.Conn) 
 	}
 }
 
-// BroadcastToUser sends an update to an admin user
+// BroadcastToUser sends an update to an authenticted user
 func (b *AgentBroadcaster) BroadcastToUser(userID string, update UIUpdate) {
 	b.mu.RLock()
 	clients, exists := b.userClients[userID]
