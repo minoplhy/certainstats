@@ -2,7 +2,9 @@ package ws
 
 import (
 	log "certainstats/internal/logger"
+	apiresponse "certainstats/internal/response"
 	"certainstats/internal/store"
+	"database/sql"
 	"errors"
 	"net/http"
 	"os"
@@ -13,17 +15,29 @@ import (
 )
 
 // PublicWebSocketHandler creates a handler for public dashboard viewers
-func PublicWebSocketHandler(agents store.AgentStore, broadcaster *AgentBroadcaster) http.HandlerFunc {
+func PublicWebSocketHandler(dashboard store.DashboardStore, broadcaster *AgentBroadcaster) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		dashID := chi.URLParam(r, "id")
 		if dashID == "" {
-			http.Error(w, "Missing dashboard id", http.StatusBadRequest)
+			apiresponse.Error(w, http.StatusNotFound, "Missing dashboard id")
 			return
 		}
 
-		// 1. Verify dashboard exists (optional but good for validation)
-		// We can just trust the ID for now or verify if it exists in the store
-		// For pulse consistency, we just need the ID to subscribe.
+		// 1. Verify dashboard exists
+		// 	  This isn't meant to implement initially, but after some thoughts,
+		//    It is not ~~safe~~ to let invalid dashboard freely subscribe into WebSocket.
+		//	  While this might not meant anything, as we utilize announce-only policy on Websocket,
+		//    there is no any meant of 2-Way Communication. But still, leaving TCP open for invalid request
+		//    is also not optimal.
+		_, err := dashboard.DashboardGetByID(r.Context(), dashID)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				apiresponse.Error(w, http.StatusNotFound, "Dashboard not found")
+				return
+			}
+			apiresponse.Error(w, http.StatusInternalServerError, "Database error")
+			return
+		}
 
 		// 2. Setup WebSocket Server
 		server := websocket.Server{
@@ -31,7 +45,7 @@ func PublicWebSocketHandler(agents store.AgentStore, broadcaster *AgentBroadcast
 				origin := req.Header.Get("Origin")
 				allowed := os.Getenv("ALLOWED_ORIGINS")
 
-				// If no allowed origins specified, allow all (dev mode)
+				// If no allowed origins specified, allow all
 				if allowed == "" {
 					return nil
 				}

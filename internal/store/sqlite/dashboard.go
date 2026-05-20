@@ -157,6 +157,24 @@ func (s *Store) DashboardGetBySlug(ctx context.Context, slug string) (*store.Das
 	return &d, nil
 }
 
+func (s *Store) DashboardGetByID(ctx context.Context, dashboard_id string) (*store.Dashboard, error) {
+	var d store.Dashboard
+	var rulesJSON string
+	err := s.db.QueryRowContext(ctx,
+		`SELECT dashboard_id, user_id, slug, title, access_rules
+		 FROM dashboards WHERE dashboard_id = ?`, dashboard_id,
+	).Scan(&d.DashboardID, &d.UserID, &d.Slug, &d.Title, &rulesJSON)
+	if err != nil {
+		return nil, err
+	}
+	rules, err := accessrules.ParseRules(rulesJSON)
+	if err != nil {
+		return nil, err
+	}
+	d.AccessRules = rules
+	return &d, nil
+}
+
 // safeColumnMap maps every FeaturesList name to its qualified SQL column.
 // This is the single place that name→column translation lives.
 // Never built from request input — only from the validated rule's field names.
