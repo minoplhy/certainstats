@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate, Link, useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { fetchAPI } from "../../lib/api";
 import { Agent, TriggerType, Operator, DestinationType, Alert } from "../../types";
 import PanelNav from "../common/PanelNav";

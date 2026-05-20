@@ -1,5 +1,5 @@
 export function fmtBytes(b: number) {
-  if (!b) return "–";
+  if (!b) return "-";
   const u = ["B", "KB", "MB", "GB", "TB"];
   let v = b, i = 0;
   while (v >= 1024 && i < u.length - 1) { v /= 1024; i++; }

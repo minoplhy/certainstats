@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { fetchAPI } from "../../lib/api";
-import { getPanelPath, resolvePanelPath } from "../../lib/env";
 
 interface PanelNavProps {
   section?: string;

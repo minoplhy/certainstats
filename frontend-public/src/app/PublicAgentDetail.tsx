@@ -7,7 +7,7 @@ import { TelemetryChart } from "./TelemetryChart";
 // ── Helpers ────────────────────────────────────────────────────────
 
 export function fmtBytes(b?: number | null) {
-  if (!b) return "–";
+  if (!b) return "-";
   const u = ["B", "KB", "MB", "GB", "TB"];
   let v = b, i = 0;
   while (v >= 1024 && i < u.length - 1) { v /= 1024; i++; }
@@ -15,7 +15,7 @@ export function fmtBytes(b?: number | null) {
 }
 
 export function fmtUptime(s?: number | null) {
-  if (!s) return "–";
+  if (!s) return "-";
   const d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60);
   return d ? `${d}d ${h}h` : h ? `${h}h ${m}m` : `${m}m`;
 }
@@ -238,7 +238,7 @@ function MetricPanel({
         <div className="flex gap-4 text-[11px] font-mono flex-wrap justify-end">
           {activeSeries.map((s) => {
             const val = lastPoint[s.label];
-            const displayVal = val != null ? group.fmt(val) : "–";
+            const displayVal = val != null ? group.fmt(val) : "-";
             return (
               <div key={s.label} className="flex items-center gap-2">
                 <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: s.color }} />

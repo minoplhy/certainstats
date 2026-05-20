@@ -551,7 +551,7 @@ export const AgentView: FC<AgentViewProps> = ({
                                 ]}
                               />
                             </div>
-                          ) : <span style={{ color: 'var(--text-muted)', fontSize: '12px' }}>–</span>}
+                          ) : <span style={{ color: 'var(--text-muted)', fontSize: '12px' }}>-</span>}
                         </td>
                         <td style={{ padding: '16px 24px', verticalAlign: 'middle' }}>
                           {a.cpu_model ? (
@@ -559,7 +559,7 @@ export const AgentView: FC<AgentViewProps> = ({
                               <span style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '180px' }}>{a.cpu_model}</span>
                               <span style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-primary)', opacity: 0.8 }}>{a.cpu_cores || "?"} Cores</span>
                             </div>
-                          ) : <span style={{ color: 'var(--text-muted)' }}>–</span>}
+                          ) : <span style={{ color: 'var(--text-muted)' }}>-</span>}
                         </td>
                         <td style={{ padding: '16px 24px', verticalAlign: 'middle' }}>
                           {a.linux_version ? (
@@ -567,10 +567,10 @@ export const AgentView: FC<AgentViewProps> = ({
                               <span className="material-symbols-outlined" style={{ fontSize: '16px', color: 'var(--text-muted)' }}>terminal</span>
                               <span>{a.linux_version.split(' ')[0] || "Linux"}</span>
                             </div>
-                          ) : <span style={{ color: 'var(--text-muted)' }}>–</span>}
+                          ) : <span style={{ color: 'var(--text-muted)' }}>-</span>}
                         </td>
-                        <td style={{ padding: '16px 24px', fontSize: '13px', color: 'var(--text-secondary)', verticalAlign: 'middle' }}>{a.ram_size ? fmtBytes(a.ram_size) : "–"}</td>
-                        <td style={{ padding: '16px 24px', fontSize: '13px', color: 'var(--text-secondary)', verticalAlign: 'middle' }}>{a.disk_size ? fmtBytes(a.disk_size) : "–"}</td>
+                        <td style={{ padding: '16px 24px', fontSize: '13px', color: 'var(--text-secondary)', verticalAlign: 'middle' }}>{a.ram_size ? fmtBytes(a.ram_size) : "-"}</td>
+                        <td style={{ padding: '16px 24px', fontSize: '13px', color: 'var(--text-secondary)', verticalAlign: 'middle' }}>{a.disk_size ? fmtBytes(a.disk_size) : "-"}</td>
                         <td style={{ padding: '16px 24px', verticalAlign: 'middle' }}>
                           <span style={{ fontSize: '11px', fontWeight: '800', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{a.agent_type}</span>
                         </td>

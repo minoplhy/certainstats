@@ -696,7 +696,7 @@ function DashboardContent() {
                                   />
                                 )}
                               </div>
-                            ) : <span style={{ color: 'var(--text-muted)', fontSize: '12px', fontWeight: '600' }}>–</span>}
+                            ) : <span style={{ color: 'var(--text-muted)', fontSize: '12px', fontWeight: '600' }}>-</span>}
                           </td>
                           {agents.some(x => x.cpu_model) && (
                             <td style={{ padding: '20px 28px', verticalAlign: 'middle' }}>
@@ -705,7 +705,7 @@ function DashboardContent() {
                                   <span style={{ fontSize: '13px', fontWeight: '800', color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '220px', letterSpacing: '-0.01em' }}>{a.cpu_model}</span>
                                   <span style={{ fontSize: '11px', fontWeight: '900', color: 'var(--text-primary)', opacity: 0.8, letterSpacing: '0.02em' }}>{a.cpu_cores || "?"} CORES</span>
                                 </div>
-                              ) : <span style={{ color: 'var(--text-muted)' }}>–</span>}
+                              ) : <span style={{ color: 'var(--text-muted)' }}>-</span>}
                             </td>
                           )}
                           {agents.some(x => x.ram_size) && (
@@ -715,14 +715,14 @@ function DashboardContent() {
                                   <span style={{ fontSize: '14px', fontWeight: '800', color: 'var(--text-primary)' }}>{fmtBytes(a.ram_size)}</span>
                                   {Boolean(a.swap_size && a.swap_size > 0) && <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: '700' }}>+{fmtBytes(a.swap_size)} SWAP</span>}
                                 </div>
-                              ) : <span style={{ color: 'var(--text-muted)' }}>–</span>}
+                              ) : <span style={{ color: 'var(--text-muted)' }}>-</span>}
                             </td>
                           )}
                           {agents.some(x => x.disk_size) && (
                             <td style={{ padding: '20px 28px', verticalAlign: 'middle' }}>
                               {a.disk_size ? (
                                 <span style={{ fontSize: '14px', fontWeight: '800', color: 'var(--text-primary)' }}>{fmtBytes(a.disk_size)}</span>
-                              ) : <span style={{ color: 'var(--text-muted)' }}>–</span>}
+                              ) : <span style={{ color: 'var(--text-muted)' }}>-</span>}
                             </td>
                           )}
                           {agents.some(x => x.uptime) && (
@@ -732,7 +732,7 @@ function DashboardContent() {
                                   <span className="material-symbols-outlined" style={{ fontSize: '18px', color: 'var(--text-muted)' }}>schedule</span>
                                   <span>{fmtUptime(a.uptime)}</span>
                                 </div>
-                              ) : <span style={{ color: 'var(--text-muted)' }}>–</span>}
+                              ) : <span style={{ color: 'var(--text-muted)' }}>-</span>}
                             </td>
                           )}
                           {agents.some(x => x.linux_version) && (
@@ -742,7 +742,7 @@ function DashboardContent() {
                                   <span className="material-symbols-outlined" style={{ fontSize: '18px', color: 'var(--text-muted)' }}>terminal</span>
                                   <span>{a.linux_version.split(' ')[0] || "LINUX"}</span>
                                 </div>
-                              ) : <span style={{ color: 'var(--text-muted)' }}>–</span>}
+                              ) : <span style={{ color: 'var(--text-muted)' }}>-</span>}
                             </td>
                           )}
                         </tr>
