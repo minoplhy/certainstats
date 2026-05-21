@@ -15,6 +15,8 @@ type Config struct {
 	PublicPath        string
 	PublicScheme      string
 	InjectedPublicURL string
+	Host              string
+	Port              string
 }
 
 // LoadConfig resolves unified PANEL_URL/PUBLIC_URL configuration setups
@@ -103,6 +105,14 @@ func LoadConfig() *Config {
 		}
 	}
 
+	host := os.Getenv("HOST")
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	} else {
+		port = strings.TrimPrefix(port, ":")
+	}
+
 	return &Config{
 		PanelHost:         panelHost,
 		PanelPath:         panelPath,
@@ -111,6 +121,8 @@ func LoadConfig() *Config {
 		PublicPath:        publicPath,
 		PublicScheme:      publicScheme,
 		InjectedPublicURL: injectedPublicURL,
+		Host:              host,
+		Port:              port,
 	}
 }
 

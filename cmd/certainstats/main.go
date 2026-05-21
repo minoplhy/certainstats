@@ -1,9 +1,9 @@
 package main
 
 import (
+	log "certainstats/internal/logger"
 	"context"
 	_ "embed"
-	log "certainstats/internal/logger"
 	"net/http"
 	"os"
 	"os/signal"
@@ -33,7 +33,6 @@ var (
 	commit    = ""
 	buildTime = ""
 )
-
 
 func main() {
 	for _, arg := range os.Args[1:] {
@@ -301,23 +300,27 @@ func main() {
 	go startSessionSweeper(db)
 
 	log.Printf("CertainStats starting...")
-	if panelHost != "" || publicHost != "" {
-		log.Printf(" → Domain/Host-based Routing enabled:")
-		if panelHost != "" {
-			log.Printf("   - Admin Panel:        %s://%s%s", panelScheme, panelHost, panelPath)
-		}
-		if publicHost != "" {
-			log.Printf("   - Public Dashboards:  %s://%s%s", publicScheme, publicHost, publicPath)
-		}
+	displayHost := cfg.Host
+	if displayHost == "" {
+		displayHost = "0.0.0.0"
+	}
+	displayAddr := displayHost + ":" + cfg.Port
+
+	if panelHost != "" {
+		log.Printf("   - Admin Panel:        %s://%s%s", panelScheme, panelHost, panelPath)
 	} else {
-		log.Printf(" → Path-prefix Routing enabled (fallback):")
-		log.Printf("   - Internal Panel mapped to: http://0.0.0.0:8080%s", panelPath)
-		log.Printf("   - Public Dashboards mapped to: http://0.0.0.0:8080%s", publicPath)
+		log.Printf("   - Admin Panel:        http://%s%s", displayAddr, panelPath)
+	}
+	if publicHost != "" {
+		log.Printf("   - Public Dashboards:  %s://%s%s", publicScheme, publicHost, publicPath)
+	} else {
+		log.Printf("   - Public Dashboards:  http://%s%s", displayAddr, publicPath)
 	}
 
 	masterHandler := HostRouter(panelHost, panelPath, publicHost, publicPath, panelRouter, publicRouter, legacyRouter)
 
-	if err := http.ListenAndServe(":8080", masterHandler); err != nil {
+	log.Printf("Starting server on %s", displayAddr)
+	if err := http.ListenAndServe(cfg.Host+":"+cfg.Port, masterHandler); err != nil {
 		log.Fatalf("Server: %v", err)
 	}
 }
