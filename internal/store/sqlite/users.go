@@ -3,6 +3,8 @@ package sqlite
 import (
 	"certainstats/internal/store"
 	"context"
+	"errors"
+	"strings"
 	"time"
 )
 
@@ -42,4 +44,29 @@ func (s *Store) UpdatePassword(ctx context.Context, userID string, passwordHash 
 		passwordHash, userID,
 	)
 	return err
+}
+
+func (s *Store) IsUserZero(ctx context.Context) (bool, error) {
+	var exists bool
+	err := s.db.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM users LIMIT 1)").Scan(&exists)
+	if err != nil {
+		return false, err
+	}
+	return !exists, nil
+}
+
+func (s *Store) CreateUser(ctx context.Context, userID, username, passwordHash string, isAdmin bool) error {
+	_, err := s.db.ExecContext(ctx,
+		`INSERT INTO users(user_id, username, password_hash, is_admin, created_at)
+		 VALUES(?, ?, ?, ?, ?)`,
+		userID, username, passwordHash, isAdmin, time.Now(),
+	)
+	if err != nil {
+		// Detect SQLite unique constraint violation for username
+		if strings.Contains(err.Error(), "UNIQUE constraint failed: users.username") {
+			return errors.New("username already exists")
+		}
+		return err
+	}
+	return nil
 }

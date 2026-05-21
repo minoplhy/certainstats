@@ -22,9 +22,6 @@ func New(path string) (*Store, error) {
 	if err := s.migrate(); err != nil {
 		return nil, err
 	}
-	if err := s.bootstrap(); err != nil {
-		return nil, err
-	}
 
 	return s, nil
 }
