@@ -3,7 +3,7 @@ services:
     image: ghcr.io/minoplhy/certainstats:dev
     container_name: certainstats-dev
     ports:
-      - "8080:8080"
+      - "${PORT:-8080}:${PORT:-8080}"
     volumes:
       - ./data:/app/data
     environment:
@@ -11,10 +11,11 @@ services:
       - PUBLIC_PATH=${PUBLIC_PATH:-/dashboard}
       - DATA_DIR=/app/data
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-}
+      - PORT=${PORT:-8080}
       - DEBUG=true
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/"]
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:$$PORT/ || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
