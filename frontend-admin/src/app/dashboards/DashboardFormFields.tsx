@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Agent, MetricKey } from "../../types";
-import { getPublicPath } from "../../lib/env";
+import { getPublicURL } from "../../lib/env";
 
 export const FEATURE_OPTIONS = [
   { id: "is_online", label: "Online Status" },
@@ -138,7 +138,7 @@ export default function DashboardFormFields({
           <div style={{ flex: 1, minWidth: '100%' }}>
             <label style={{ display: 'block', fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px' }}>URL Slug</label>
             <div className="mobile-stack" style={{ display: 'flex', border: '1px solid var(--border-color)', borderRadius: '8px', overflow: 'hidden' }}>
-              <span style={{ padding: '10px 14px', background: 'var(--bg-primary)', borderRight: '1px solid var(--border-color)', fontSize: '13px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{getPublicPath().replace(/\/$/, "")}/</span>
+              <span style={{ padding: '10px 14px', background: 'var(--bg-primary)', borderRight: '1px solid var(--border-color)', fontSize: '13px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{getPublicURL()}/</span>
               <input type="text" required value={slug} onChange={(e) => setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-'))} className="input-field" style={{ border: 'none', borderRadius: '0' }} />
             </div>
           </div>

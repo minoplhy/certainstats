@@ -17,6 +17,7 @@ declare global {
     __APP_ENV__?: {
       PANEL_PATH?: string;
       PUBLIC_PATH?: string;
+      PUBLIC_URL?: string;
     };
   }
 }
@@ -76,6 +77,21 @@ export function getPublicPath(): string {
     return "/dashboard";
   }
   return pub;
+}
+
+/**
+ * The fully-qualified public dashboard URL, e.g. "https://public.example.com".
+ * Falls back to same-origin host if PUBLIC_URL is not set.
+ */
+export function getPublicURL(): string {
+  const env = getRawEnv();
+  if (env.PUBLIC_URL) {
+    return env.PUBLIC_URL.replace(/\/$/, "");
+  }
+  if (typeof window !== "undefined") {
+    return window.location.origin + getPublicPath().replace(/\/$/, "");
+  }
+  return getPublicPath().replace(/\/$/, "");
 }
 
 /**

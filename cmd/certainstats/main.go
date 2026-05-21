@@ -35,19 +35,32 @@ var (
 	buildTime = ""
 )
 
-func getRoutePrefix(envKey, defaultPath string) string {
-	path := os.Getenv(envKey)
-	if path == "" {
-		path = defaultPath
+func cleanHost(host string) string {
+	if idx := strings.Index(host, ":"); idx != -1 {
+		return host[:idx]
 	}
-	if !strings.HasPrefix(path, "/") {
-		path = "/" + path
-	}
-	path = strings.TrimSuffix(path, "/")
-	if path == "" {
-		path = "/"
-	}
-	return path
+	return host
+}
+
+func HostRouter(panelHost, publicHost string, panelRouter, publicRouter, fallbackRouter http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		host := cleanHost(r.Host)
+		if forwardedHost := r.Header.Get("X-Forwarded-Host"); forwardedHost != "" {
+			host = cleanHost(forwardedHost)
+		}
+
+		if publicHost != "" && host == publicHost {
+			publicRouter.ServeHTTP(w, r)
+			return
+		}
+
+		if panelHost != "" && host == panelHost {
+			panelRouter.ServeHTTP(w, r)
+			return
+		}
+
+		fallbackRouter.ServeHTTP(w, r)
+	})
 }
 
 func main() {
@@ -112,19 +125,30 @@ func main() {
 		os.Exit(0)
 	}()
 
-	panelPath := getRoutePrefix("PANEL_PATH", "/")
-	publicPath := getRoutePrefix("PUBLIC_PATH", "/dashboard")
-	if publicPath == "/" {
-		publicPath = "/dashboard"
+	cfg := LoadConfig()
+	panelPath := cfg.PanelPath
+	publicPath := cfg.PublicPath
+	panelHost := cfg.PanelHost
+	publicHost := cfg.PublicHost
+	injectedPublicURL := cfg.InjectedPublicURL
+
+	// 4. Router setups
+	setupRouter := func(rt chi.Router) {
+		rt.Use(middleware.RequestID)
+		rt.Use(middleware.RealIP)
+		rt.Use(middleware.Logger)
+		rt.Use(middleware.Recoverer)
+		rt.Use(CompressionMiddleware)
 	}
 
-	// 4. Main Router
-	r := chi.NewRouter()
-	r.Use(middleware.RequestID)
-	r.Use(middleware.RealIP)
-	r.Use(middleware.Logger)
-	r.Use(middleware.Recoverer)
-	r.Use(CompressionMiddleware)
+	panelRouter := chi.NewRouter()
+	setupRouter(panelRouter)
+
+	publicRouter := chi.NewRouter()
+	setupRouter(publicRouter)
+
+	legacyRouter := chi.NewRouter()
+	setupRouter(legacyRouter)
 
 	// ─────────────────────────────────────────────────────────────
 	// 5. API Route Definitions
@@ -157,7 +181,6 @@ func main() {
 				authApi.Post("/agent/reset/token/{id}", requireAuth(db, agent.ResetAgentTokenHandler(db, wsManager)))
 				authApi.Get("/agent/ssh-key/{id}", requireAuth(db, agent.GetAgentSSHKeyHandler(db)))
 				authApi.Get("/agents/management", requireAuth(db, agent.ListAgentsManagementHandler(db)))
-
 			})
 
 			api.Get("/metrics", requireAuth(db, metrics.MetricsQueryHandler(tdb, metricsCache)))
@@ -189,7 +212,6 @@ func main() {
 				})
 			})
 		})
-
 	}
 
 	setupPublic := func(rt chi.Router) {
@@ -212,6 +234,7 @@ func main() {
 		envVars: map[string]string{
 			"PANEL_PATH":  panelPath,
 			"PUBLIC_PATH": publicPath,
+			"PUBLIC_URL":  injectedPublicURL,
 		},
 	}
 
@@ -226,25 +249,33 @@ func main() {
 		},
 	}
 
-	// Set global 404 handler
-	r.NotFound(func(w http.ResponseWriter, r *http.Request) {
+	// Set global 404 handler for all sub-routers
+	notFoundHandler := func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Not Found", http.StatusNotFound)
-	})
+	}
+	panelRouter.NotFound(notFoundHandler)
+	publicRouter.NotFound(notFoundHandler)
+	legacyRouter.NotFound(notFoundHandler)
 
-	// mountContext safely attaches the API endpoints first, and ONLY attaches the
-	// SPA catch-all at the very end of the sub-router to prevent overwriting the API.
-	mountContext := func(basePath string, setup func(chi.Router), spa spaHandler) {
+	// mountContext attaches the API endpoints first, and then the SPA catch-all at the very end.
+	mountContext := func(router chi.Router, basePath string, setup func(chi.Router), spa spaHandler) {
 		if basePath == "/" {
-			setup(r)
-			r.Handle("/*", spa)
+			setup(router)
+			router.Handle("/*", spa)
 		} else {
 			// 1. Force trailing slash: redirect /test to /test/
-			r.Get(basePath, func(w http.ResponseWriter, r *http.Request) {
+			router.Get(basePath, func(w http.ResponseWriter, r *http.Request) {
 				http.Redirect(w, r, basePath+"/", http.StatusMovedPermanently)
 			})
 
 			// 2. Mount the sub-router for API and Assets
-			r.Route(basePath+"/", func(sub chi.Router) {
+			router.Route(basePath+"/", func(sub chi.Router) {
+				sub.Use(func(next http.Handler) http.Handler {
+					return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+						// Ensure we preserve exact request path behavior
+						next.ServeHTTP(w, r)
+					})
+				})
 				setup(sub)
 				// The SPA handler itself (handles all non-API paths under this prefix)
 				sub.Handle("/*", http.StripPrefix(basePath, spa))
@@ -252,40 +283,62 @@ func main() {
 		}
 	}
 
+	// 7. Route and mount Virtual Hosts
+	if panelHost != "" {
+		mountContext(panelRouter, panelPath, setupPanel, panelSpa)
+	}
+	if publicHost != "" {
+		if publicPath == "/" {
+			mountContext(publicRouter, publicPath, func(rt chi.Router) {
+				setupPublic(rt)
+				rt.Route("/dashboard", setupPublic)
+			}, publicSpa)
+		} else {
+			mountContext(publicRouter, publicPath, setupPublic, publicSpa)
+		}
+	}
+
+	// 8. Legacy combined path-prefix routing (fallback)
 	if panelPath == publicPath {
-		// If both run on identical paths, combine the APIs and use the Panel SPA fallback.
-		// We also mount setupPublic under /dashboard so that when the dashboard is served
-		// from its subpath (default config), its API calls stay prefix-consistent.
-		mountContext(panelPath, func(rt chi.Router) {
+		mountContext(legacyRouter, panelPath, func(rt chi.Router) {
 			setupPanel(rt)
 			setupPublic(rt)
 			rt.Route("/dashboard", setupPublic)
 		}, panelSpa)
 	} else {
-		// If paths differ, perfectly isolate them into their own sub-routers.
-		mountContext(panelPath, setupPanel, panelSpa)
+		mountContext(legacyRouter, panelPath, setupPanel, panelSpa)
 
-		// If publicPath is "/", we also mount it at "/dashboard" to match getPublicPath()
 		if publicPath == "/" {
-			mountContext(publicPath, func(rt chi.Router) {
+			mountContext(legacyRouter, publicPath, func(rt chi.Router) {
 				setupPublic(rt)
 				rt.Route("/dashboard", setupPublic)
 			}, publicSpa)
 		} else {
-			mountContext(publicPath, setupPublic, publicSpa)
+			mountContext(legacyRouter, publicPath, setupPublic, publicSpa)
 		}
 	}
-
-	// ─────────────────────────────────────────────────────────────
 
 	go startHeartbeatSweeper(db)
 	go startSessionSweeper(db)
 
 	log.Printf("CertainStats starting...")
-	log.Printf(" → Internal Panel mapped to: http://localhost:8080%s", panelPath)
-	log.Printf(" → Public Dashboards mapped to: http://localhost:8080%s", publicPath)
+	if panelHost != "" || publicHost != "" {
+		log.Printf(" → Domain/Host-based Routing enabled:")
+		if panelHost != "" {
+			log.Printf("   - Admin Panel Domain: %s (Path: %s)", panelHost, panelPath)
+		}
+		if publicHost != "" {
+			log.Printf("   - Public Domain:      %s (Path: %s)", publicHost, publicPath)
+		}
+	} else {
+		log.Printf(" → Path-prefix Routing enabled (fallback):")
+		log.Printf("   - Internal Panel mapped to: http://0.0.0.0:8080%s", panelPath)
+		log.Printf("   - Public Dashboards mapped to: http://0.0.0.0:8080%s", publicPath)
+	}
 
-	if err := http.ListenAndServe(":8080", r); err != nil {
+	masterHandler := HostRouter(panelHost, publicHost, panelRouter, publicRouter, legacyRouter)
+
+	if err := http.ListenAndServe(":8080", masterHandler); err != nil {
 		log.Fatalf("Server: %v", err)
 	}
 }
