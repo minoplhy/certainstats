@@ -8,7 +8,6 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	"strings"
 	"syscall"
 
 	"certainstats/internal/agent"
@@ -35,33 +34,6 @@ var (
 	buildTime = ""
 )
 
-func cleanHost(host string) string {
-	if idx := strings.Index(host, ":"); idx != -1 {
-		return host[:idx]
-	}
-	return host
-}
-
-func HostRouter(panelHost, publicHost string, panelRouter, publicRouter, fallbackRouter http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		host := cleanHost(r.Host)
-		if forwardedHost := r.Header.Get("X-Forwarded-Host"); forwardedHost != "" {
-			host = cleanHost(forwardedHost)
-		}
-
-		if publicHost != "" && host == publicHost {
-			publicRouter.ServeHTTP(w, r)
-			return
-		}
-
-		if panelHost != "" && host == panelHost {
-			panelRouter.ServeHTTP(w, r)
-			return
-		}
-
-		fallbackRouter.ServeHTTP(w, r)
-	})
-}
 
 func main() {
 	for _, arg := range os.Args[1:] {
@@ -280,7 +252,7 @@ func main() {
 				})
 				setup(sub)
 				// The SPA handler itself (handles all non-API paths under this prefix)
-				sub.Handle("/*", http.StripPrefix(basePath, spa))
+				sub.Handle("/*", spa)
 			})
 		}
 	}
@@ -338,7 +310,7 @@ func main() {
 		log.Printf("   - Public Dashboards mapped to: http://0.0.0.0:8080%s", publicPath)
 	}
 
-	masterHandler := HostRouter(panelHost, publicHost, panelRouter, publicRouter, legacyRouter)
+	masterHandler := HostRouter(panelHost, panelPath, publicHost, publicPath, panelRouter, publicRouter, legacyRouter)
 
 	if err := http.ListenAndServe(":8080", masterHandler); err != nil {
 		log.Fatalf("Server: %v", err)
