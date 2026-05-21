@@ -3,11 +3,12 @@ package main
 import (
 	auth "certainstats/internal/auth"
 	ctx "certainstats/internal/context"
+	log "certainstats/internal/logger"
+	apiresponse "certainstats/internal/response"
 	"certainstats/internal/store"
 	"context"
 	"database/sql"
 	"errors"
-	log "certainstats/internal/logger"
 	"net/http"
 	"time"
 )
@@ -16,7 +17,7 @@ func requireAuth(sessions store.SessionStore, next http.HandlerFunc) http.Handle
 	return func(w http.ResponseWriter, r *http.Request) {
 		cookie, err := r.Cookie("session_token")
 		if err != nil {
-			http.Error(w, "Unauthorized — missing cookie", http.StatusUnauthorized)
+			apiresponse.Error(w, http.StatusUnauthorized, "Unauthorized")
 			return
 		}
 
@@ -24,18 +25,18 @@ func requireAuth(sessions store.SessionStore, next http.HandlerFunc) http.Handle
 		if err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
 				auth.ClearSessionCookie(w)
-				http.Error(w, "Session expired or invalid", http.StatusUnauthorized)
+				apiresponse.Error(w, http.StatusUnauthorized, "Unauthorized")
 				return
 			}
 			log.Printf("session: %s\n", err.Error())
-			http.Error(w, "Internal error", http.StatusInternalServerError)
+			apiresponse.Error(w, http.StatusInternalServerError, "Internal Error")
 			return
 		}
 
 		if time.Now().After(sess.ExpiresAt) {
 			sessions.SessionDelete(r.Context(), cookie.Value) //nolint:errcheck
 			auth.ClearSessionCookie(w)
-			http.Error(w, "Session expired", http.StatusUnauthorized)
+			apiresponse.Error(w, http.StatusUnauthorized, "Unauthorized")
 			return
 		}
 

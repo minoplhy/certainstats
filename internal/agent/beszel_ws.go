@@ -1,13 +1,14 @@
 package agent
 
 import (
+	log "certainstats/internal/logger"
+	apiresponse "certainstats/internal/response"
 	"context"
 	"crypto/rand"
-	log "certainstats/internal/logger"
 	"net/http"
 
-	beszelparser "certainstats/internal/agent_parser/Beszel"
 	agentparser "certainstats/internal/agent_parser"
+	beszelparser "certainstats/internal/agent_parser/Beszel"
 	"certainstats/internal/metrics"
 	"certainstats/internal/store"
 	"certainstats/internal/ws"
@@ -27,7 +28,7 @@ func BeszelWSHandler(db store.AgentStore, tdb *tsdb.DB, wsManager *ws.Manager, c
 		token, err := parser.ParseToken(r.Header)
 		if err != nil {
 			log.Printf("[WS] Header validation failed: %v", err)
-			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			apiresponse.Error(w, http.StatusUnauthorized, "Unauthorized")
 			return
 		}
 		version := r.Header.Get("X-Beszel")
@@ -36,7 +37,7 @@ func BeszelWSHandler(db store.AgentStore, tdb *tsdb.DB, wsManager *ws.Manager, c
 		identity, err := db.AgentGetByToken(r.Context(), token)
 		if err != nil {
 			log.Printf("[WS] Unauthorized agent connection attempt: %s", token)
-			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			apiresponse.Error(w, http.StatusUnauthorized, "Unauthorized")
 			return
 		}
 

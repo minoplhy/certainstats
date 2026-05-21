@@ -2,6 +2,7 @@ package main
 
 import (
 	log "certainstats/internal/logger"
+	apiresponse "certainstats/internal/response"
 	"context"
 	"crypto/rand"
 	_ "embed"
@@ -290,7 +291,7 @@ func main() {
 
 	// Set global 404 handler for all sub-routers
 	notFoundHandler := func(w http.ResponseWriter, r *http.Request) {
-		http.Error(w, "Not Found", http.StatusNotFound)
+		apiresponse.Error(w, http.StatusNotFound, "Not Found")
 	}
 	panelRouter.NotFound(notFoundHandler)
 	publicRouter.NotFound(notFoundHandler)
