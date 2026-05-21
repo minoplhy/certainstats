@@ -130,6 +130,8 @@ func main() {
 	publicPath := cfg.PublicPath
 	panelHost := cfg.PanelHost
 	publicHost := cfg.PublicHost
+	panelScheme := cfg.PanelScheme
+	publicScheme := cfg.PublicScheme
 	injectedPublicURL := cfg.InjectedPublicURL
 
 	// 4. Router setups
@@ -325,10 +327,10 @@ func main() {
 	if panelHost != "" || publicHost != "" {
 		log.Printf(" → Domain/Host-based Routing enabled:")
 		if panelHost != "" {
-			log.Printf("   - Admin Panel Domain: %s (Path: %s)", panelHost, panelPath)
+			log.Printf("   - Admin Panel:        %s://%s%s", panelScheme, panelHost, panelPath)
 		}
 		if publicHost != "" {
-			log.Printf("   - Public Domain:      %s (Path: %s)", publicHost, publicPath)
+			log.Printf("   - Public Dashboards:  %s://%s%s", publicScheme, publicHost, publicPath)
 		}
 	} else {
 		log.Printf(" → Path-prefix Routing enabled (fallback):")

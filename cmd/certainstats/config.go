@@ -10,8 +10,10 @@ import (
 type Config struct {
 	PanelHost         string
 	PanelPath         string
+	PanelScheme       string
 	PublicHost        string
 	PublicPath        string
+	PublicScheme      string
 	InjectedPublicURL string
 }
 
@@ -21,6 +23,7 @@ type Config struct {
 func LoadConfig() *Config {
 	panelPath := ""
 	panelHost := ""
+	panelScheme := "http"
 	panelURL := os.Getenv("PANEL_URL")
 	if panelURL != "" {
 		var uStr = panelURL
@@ -32,6 +35,9 @@ func LoadConfig() *Config {
 			panelPath = u.Path
 			if panelPath == "" {
 				panelPath = "/"
+			}
+			if u.Scheme != "" {
+				panelScheme = u.Scheme
 			}
 		}
 	}
@@ -47,9 +53,9 @@ func LoadConfig() *Config {
 		}
 	}
 
-
 	publicPath := ""
 	publicHost := ""
+	publicScheme := "http"
 	publicURL := os.Getenv("PUBLIC_URL")
 	if publicURL != "" {
 		var uStr = publicURL
@@ -61,6 +67,9 @@ func LoadConfig() *Config {
 			publicPath = u.Path
 			if publicPath == "" {
 				publicPath = "/"
+			}
+			if u.Scheme != "" {
+				publicScheme = u.Scheme
 			}
 		}
 	}
@@ -97,8 +106,10 @@ func LoadConfig() *Config {
 	return &Config{
 		PanelHost:         panelHost,
 		PanelPath:         panelPath,
+		PanelScheme:       panelScheme,
 		PublicHost:        publicHost,
 		PublicPath:        publicPath,
+		PublicScheme:      publicScheme,
 		InjectedPublicURL: injectedPublicURL,
 	}
 }
