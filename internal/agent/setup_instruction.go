@@ -73,7 +73,7 @@ func getSetupInstructions(agentType, token, host, panelPath, publicKey string) [
 		messages = append(messages, base.ProvisionMessage{
 			Name:        "Linux command(Debian-based)",
 			MessageType: "command",
-			Content:     fmt.Sprintf("curl -s https://ltstats.de/v1.3/systemd:agent | tee install.sh | sha256sum -c <(echo 123bdcc123d39dfe915eb3ed9223ea75c845a8bef5c79b994f4b2de20530085c -) && bash install.sh %s %s ntp", token, host),
+			Content:     fmt.Sprintf("curl -s https://ltstats.de/v1.3/systemd:agent | tee install.sh | sha256sum -c <(echo 123bdcc123d39dfe915eb3ed9223ea75c845a8bef5c79b994f4b2de20530085c -) && bash install.sh %s %s ntp", host, token),
 		})
 
 		if panelPath != "/" {
