@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { fetchAPI } from "../../lib/api";
-import { getPublicPath } from "../../lib/env";
+import { getPublicURL } from "../../lib/env";
 import { Dashboard } from "../../types";
 import { isUnauthorized } from "../../lib/utils";
 import DeleteConfirmModal from "../common/DeleteConfirmModal";
@@ -100,7 +100,7 @@ export const DashboardsPanel: React.FC = () => {
 
                 <div style={{ marginTop: 'auto', paddingTop: '16px', borderTop: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <a
-                    href={`${getPublicPath().replace(/\/$/, '')}/${dash.slug}`}
+                    href={`${getPublicURL()}/${dash.slug}`}
                     target="_blank"
                     style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '6px', transition: 'var(--transition-fast)' }}
                     onMouseOver={(e) => e.currentTarget.style.color = 'var(--text-primary)'}
