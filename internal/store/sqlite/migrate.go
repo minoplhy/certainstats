@@ -141,7 +141,7 @@ func (s *Store) migrate() error {
 		if _, err := s.db.Exec(m); err != nil {
 			// Ignore "duplicate column" — expected on every boot after first run.
 			// Log everything else so schema drift is immediately visible.
-			log.Printf("[migrate] %s — %v", m, err)
+			log.Debugf("[migrate] %s — %v", m, err)
 		}
 	}
 
