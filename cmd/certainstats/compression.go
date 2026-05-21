@@ -58,6 +58,13 @@ func (w *compressionResponseWriter) WriteHeader(status int) {
 		return
 	}
 	w.status = status
+
+	// If Content-Encoding is already set, bypass compression completely and write header immediately
+	if w.Header().Get("Content-Encoding") != "" {
+		w.bypassed = true
+		w.wroteHeader = true
+		w.ResponseWriter.WriteHeader(status)
+	}
 }
 
 func (w *compressionResponseWriter) Write(b []byte) (int, error) {
@@ -66,8 +73,24 @@ func (w *compressionResponseWriter) Write(b []byte) (int, error) {
 		return w.writer.Write(b)
 	}
 
-	// If compression was bypassed due to CPU load shedding, stream directly to the uncompressed socket
+	// If compression was bypassed (due to CPU load shedding or already compressed content), stream directly to the uncompressed socket
 	if w.bypassed {
+		return w.ResponseWriter.Write(b)
+	}
+
+	// If Content-Encoding is already set, bypass compression completely and stream directly
+	if w.Header().Get("Content-Encoding") != "" {
+		w.bypassed = true
+		w.wroteHeader = true
+		if w.status != 0 {
+			w.ResponseWriter.WriteHeader(w.status)
+		}
+		if w.buf.Len() > 0 {
+			if _, err := w.ResponseWriter.Write(w.buf.Bytes()); err != nil {
+				return 0, err
+			}
+			w.buf.Reset()
+		}
 		return w.ResponseWriter.Write(b)
 	}
 
@@ -178,6 +201,16 @@ func (w *compressionResponseWriter) Close() error {
 	// Otherwise, serve uncompressed (either response size < 1400 bytes, or bypassed due to load shedding)
 	if w.bypassed {
 		return nil
+	}
+
+	// Check one last time if Content-Encoding was set before writing remaining buffered data
+	if w.Header().Get("Content-Encoding") != "" {
+		w.bypassed = true
+		if w.status != 0 {
+			w.ResponseWriter.WriteHeader(w.status)
+		}
+		_, err := w.ResponseWriter.Write(w.buf.Bytes())
+		return err
 	}
 
 	if w.Header().Get("Content-Type") == "" && w.buf.Len() > 0 {
