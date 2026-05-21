@@ -3,6 +3,7 @@ package ws
 import (
 	ctx "certainstats/internal/context"
 	log "certainstats/internal/logger"
+	apiresponse "certainstats/internal/response"
 	"errors"
 	"net/http"
 	"os"
@@ -17,7 +18,7 @@ func UIWebSocketHandler(broadcaster *AgentBroadcaster) http.HandlerFunc {
 		// 1. Get UserID from context (populated by requireAuth middleware)
 		userID, ok := r.Context().Value(ctx.UserIDKey).(string)
 		if !ok || userID == "" {
-			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			apiresponse.Error(w, http.StatusUnauthorized, "Unauthorized")
 			return
 		}
 

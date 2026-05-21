@@ -2,6 +2,8 @@ package main
 
 import (
 	"bytes"
+	log "certainstats/internal/logger"
+	apiresponse "certainstats/internal/response"
 	"fmt"
 	"io"
 	"io/fs"
@@ -169,14 +171,16 @@ func (h spaHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			http.NotFound(w, r)
 			return
 		}
-		http.Error(w, "Failed to load index.html", http.StatusInternalServerError)
+		apiresponse.Error(w, http.StatusInternalServerError, "Internal Error")
+		log.Debugf("Failed to load index.html: %s", err.Error())
 		return
 	}
 	defer f.Close()
 
 	indexBytes, readErr := io.ReadAll(f)
 	if readErr != nil {
-		http.Error(w, "Failed to read index.html", http.StatusInternalServerError)
+		apiresponse.Error(w, http.StatusInternalServerError, "Internal Error")
+		log.Debugf("Failed to load index.html: %s", err.Error())
 		return
 	}
 
