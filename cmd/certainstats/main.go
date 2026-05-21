@@ -78,7 +78,7 @@ func main() {
 
 	dataDir := os.Getenv("DATA_DIR")
 	if dataDir == "" {
-		dataDir = "/app/data"
+		dataDir = "./data"
 	}
 	os.MkdirAll(dataDir, 0o755)
 
