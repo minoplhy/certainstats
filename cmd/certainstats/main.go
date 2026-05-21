@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 	_ "embed"
-	"log"
+	log "certainstats/internal/logger"
 	"net/http"
 	"os"
 	"os/signal"
@@ -233,14 +233,18 @@ func main() {
 
 	// mountContext attaches the API endpoints first, and then the SPA catch-all at the very end.
 	mountContext := func(router chi.Router, basePath string, setup func(chi.Router), spa spaHandler) {
+		log.Debugf("[Mount] setting up router mount for basePath=%q (staticPath=%q)", basePath, spa.staticPath)
 		if basePath == "/" {
 			setup(router)
 			router.Handle("/*", spa)
+			log.Debugf("[Mount] registered root API and catch-all for basePath=%q", basePath)
 		} else {
 			// 1. Force trailing slash: redirect /test to /test/
 			router.Get(basePath, func(w http.ResponseWriter, r *http.Request) {
+				log.Debugf("[Mount] redirecting un-slashed request %q to %s/", r.URL.Path, basePath)
 				http.Redirect(w, r, basePath+"/", http.StatusMovedPermanently)
 			})
+			log.Debugf("[Mount] registered slash redirect for %s -> %s/", basePath, basePath)
 
 			// 2. Mount the sub-router for API and Assets
 			router.Route(basePath+"/", func(sub chi.Router) {
@@ -252,7 +256,8 @@ func main() {
 				})
 				setup(sub)
 				// The SPA handler itself (handles all non-API paths under this prefix)
-				sub.Handle("/*", spa)
+				sub.Handle("/*", http.StripPrefix(basePath, spa))
+				log.Debugf("[Mount] registered API and StripPrefix catch-all for subpath under %s/", basePath)
 			})
 		}
 	}
