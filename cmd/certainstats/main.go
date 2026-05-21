@@ -3,7 +3,10 @@ package main
 import (
 	log "certainstats/internal/logger"
 	"context"
+	"crypto/rand"
 	_ "embed"
+	"encoding/hex"
+	"fmt"
 	"net/http"
 	"os"
 	"os/signal"
@@ -16,6 +19,7 @@ import (
 	"certainstats/internal/auth"
 	b_ctx "certainstats/internal/context"
 	"certainstats/internal/dashboard"
+	"certainstats/internal/lifecycle"
 	"certainstats/internal/metrics"
 	"certainstats/internal/routine"
 	"certainstats/internal/store/sqlite"
@@ -89,11 +93,21 @@ func main() {
 	go func() {
 		stop := make(chan os.Signal, 1)
 		signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
-		<-stop
-		log.Println("Shutting down...")
+
+		var exitCode int
+		select {
+		case sig := <-stop:
+			log.Printf("Received system signal %v. Shutting down cleanly...", sig)
+			exitCode = 0
+		case code := <-lifecycle.ShutdownChan:
+			log.Printf("Application requested clean graceful restart (exit code %d)...", code)
+			exitCode = code
+		}
+
+		log.Println("Closing TSDB and SQLite database handles gracefully...")
 		tdb.Close()
 		db.Close()
-		os.Exit(0)
+		os.Exit(exitCode)
 	}()
 
 	cfg := LoadConfig()
@@ -104,6 +118,50 @@ func main() {
 	panelScheme := cfg.PanelScheme
 	publicScheme := cfg.PublicScheme
 	injectedPublicURL := cfg.InjectedPublicURL
+
+	// 3.5 First-Time Setup initialization check
+	isZero, err := db.IsUserZero(ctx)
+	if err != nil {
+		log.Fatalf("database user check: %v", err)
+	}
+
+	if isZero {
+		// Generate secure 32-byte in-memory setup token
+		tokenBytes := make([]byte, 32)
+		if _, err := rand.Read(tokenBytes); err != nil {
+			log.Fatalf("failed to generate setup token: %v", err)
+		}
+		setupTok := hex.EncodeToString(tokenBytes)
+		auth.SetSetupToken(setupTok)
+
+		displayHost := cfg.PanelHost
+		if displayHost == "" {
+			displayHost = cfg.Host
+			if displayHost == "" {
+				displayHost = "0.0.0.0"
+			}
+			displayHost = displayHost + ":" + cfg.Port
+		}
+
+		scheme := cfg.PanelScheme
+		if scheme == "" {
+			scheme = "http"
+		}
+
+		pPath := cfg.PanelPath
+		if pPath == "/" {
+			pPath = ""
+		}
+
+		setupURL := fmt.Sprintf("%s://%s%s/first-time-setup?token=%s", scheme, displayHost, pPath, setupTok)
+
+		log.Println("====================================================================")
+		log.Printf("  !!SETUP REQUIRED!!")
+		log.Printf("  Please visit: %s", setupURL)
+		log.Printf("  or enter the secure 32-byte setup token from your logs:")
+		log.Printf("  Token: %s", setupTok)
+		log.Println("====================================================================")
+	}
 
 	// 4. Router setups
 	setupRouter := func(rt chi.Router) {
@@ -142,6 +200,14 @@ func main() {
 		rt.Route("/api", func(api chi.Router) {
 			api.Post("/login", auth.LoginHandler(db, db))
 			api.Post("/logout", auth.LogoutHandler(db))
+
+			// Mount first-time setup endpoints ONLY if the database is in a zero-user setup state on boot
+			if isZero {
+				api.Get("/first-time-setup/status", auth.GetSetupStatusHandler(db))
+				api.Get("/first-time-setup/check", auth.CheckSetupHandler())
+				api.Post("/first-time-setup", auth.RegisterFirstUserHandler(db))
+				api.Post("/first-time-setup/restart", auth.RestartServerHandler())
+			}
 
 			api.Group(func(authApi chi.Router) {
 				authApi.Get("/ws", requireAuth(db, ws.UIWebSocketHandler(uiBroadcaster)))

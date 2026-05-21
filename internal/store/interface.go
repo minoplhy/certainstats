@@ -90,6 +90,8 @@ type UserStore interface {
 	GetByUsername(ctx context.Context, username string) (*User, error)
 	GetByID(ctx context.Context, userID string) (*User, error)
 	UpdatePassword(ctx context.Context, userID string, passwordHash string) error
+	IsUserZero(ctx context.Context) (bool, error)
+	CreateUser(ctx context.Context, userID, username, passwordHash string, isAdmin bool) error
 }
 
 // DashboardStore handles public dashboard configuration and data.
