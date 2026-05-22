@@ -84,7 +84,8 @@ func (s *Store) AgentList(ctx context.Context, userID string) ([]store.Agent, er
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT agent_id, user_id, agent_type, nickname, last_seen, is_online, uptime,
 		       linux_version, cpu_model, cpu_cores, ram_size, swap_size, disk_size,
-		       total_rx_bytes, total_tx_bytes, total_disk_read_bytes, total_disk_write_bytes
+		       total_rx_bytes, total_tx_bytes, total_disk_read_bytes, total_disk_write_bytes,
+		       note
 		FROM   agents
 		WHERE  user_id = ?
 		ORDER  BY is_online DESC, nickname ASC`,
@@ -103,6 +104,7 @@ func (s *Store) AgentList(ctx context.Context, userID string) ([]store.Agent, er
 			&a.AgentID, &a.UserID, &a.AgentType, &a.Nickname, &lastSeen, &a.IsOnline, &a.Uptime,
 			&a.LinuxVersion, &a.CpuModel, &a.CpuCores, &a.RamSize, &a.SwapSize, &a.DiskSize,
 			&a.TotalRxBytes, &a.TotalTxBytes, &a.TotalDiskReadBytes, &a.TotalDiskWriteBytes,
+			&a.Note,
 		); err != nil {
 			return nil, err
 		}
@@ -127,11 +129,28 @@ func (s *Store) AgentProvision(ctx context.Context, agentID, userID, token, nick
 	return err
 }
 
-func (s *Store) AgentRename(ctx context.Context, agentID, userID, nickname string) error {
-	res, err := s.db.ExecContext(ctx,
-		`UPDATE agents SET nickname = ? WHERE agent_id = ? AND user_id = ?`,
-		nickname, agentID, userID,
-	)
+func (s *Store) AgentUpdate(ctx context.Context, agentID, userID string, nickname *string, note *string) error {
+	if nickname == nil && note == nil {
+		return nil
+	}
+
+	query := "UPDATE agents SET "
+	var args []any
+	if nickname != nil {
+		query += "nickname = ?"
+		args = append(args, *nickname)
+	}
+	if note != nil {
+		if nickname != nil {
+			query += ", "
+		}
+		query += "note = ?"
+		args = append(args, *note)
+	}
+	query += " WHERE agent_id = ? AND user_id = ?"
+	args = append(args, agentID, userID)
+
+	res, err := s.db.ExecContext(ctx, query, args...)
 	if err != nil {
 		return err
 	}
@@ -172,7 +191,8 @@ func (s *Store) AgentGetByID(ctx context.Context, agentID, userID string) (*stor
 	err := s.db.QueryRowContext(ctx, `
 		SELECT agent_id, user_id, agent_type, nickname, last_seen, is_online, uptime,
 		       linux_version, cpu_model, cpu_cores, ram_size, swap_size, disk_size,
-		       total_rx_bytes, total_tx_bytes, total_disk_read_bytes, total_disk_write_bytes
+		       total_rx_bytes, total_tx_bytes, total_disk_read_bytes, total_disk_write_bytes,
+		       note
 		FROM   agents
 		WHERE  agent_id = ? AND user_id = ?`,
 		agentID, userID,
@@ -180,6 +200,7 @@ func (s *Store) AgentGetByID(ctx context.Context, agentID, userID string) (*stor
 		&a.AgentID, &a.UserID, &a.AgentType, &a.Nickname, &lastSeen, &a.IsOnline, &a.Uptime,
 		&a.LinuxVersion, &a.CpuModel, &a.CpuCores, &a.RamSize, &a.SwapSize, &a.DiskSize,
 		&a.TotalRxBytes, &a.TotalTxBytes, &a.TotalDiskReadBytes, &a.TotalDiskWriteBytes,
+		&a.Note,
 	)
 	if err != nil {
 		return nil, err

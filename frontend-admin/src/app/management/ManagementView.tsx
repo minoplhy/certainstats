@@ -2,17 +2,17 @@ import { useEffect, useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { fetchAPI } from "../../lib/api";
 import { AgentManagement } from "../../types";
-import PanelNav from "../common/PanelNav";
 import ReinstallModal from "../common/ReinstallModal";
 import DeleteConfirmModal from "../common/DeleteConfirmModal";
+import { useApp } from "../../context/AppContext";
 
 export default function ManagementView() {
   const navigate = useNavigate();
+  const { showToast } = useApp();
   const [agents, setAgents] = useState<AgentManagement[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState("");
   const [resetting, setResetting] = useState<string | null>(null);
-  const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
 
   const [confirmModal, setConfirmModal] = useState<{ type: 'token' | 'ssh' | 'revoke', agent: AgentManagement } | null>(null);
   const [successModal, setSuccessModal] = useState<{ type: 'token' | 'ssh', agent: AgentManagement, value: string } | null>(null);
@@ -38,10 +38,7 @@ export default function ManagementView() {
     loadData();
   }, []);
 
-  const showToast = (msg: string, ok = true) => {
-    setToast({ msg, ok });
-    setTimeout(() => setToast(null), 3000);
-  };
+
 
   const copyToClipboard = (text: string, label: string) => {
     navigator.clipboard.writeText(text).then(() => {
@@ -116,11 +113,8 @@ export default function ManagementView() {
   }, [agents, filter]);
 
   return (
-    <>
-      <PanelNav />
-      <div className="flex flex-col w-full" style={{ height: 'calc(100vh - 56px)', overflowY: 'auto', background: 'var(--bg-primary)' }}>
-        <div style={{ padding: '32px', maxWidth: '1400px', margin: '0 auto', width: '100%' }}>
-          <div className="animate-fade-in">
+    <div style={{ padding: '32px', maxWidth: '1400px', margin: '0 auto', width: '100%' }}>
+      <div className="animate-fade-in">
             <div className="flex justify-between items-center" style={{ marginBottom: '32px' }}>
               <div>
                 <h1 className="font-display" style={{ fontSize: '28px', fontWeight: '700', marginBottom: '8px' }}>Agents Management</h1>
@@ -375,30 +369,6 @@ export default function ManagementView() {
             showToast={(msg) => showToast(msg, true)}
           />
 
-          {/* TOAST */}
-          {toast && (
-            <div style={{
-              position: 'fixed',
-              bottom: '24px',
-              right: '24px',
-              padding: '12px 20px',
-              borderRadius: '8px',
-              background: 'var(--bg-secondary)',
-              border: `1px solid ${toast.ok ? 'var(--status-online)' : 'var(--status-offline)'}`,
-              boxShadow: '0 12px 32px rgba(0,0,0,0.4)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '12px',
-              zIndex: 500,
-              animation: 'slideInRight 0.3s ease'
-            }}>
-              <span className="material-symbols-outlined" style={{ color: toast.ok ? 'var(--status-online)' : 'var(--status-offline)', fontSize: '20px' }}>
-                {toast.ok ? "check_circle" : "error"}
-              </span>
-              <span style={{ fontSize: '14px', fontWeight: '500' }}>{toast.msg}</span>
-            </div>
-          )}
-
           <style>{`
         .hover-row:hover {
           background: rgba(255, 255, 255, 0.02);
@@ -413,7 +383,5 @@ export default function ManagementView() {
         }
       `}</style>
         </div>
-      </div>
-    </>
   );
 }

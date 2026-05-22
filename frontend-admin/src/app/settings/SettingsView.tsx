@@ -1,6 +1,5 @@
 import { useState, useEffect } from "react";
 import { fetchAPI } from "../../lib/api";
-import PanelNav from "../common/PanelNav";
 import { useNavigate } from "react-router-dom";
 
 interface Session {
@@ -107,10 +106,7 @@ export default function SettingsView() {
   };
 
   return (
-    <>
-      <PanelNav />
-      <div className="flex flex-col w-full" style={{ height: 'calc(100vh - 56px)', overflowY: 'auto', background: 'var(--bg-primary)' }}>
-        <div style={{ padding: "40px 24px", maxWidth: "960px", margin: "0 auto", width: '100%' }} className="animate-fade-in mobile-p-sm">
+    <div style={{ padding: "40px 24px", maxWidth: "960px", margin: "0 auto", width: '100%' }} className="animate-fade-in mobile-p-sm">
           <header style={{ marginBottom: "32px" }}>
             <h1 className="font-display font-bold text-2xl text-primary mobile-text-lg" style={{ letterSpacing: "-0.02em" }}>
               User Settings
@@ -304,8 +300,6 @@ export default function SettingsView() {
               </div>
             </div>
           </div>
-        </div>
-      </div>
-    </>
+    </div>
   );
 }

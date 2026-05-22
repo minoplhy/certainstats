@@ -15,4 +15,5 @@ type CreateDashboardReq struct {
 type CreateDashboardReqAgent struct {
 	AgentID string `json:"agent_id"`
 	Alias   string `json:"alias"`
+	SortKey string `json:"sort_key"`
 }

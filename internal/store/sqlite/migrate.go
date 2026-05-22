@@ -34,7 +34,8 @@ func (s *Store) migrate() error {
 			total_rx_bytes         BIGINT DEFAULT 0,
 			total_tx_bytes         BIGINT DEFAULT 0,
 			total_disk_read_bytes  BIGINT DEFAULT 0,
-			total_disk_write_bytes BIGINT DEFAULT 0
+			total_disk_write_bytes BIGINT DEFAULT 0,
+			note                   TEXT DEFAULT ''
 		)`,
 
 		`CREATE TABLE IF NOT EXISTS agent_disk_odometers (
@@ -71,6 +72,7 @@ func (s *Store) migrate() error {
 			agent_id              TEXT NOT NULL REFERENCES agents(agent_id)         ON DELETE CASCADE,
 			agent_public_id       TEXT NOT NULL,
 			agent_public_nickname TEXT NOT NULL DEFAULT '',
+			sort_key              TEXT DEFAULT NULL,
 			PRIMARY KEY (dashboard_id, agent_id)
 		)`,
 
@@ -137,6 +139,8 @@ func (s *Store) migrate() error {
 		`ALTER TABLE sessions ADD COLUMN last_connected_at DATETIME DEFAULT NULL`,
 		`ALTER TABLE sessions ADD COLUMN ip_address TEXT DEFAULT 'Unknown'`,
 		`ALTER TABLE sessions ADD COLUMN user_agent TEXT DEFAULT 'Unknown'`,
+		`ALTER TABLE dashboard_agents ADD COLUMN sort_key TEXT DEFAULT NULL`,
+		`ALTER TABLE agents ADD COLUMN note TEXT DEFAULT ''`,
 	} {
 		if _, err := s.db.Exec(m); err != nil {
 			// Ignore "duplicate column" — expected on every boot after first run.

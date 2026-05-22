@@ -526,8 +526,8 @@ function DashboardContent() {
                                 label="Total RAM"
                                 compact={gridDensity === "simplified"}
                                 segments={[
-                                  { label: 'Used', value: snap?.RAMUsagePercent || 0, color: '#14b8a6', displayValue: fmtBytes(snap?.RAMUsedBytes), hide: !allowedMetrics.includes('agent_ram_used') },
-                                  { label: 'Swap', value: snap?.RAMSwapUsagePercent || 0, color: '#4b5563', displayValue: fmtBytes(snap?.RAMSwapUsedBytes), hide: !allowedMetrics.includes('agent_swap_used') }
+                                  { label: 'Used', value: snap?.RAMUsagePercent || 0, color: '#14b8a6', displayValue: fmtBytes(snap?.RAMUsedBytes), totalDisplay: a.ram_size ? fmtBytes(a.ram_size) : undefined, hide: !allowedMetrics.includes('agent_ram_used') },
+                                  { label: 'Swap', value: snap?.RAMSwapUsagePercent || 0, color: '#4b5563', displayValue: fmtBytes(snap?.RAMSwapUsedBytes), totalDisplay: a.swap_size ? fmtBytes(a.swap_size) : undefined, hide: !allowedMetrics.includes('agent_swap_used') }
                                 ].filter(s => !s.hide)}
                               />
                             )}
@@ -536,7 +536,7 @@ function DashboardContent() {
                                 label="Root Disk"
                                 compact={gridDensity === "simplified"}
                                 segments={[
-                                  { label: 'Used', value: (snap.DiskUsedBytes / (a.disk_size || snap.DiskUsedBytes || 1)) * 100, color: '#a855f7', displayValue: fmtBytes(snap.DiskUsedBytes) }
+                                  { label: 'Used', value: (snap.DiskUsedBytes / (a.disk_size || snap.DiskUsedBytes || 1)) * 100, color: '#a855f7', displayValue: fmtBytes(snap.DiskUsedBytes), totalDisplay: a.disk_size ? fmtBytes(a.disk_size) : undefined }
                                 ]}
                               />
                             )}
@@ -658,8 +658,8 @@ function DashboardContent() {
                                     label="RAM"
                                     compact
                                     segments={[
-                                      { label: 'Used', value: snap?.RAMUsagePercent || 0, color: '#14b8a6', displayValue: fmtBytes(snap?.RAMUsedBytes), hide: !allowedMetrics.includes('agent_ram_used') },
-                                      { label: 'Swap', value: snap?.RAMSwapUsagePercent || 0, color: '#4b5563', displayValue: fmtBytes(snap?.RAMSwapUsedBytes), hide: !allowedMetrics.includes('agent_swap_used') }
+                                      { label: 'Used', value: snap?.RAMUsagePercent || 0, color: '#14b8a6', displayValue: fmtBytes(snap?.RAMUsedBytes), totalDisplay: a.ram_size ? fmtBytes(a.ram_size) : undefined, hide: !allowedMetrics.includes('agent_ram_used') },
+                                      { label: 'Swap', value: snap?.RAMSwapUsagePercent || 0, color: '#4b5563', displayValue: fmtBytes(snap?.RAMSwapUsedBytes), totalDisplay: a.swap_size ? fmtBytes(a.swap_size) : undefined, hide: !allowedMetrics.includes('agent_swap_used') }
                                     ].filter(s => !s.hide)}
                                   />
                                 )}
@@ -669,7 +669,7 @@ function DashboardContent() {
                                     compact
                                     unit=""
                                     segments={[
-                                      { label: 'Used', value: snap?.DiskUsagePercent || 0, color: '#a855f7', displayValue: fmtBytes(snap?.DiskUsedBytes) }
+                                      { label: 'Used', value: snap?.DiskUsagePercent || 0, color: '#a855f7', displayValue: fmtBytes(snap?.DiskUsedBytes), totalDisplay: a.disk_size ? fmtBytes(a.disk_size) : undefined }
                                     ]}
                                   />
                                 )}

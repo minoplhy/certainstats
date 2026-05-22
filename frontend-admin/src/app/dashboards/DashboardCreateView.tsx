@@ -2,7 +2,6 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { fetchAPI } from "../../lib/api";
 import { Agent, MetricKey } from "../../types";
-import PanelNav from "../common/PanelNav";
 import DashboardFormFields from "./DashboardFormFields";
 
 export default function DashboardCreateView() {
@@ -17,6 +16,8 @@ export default function DashboardCreateView() {
 
   const [availableAgents, setAvailableAgents] = useState<Agent[]>([]);
   const [selectedAgents, setSelectedAgents] = useState<Record<string, string>>({});
+  const [selectedAgentsOrder, setSelectedAgentsOrder] = useState<string[]>([]);
+  const [isDragged, setIsDragged] = useState(false);
 
   const [loadingAgents, setLoadingAgents] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -33,7 +34,11 @@ export default function DashboardCreateView() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    const agentsPayload = Object.entries(selectedAgents).map(([agent_id, alias]) => ({ agent_id, alias }));
+    const agentsPayload = selectedAgentsOrder.map((agent_id, index) => ({
+      agent_id,
+      alias: selectedAgents[agent_id] || "Server",
+      sort_key: isDragged ? String(index).padStart(8, '0') : ""
+    }));
     if (agentsPayload.length === 0) { setError("Select at least one agent."); return; }
 
     setSubmitting(true);
@@ -49,12 +54,11 @@ export default function DashboardCreateView() {
     }
   };
 
-  if (!isClient) return <div style={{ minHeight: '100vh', background: 'var(--bg-primary)' }} />;
+  if (!isClient) return null;
 
   return (
-    <>
-      <PanelNav />
-      <div className="mobile-p-sm" style={{ minHeight: 'calc(100vh - 56px)', padding: '40px 24px', background: 'var(--bg-primary)' }}>
+    <div className="mobile-p-sm" style={{ padding: '40px 24px' }}>
+
         <div className="animate-fade-in mobile-gap-sm" style={{ maxWidth: '800px', margin: '0 auto' }}>
 
           <div className="mobile-stack" style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '32px' }}>
@@ -92,6 +96,10 @@ export default function DashboardCreateView() {
               setAllowedFields={setAllowedFields}
               selectedAgents={selectedAgents}
               setSelectedAgents={setSelectedAgents}
+              selectedAgentsOrder={selectedAgentsOrder}
+              setSelectedAgentsOrder={setSelectedAgentsOrder}
+              isDragged={isDragged}
+              setIsDragged={setIsDragged}
               availableAgents={availableAgents}
               loadingAgents={loadingAgents}
             />
@@ -118,6 +126,5 @@ export default function DashboardCreateView() {
           </form>
         </div>
       </div>
-    </>
   );
 }

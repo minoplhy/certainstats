@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams, Link } from "react-router-dom";
 import { fetchAPI } from "../../lib/api";
 import { Agent, MetricKey } from "../../types";
-import PanelNav from "../common/PanelNav";
 import DeleteConfirmModal from "../common/DeleteConfirmModal";
 import DashboardFormFields from "./DashboardFormFields";
 
@@ -18,6 +17,7 @@ interface DashboardAgent {
   agent_id: string;
   public_agent_id: string;
   public_agent_nickname: string;
+  sort_key?: string;
 }
 
 interface Dashboard {
@@ -47,6 +47,8 @@ function EditDashboardForm() {
 
   const [availableAgents, setAvailableAgents] = useState<Agent[]>([]);
   const [selectedAgents, setSelectedAgents] = useState<Record<string, string>>({});
+  const [selectedAgentsOrder, setSelectedAgentsOrder] = useState<string[]>([]);
+  const [isDragged, setIsDragged] = useState(false);
 
   const [showDeleteModal, setShowDeleteModal] = useState(false);
 
@@ -77,13 +79,21 @@ function EditDashboardForm() {
           }
 
           const agentsMap: Record<string, string> = {};
+          const initialOrder: string[] = [];
+          let loadedAsDragged = false;
           if (target.agents) {
             target.agents.forEach(a => {
               const agentMatch = agentAgents.find(fa => fa.agent_id === a.agent_id);
               agentsMap[a.agent_id] = a.public_agent_nickname || agentMatch?.nickname || "Server";
+              initialOrder.push(a.agent_id);
+              if (a.sort_key) {
+                loadedAsDragged = true;
+              }
             });
           }
           setSelectedAgents(agentsMap);
+          setSelectedAgentsOrder(initialOrder);
+          setIsDragged(loadedAsDragged);
         }
       })
       .catch((err) => setError("Failed to load data: " + err.message))
@@ -106,7 +116,11 @@ function EditDashboardForm() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault(); setError(null);
-    const agentsPayload = Object.entries(selectedAgents).map(([agent_id, alias]) => ({ agent_id, alias }));
+    const agentsPayload = selectedAgentsOrder.map((agent_id, index) => ({
+      agent_id,
+      alias: selectedAgents[agent_id] || "Server",
+      sort_key: isDragged ? String(index).padStart(8, '0') : ""
+    }));
     if (agentsPayload.length === 0) { setError("Select at least one agent."); return; }
 
     setSaving(true);
@@ -122,13 +136,12 @@ function EditDashboardForm() {
     }
   };
 
-  if (!isClient) return <div style={{ minHeight: '100vh', background: 'var(--bg-primary)' }} />;
-  if (loading) return <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}><span className="material-symbols-outlined" style={{ fontSize: '32px', animation: 'spin 1s linear infinite' }}>sync</span></div>;
+  if (!isClient) return null;
+  if (loading) return <div style={{ height: '50vh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}><span className="material-symbols-outlined" style={{ fontSize: '32px', animation: 'spin 1s linear infinite' }}>sync</span></div>;
 
   return (
-    <>
-      <PanelNav section="dashboards" />
-      <div className="mobile-p-sm" style={{ minHeight: 'calc(100vh - 56px)', padding: '40px 24px', background: 'var(--bg-primary)' }}>
+    <div className="mobile-p-sm" style={{ padding: '40px 24px' }}>
+
         <div className="animate-fade-in mobile-gap-sm" style={{ maxWidth: '800px', margin: '0 auto' }}>
 
           <div className="mobile-stack" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '32px', gap: '16px' }}>
@@ -171,6 +184,10 @@ function EditDashboardForm() {
               setAllowedFields={setAllowedFields}
               selectedAgents={selectedAgents}
               setSelectedAgents={setSelectedAgents}
+              selectedAgentsOrder={selectedAgentsOrder}
+              setSelectedAgentsOrder={setSelectedAgentsOrder}
+              isDragged={isDragged}
+              setIsDragged={setIsDragged}
               availableAgents={availableAgents}
               loadingAgents={loading}
             />
@@ -199,8 +216,6 @@ function EditDashboardForm() {
             </div>
           </form>
         </div>
-      </div>
-
       <DeleteConfirmModal
         isOpen={showDeleteModal}
         title="Delete Dashboard?"
@@ -213,7 +228,7 @@ function EditDashboardForm() {
         onClose={() => setShowDeleteModal(false)}
         onConfirm={handleDeleteExecute}
       />
-    </>
+    </div>
   );
 }
 

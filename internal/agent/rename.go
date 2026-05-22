@@ -23,28 +23,54 @@ func RenameAgentHandler(agent store.AgentStore) http.HandlerFunc {
 			return
 		}
 
-		req.Nickname = strings.TrimSpace(req.Nickname)
-		if req.Nickname == "" {
-			apiresponse.Error(w, http.StatusBadRequest, "Nickname cannot be empty")
-			return
+		var nickname *string
+		if req.Nickname != nil {
+			trimmed := strings.TrimSpace(*req.Nickname)
+			if trimmed == "" {
+				apiresponse.Error(w, http.StatusBadRequest, "Nickname cannot be empty")
+				return
+			}
+			if len(trimmed) > 64 {
+				apiresponse.Error(w, http.StatusBadRequest, "Nickname too long (max 64 chars)")
+				return
+			}
+			nickname = &trimmed
 		}
-		if len(req.Nickname) > 64 {
-			apiresponse.Error(w, http.StatusBadRequest, "Nickname too long (max 64 chars)")
+
+		var note *string
+		if req.Note != nil {
+			trimmedNote := strings.TrimSpace(*req.Note)
+			if len(trimmedNote) > 10000 {
+				apiresponse.Error(w, http.StatusBadRequest, "Note too long (max 10000 chars)")
+				return
+			}
+			note = &trimmedNote
+		}
+
+		if nickname == nil && note == nil {
+			apiresponse.Error(w, http.StatusBadRequest, "Either nickname or note must be specified")
 			return
 		}
 
-		err := agent.AgentRename(r.Context(), req.AgentID, userID, req.Nickname)
+		err := agent.AgentUpdate(r.Context(), req.AgentID, userID, nickname, note)
 
 		if err != nil {
+			if err == sql.ErrNoRows {
+				apiresponse.Error(w, http.StatusNotFound, "Agent not found or unauthorized")
+				return
+			}
 			apiresponse.Error(w, http.StatusInternalServerError, "Database error")
-			return
-		}
-		if err == sql.ErrNoRows {
-			apiresponse.Error(w, http.StatusNotFound, "Agent not found or unauthorized")
 			return
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		apiresponse.JSON(w, http.StatusOK, map[string]string{"status": "ok", "nickname": req.Nickname})
+		respData := map[string]any{"status": "ok"}
+		if nickname != nil {
+			respData["nickname"] = *nickname
+		}
+		if note != nil {
+			respData["note"] = *note
+		}
+		apiresponse.JSON(w, http.StatusOK, respData)
 	}
 }

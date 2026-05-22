@@ -28,6 +28,7 @@ func ListAgentsHandler(agents store.AgentStore, cache *metrics.RealtimeCache) ht
 				AgentID: a.AgentID, AgentType: a.AgentType, Nickname: a.Nickname,
 				IsOnline: a.IsOnline, Uptime: a.Uptime,
 				LinuxVersion: a.LinuxVersion, CpuModel: a.CpuModel,
+				Note: a.Note,
 				CpuCores: a.CpuCores, RamSize: a.RamSize,
 				SwapSize: a.SwapSize, DiskSize: a.DiskSize,
 				Net: resp.NetOdometer{

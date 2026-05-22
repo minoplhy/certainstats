@@ -107,6 +107,89 @@ function NicknameEditor({ agent, onSaved }: { agent: Agent; onSaved: (nick: stri
   );
 }
 
+function InlineNotes({ agent, onSaved }: { agent: Agent; onSaved: (note: string) => void }) {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(agent.note || "");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setValue(agent.note || "");
+  }, [agent.note]);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await fetchAPI("/api/agent", {
+        method: "PUT",
+        body: JSON.stringify({ agent_id: agent.agent_id, note: value })
+      });
+      onSaved(value);
+      setEditing(false);
+    } catch (err) {
+      alert("Failed to save note");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (editing) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginLeft: '4px' }}>
+        <div style={{ width: '1px', height: '14px', background: 'rgba(255,255,255,0.15)', marginRight: '4px' }} />
+        <input
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") handleSave(); if (e.key === "Escape") setEditing(false); }}
+          placeholder="Notes..."
+          className="input-field"
+          style={{ padding: '4px 8px', fontSize: '12px', height: '24px', width: '160px' }}
+          autoFocus
+        />
+        <button 
+          onClick={handleSave} 
+          disabled={saving} 
+          className="btn-primary" 
+          style={{ padding: '2px 8px', fontSize: '10px', height: '24px', display: 'flex', alignItems: 'center', cursor: 'pointer' }}
+        >
+          {saving ? "…" : "Save"}
+        </button>
+        <button 
+          onClick={() => setEditing(false)} 
+          className="btn-secondary" 
+          style={{ padding: '2px 6px', fontSize: '10px', height: '24px', display: 'flex', alignItems: 'center', cursor: 'pointer' }}
+        >
+          ✕
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', marginLeft: '4px' }}>
+      <div style={{ width: '1px', height: '14px', background: 'rgba(255,255,255,0.15)', marginRight: '4px' }} />
+      <span 
+        onClick={() => setEditing(true)}
+        style={{ 
+          color: 'var(--text-primary)', 
+          borderBottom: '1px dashed rgba(255,255,255,0.4)', 
+          cursor: 'pointer',
+          maxWidth: '240px',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
+          transition: 'color 0.2s',
+        }}
+        onMouseOver={(e) => e.currentTarget.style.color = 'var(--accent-primary)'}
+        onMouseOut={(e) => e.currentTarget.style.color = 'var(--text-primary)'}
+        title={agent.note ? `${agent.note} (Click to edit)` : "No notes yet. Click to add private notes."}
+      >
+        {agent.note || "No notes"}
+      </span>
+      <span style={{ color: 'var(--text-muted)', fontSize: '12px' }}>notes</span>
+    </div>
+  );
+}
+
 function MetricChart({
   agentId,
   tab,
@@ -466,6 +549,9 @@ export function AgentDetail({
               <span className="type-badge">
                 {agent.agent_type || "unknown"}
               </span>
+              <InlineNotes agent={agent} onSaved={(note) => {
+                setAgents(prev => prev.map(a => a.agent_id === agent.agent_id ? { ...a, note: note } : a));
+              }} />
             </div>
           </div>
 

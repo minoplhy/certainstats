@@ -125,15 +125,15 @@ export function AgentSidebar({
                           label="RAM"
                           compact
                           segments={[
-                            { label: 'Used', value: snap?.RAMUsagePercent || 0, color: '#14b8a6', displayValue: fmtBytes(snap?.RAMUsedBytes) },
-                            { label: 'Swap', value: snap?.RAMSwapUsagePercent || 0, color: '#4b5563', displayValue: fmtBytes(snap?.RAMSwapUsedBytes) }
+                            { label: 'Used', value: snap?.RAMUsagePercent || 0, color: '#14b8a6', displayValue: fmtBytes(snap?.RAMUsedBytes), totalDisplay: a.ram_size ? fmtBytes(a.ram_size) : undefined },
+                            { label: 'Swap', value: snap?.RAMSwapUsagePercent || 0, color: '#4b5563', displayValue: fmtBytes(snap?.RAMSwapUsedBytes), totalDisplay: a.swap_size ? fmtBytes(a.swap_size) : undefined }
                           ]}
                         />
                         <UsageBar
                           label="Root Disk"
                           compact
                           segments={[
-                            { label: 'Used', value: snap?.DiskUsagePercent || 0, color: '#a855f7', displayValue: fmtBytes(snap?.DiskUsedBytes) }
+                            { label: 'Used', value: snap?.DiskUsagePercent || 0, color: '#a855f7', displayValue: fmtBytes(snap?.DiskUsedBytes), totalDisplay: a.disk_size ? fmtBytes(a.disk_size) : undefined }
                           ]}
                         />
                         <UsageBar

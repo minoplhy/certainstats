@@ -412,8 +412,8 @@ export const AgentView: FC<AgentViewProps> = ({
                             { label: 'Steal', value: snap.CPUStealPercent, color: '#ef4444' }
                           ]} />
                           <UsageBar label="RAM" compact={!isDetailed} segments={[
-                            { label: 'Used', value: snap?.RAMUsagePercent || 0, color: '#14b8a6', displayValue: fmtBytes(snap?.RAMUsedBytes) },
-                            { label: 'Swap', value: snap?.RAMSwapUsagePercent || 0, color: '#4b5563', displayValue: fmtBytes(snap?.RAMSwapUsedBytes) }
+                            { label: 'Used', value: snap?.RAMUsagePercent || 0, color: '#14b8a6', displayValue: fmtBytes(snap?.RAMUsedBytes), totalDisplay: a.ram_size ? fmtBytes(a.ram_size) : undefined },
+                            { label: 'Swap', value: snap?.RAMSwapUsagePercent || 0, color: '#4b5563', displayValue: fmtBytes(snap?.RAMSwapUsedBytes), totalDisplay: a.swap_size ? fmtBytes(a.swap_size) : undefined }
                           ]} />
                           {snap.Disks && snap.Disks.length > 0 ? snap.Disks.map((d: any, idx: number) => {
                             const pct = d.total_bytes > 0 ? (d.used_bytes / d.total_bytes) * 100 : 0;
@@ -424,7 +424,7 @@ export const AgentView: FC<AgentViewProps> = ({
                                 label={path === '/' ? 'DISK' : `DISK (${path})`}
                                 compact={!isDetailed}
                                 segments={[
-                                  { label: 'Used', value: pct, color: '#a855f7', displayValue: fmtBytes(d.used_bytes) }
+                                  { label: 'Used', value: pct, color: '#a855f7', displayValue: fmtBytes(d.used_bytes), totalDisplay: d.total_bytes ? fmtBytes(d.total_bytes) : undefined }
                                 ]}
                               />
                             );
@@ -433,7 +433,7 @@ export const AgentView: FC<AgentViewProps> = ({
                               label="DISK"
                               compact={!isDetailed}
                               segments={[
-                                { label: 'Used', value: snap?.DiskUsagePercent || 0, color: '#a855f7', displayValue: fmtBytes(snap?.DiskUsedBytes) }
+                                { label: 'Used', value: snap?.DiskUsagePercent || 0, color: '#a855f7', displayValue: fmtBytes(snap?.DiskUsedBytes), totalDisplay: a.disk_size ? fmtBytes(a.disk_size) : undefined }
                               ]}
                             />
                           )}
@@ -527,14 +527,14 @@ export const AgentView: FC<AgentViewProps> = ({
                                 { label: 'Steal', value: snap.CPUStealPercent, color: '#ef4444' }
                               ]} />
                               <UsageBar label="RAM" compact segments={[
-                                { label: 'Used', value: snap?.RAMUsagePercent || 0, color: '#14b8a6', displayValue: fmtBytes(snap?.RAMUsedBytes) },
-                                { label: 'Swap', value: snap?.RAMSwapUsagePercent || 0, color: '#4b5563', displayValue: fmtBytes(snap?.RAMSwapUsedBytes) }
+                                { label: 'Used', value: snap?.RAMUsagePercent || 0, color: '#14b8a6', displayValue: fmtBytes(snap?.RAMUsedBytes), totalDisplay: a.ram_size ? fmtBytes(a.ram_size) : undefined },
+                                { label: 'Swap', value: snap?.RAMSwapUsagePercent || 0, color: '#4b5563', displayValue: fmtBytes(snap?.RAMSwapUsedBytes), totalDisplay: a.swap_size ? fmtBytes(a.swap_size) : undefined }
                               ]} />
                               <UsageBar
                                 label="DISK"
                                 compact
                                 segments={[
-                                  { label: 'Used', value: snap?.DiskUsagePercent || 0, color: '#a855f7', displayValue: fmtBytes(snap?.DiskUsedBytes) }
+                                  { label: 'Used', value: snap?.DiskUsagePercent || 0, color: '#a855f7', displayValue: fmtBytes(snap?.DiskUsedBytes), totalDisplay: a.disk_size ? fmtBytes(a.disk_size) : undefined }
                                 ]}
                               />
                               <UsageBar label="Network" compact unit="" segments={[

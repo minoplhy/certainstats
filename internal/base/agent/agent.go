@@ -22,6 +22,7 @@ type Agent struct {
 	TotalDiskReadBytes  uint64
 	TotalDiskWriteBytes uint64
 	Disks               []DiskOdometer
+	Note                string
 }
 
 type DiskOdometer struct {
@@ -31,6 +32,7 @@ type DiskOdometer struct {
 }
 
 type RenameRequest struct {
-	AgentID  string `json:"agent_id"`
-	Nickname string `json:"nickname"`
+	AgentID  string  `json:"agent_id"`
+	Nickname *string `json:"nickname,omitempty"`
+	Note     *string `json:"note,omitempty"`
 }
