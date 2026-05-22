@@ -1,4 +1,4 @@
-import { useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { UsageBar } from "../../lib/UsageBar";
 import { Agent } from "../../types";
 
@@ -29,7 +29,6 @@ export function AgentSidebar({
   isExpanded,
   setIsExpanded
 }: AgentSidebarProps) {
-  const navigate = useNavigate();
   return (
     <>
       {isExpanded && (
@@ -84,11 +83,9 @@ export function AgentSidebar({
             filteredAgents.map((a) => {
               const snap = liveMetrics[a.agent_id];
               return (
-                <button
+                <Link
                   key={`${a.agent_id}-${snap?.Timestamp || 'initial'}`}
-                  onClick={() => {
-                    navigate(`/agent/${a.agent_id}`);
-                  }}
+                  to={`/agent/${a.agent_id}`}
                   className={`mobile-list-item ${snap ? "pulse-flash" : ""}`}
                   style={{
                     width: '100%',
@@ -101,6 +98,7 @@ export function AgentSidebar({
                     border: a.agent_id === selectedId ? '1px solid var(--border-color)' : '1px solid transparent',
                     color: a.agent_id === selectedId ? 'var(--text-primary)' : 'var(--text-secondary)',
                     transition: 'var(--transition-fast)',
+                    textDecoration: 'none'
                   }}
                   onMouseOver={(e) => { if (a.agent_id !== selectedId) e.currentTarget.style.background = 'rgba(255,255,255,0.03)'; }}
                   onMouseOut={(e) => { if (a.agent_id !== selectedId) e.currentTarget.style.background = 'transparent'; }}
@@ -141,13 +139,13 @@ export function AgentSidebar({
                           compact
                           segments={[
                             { label: 'RX', value: (snap?.RXBps + snap?.TXBps > 0) ? (snap.RXBps / (snap.RXBps + snap.TXBps)) * 100 : 0, color: '#1e40af', displayValue: fmtBps(snap?.RXBps || 0) },
-                            { label: 'TX', value: (snap?.RXBps + snap?.TXBps > 0) ? (snap.TXBps / (snap.RXBps + snap.TXBps)) * 100 : 0, color: '#7e22ce', displayValue: fmtBps(snap?.TXBps || 0) }
+                            { label: 'TX', value: (snap?.RXBps + snap?.TXBps > 0) ? (snap.TXBps / (snap.TXBps + snap.TXBps)) * 100 : 0, color: '#7e22ce', displayValue: fmtBps(snap?.TXBps || 0) }
                           ]}
                         />
                       </div>
                     )}
                   </div>
-                </button>
+                </Link>
               );
             })
           )}

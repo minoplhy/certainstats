@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from "react";
-import { useSearchParams, useParams, useNavigate } from "react-router-dom";
+import { useSearchParams, useParams, useNavigate, Link } from "react-router-dom";
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip,
   ResponsiveContainer, CartesianGrid,
@@ -47,6 +47,7 @@ function DashboardContent() {
   const { slug: pathSlug, agentId: pathAgentId } = useParams();
   const navigate = useNavigate();
   const slug = pathSlug || searchParams.get("slug");
+  const base = getPublicPath().replace(/\/$/, "");
 
   const [title, setTitle] = useState("");
   const [dashboard_id, setDashboardId] = useState<string | null>(null);
@@ -57,11 +58,7 @@ function DashboardContent() {
     agentsRef.current = agents;
   }, [agents]);
 
-  const [selectedId, setSelectedId] = useState<string | null>(pathAgentId || null);
-
-  useEffect(() => {
-    setSelectedId(pathAgentId || null);
-  }, [pathAgentId]);
+  const selectedId = pathAgentId || null;
   const [allowedMetrics, setAllowedMetrics] = useState<string[]>([]);
   const [maxDays, setMaxDays] = useState<number>(30);
 
@@ -101,12 +98,6 @@ function DashboardContent() {
         const fetchedAgents = data.agents || [];
         setAgents(fetchedAgents);
         setAllowedMetrics(data.allowed_metrics || []);
-
-        if (pathAgentId) {
-          if (fetchedAgents.some((a: PublicAgent) => a.public_id === pathAgentId)) {
-            setSelectedId(pathAgentId);
-          }
-        }
       })
       .catch((e) => setError(e.message || "Dashboard not found"))
       .finally(() => setLoading(false));
@@ -210,13 +201,7 @@ function DashboardContent() {
     localStorage.setItem("certainstats_active_hours", hours.toString());
   }, [hours]);
 
-  useEffect(() => {
-    if (selectedId) {
-      navigate(`/${slug}/${selectedId}`, { replace: true });
-    } else {
-      navigate(`/${slug}`, { replace: true });
-    }
-  }, [selectedId, slug, navigate]);
+  // Navigation and back-button history flows are natively driven by standard routing Link components
 
   const active = agents.find((a) => a.public_id === selectedId) ?? null;
   const isAllOnline = agents.length > 0 && agents.every((a) => a.is_online);
@@ -269,8 +254,8 @@ function DashboardContent() {
         top: 0
       }}>
         <div style={{ width: '100%', maxWidth: '1200px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 32px' }}>
-          <div
-            onClick={() => setSelectedId(null)}
+          <Link
+            to={`/${slug}`}
             className="header-nav-link"
             style={{
               display: 'flex',
@@ -281,7 +266,8 @@ function DashboardContent() {
               margin: '-8px',
               borderRadius: '16px',
               transition: 'all 0.2s ease',
-              userSelect: 'none'
+              userSelect: 'none',
+              textDecoration: 'none'
             }}
           >
             <div style={{
@@ -314,7 +300,7 @@ function DashboardContent() {
                 </p>
               </div>
             </div>
-          </div>
+          </Link>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
             <button
@@ -454,9 +440,9 @@ function DashboardContent() {
                 {filteredAgents.map(a => {
                   const snap = liveMetrics[a.public_id];
                   return (
-                    <button
+                    <Link
                       key={`${a.public_id}-${snap?.Timestamp || 'initial'}`}
-                      onClick={() => setSelectedId(a.public_id)}
+                      to={`/${slug}/${a.public_id}`}
                       className={`card animate-fade-in ${snap ? 'pulse-flash' : ''}`}
                       style={{
                         display: 'flex',
@@ -470,7 +456,8 @@ function DashboardContent() {
                         boxShadow: 'var(--card-shadow)',
                         transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
                         position: 'relative',
-                        overflow: 'hidden'
+                        overflow: 'hidden',
+                        textDecoration: 'none'
                       }}
                       onMouseOver={(e) => {
                         e.currentTarget.style.transform = 'translateY(-4px)';
@@ -596,7 +583,7 @@ function DashboardContent() {
                           </div>
                         ) : <div />}
                       </div>
-                    </button>
+                    </Link>
                   );
                 })}
               </div>
@@ -621,7 +608,18 @@ function DashboardContent() {
                       return (
                         <tr
                           key={`${a.public_id}-${snap?.Timestamp || 'initial'}`}
-                          onClick={() => setSelectedId(a.public_id)}
+                          onClick={(e) => {
+                            if (e.ctrlKey || e.metaKey) {
+                              window.open(`${window.location.origin}${base}/${slug}/${a.public_id}`, '_blank');
+                            } else {
+                              navigate(`/${slug}/${a.public_id}`);
+                            }
+                          }}
+                          onAuxClick={(e) => {
+                            if (e.button === 1) { // Middle click
+                              window.open(`${window.location.origin}${base}/${slug}/${a.public_id}`, '_blank');
+                            }
+                          }}
                           className={snap ? "pulse-flash" : ""}
                           style={{ borderBottom: '1px solid var(--border-color)', cursor: 'pointer', transition: 'background 0.2s ease' }}
                           onMouseOver={(e) => e.currentTarget.style.background = 'var(--bg-primary)'}
@@ -756,7 +754,7 @@ function DashboardContent() {
         ) : (
           <PublicAgentDetail
             active={active}
-            setSelectedId={setSelectedId}
+            onClose={() => navigate(`/${slug}`)}
             hours={hours}
             setHours={setHours}
             liveMetrics={liveMetrics}

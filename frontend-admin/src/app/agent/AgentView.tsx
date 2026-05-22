@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, FC } from "react";
 import { createPortal } from "react-dom";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
+import { getPanelPath } from "../../lib/env";
 import { Agent, AgentSnapshot } from "../../types";
 import { UsageBar } from "../../lib/UsageBar";
 import { fmtUptime } from "../../lib/utils";
@@ -157,6 +158,7 @@ export const AgentView: FC<AgentViewProps> = ({
   onRevoke
 }) => {
   const navigate = useNavigate();
+  const base = getPanelPath().replace(/\/$/, "");
 
   return (
     <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '0 32px' }}>
@@ -338,9 +340,9 @@ export const AgentView: FC<AgentViewProps> = ({
                 const isDetailed = gridDensity === 'detailed';
 
                 return (
-                  <button
+                  <Link
                     key={a.agent_id}
-                    onClick={() => navigate(`/agent/${a.agent_id}`)}
+                    to={`/agent/${a.agent_id}`}
                     className={`animate-fade-in ${snap ? 'pulse-flash' : ''}`}
                     style={{
                       display: 'flex',
@@ -355,7 +357,8 @@ export const AgentView: FC<AgentViewProps> = ({
                       height: '100%',
                       boxShadow: 'var(--card-shadow)',
                       position: 'relative',
-                      overflow: 'hidden'
+                      overflow: 'hidden',
+                      textDecoration: 'none'
                     }}
                     onMouseOver={(e) => {
                       e.currentTarget.style.borderColor = 'var(--accent-primary)';
@@ -482,7 +485,7 @@ export const AgentView: FC<AgentViewProps> = ({
                         <span style={{ fontWeight: '600', textTransform: 'uppercase' }}>{a.agent_type}</span>
                       </div>
                     </div>
-                  </button>
+                  </Link>
                 );
               })}
             </div>
@@ -508,7 +511,18 @@ export const AgentView: FC<AgentViewProps> = ({
                     return (
                       <tr
                         key={`list-${a.agent_id}-${snap?.Timestamp || 'initial'}`}
-                        onClick={() => navigate(`/agent/${a.agent_id}`)}
+                        onClick={(e) => {
+                          if (e.ctrlKey || e.metaKey) {
+                            window.open(`${window.location.origin}${base}/agent/${a.agent_id}`, '_blank');
+                          } else {
+                            navigate(`/agent/${a.agent_id}`);
+                          }
+                        }}
+                        onAuxClick={(e) => {
+                          if (e.button === 1) { // Middle click
+                            window.open(`${window.location.origin}${base}/agent/${a.agent_id}`, '_blank');
+                          }
+                        }}
                         className={snap ? "pulse-flash" : ""}
                         style={{ borderBottom: '1px solid var(--border-color)', cursor: 'pointer', transition: 'background 0.2s ease' }}
                         onMouseOver={(e) => e.currentTarget.style.background = 'var(--bar-bg)'}
