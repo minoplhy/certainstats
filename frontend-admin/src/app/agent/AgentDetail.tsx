@@ -132,6 +132,34 @@ function InlineNotes({ agent, onSaved }: { agent: Agent; onSaved: (note: string)
     }
   };
 
+  const isLong = agent.note && (agent.note.length > 40 || agent.note.includes('\n'));
+
+  if (isLong) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', marginLeft: '4px' }}>
+        <div style={{ width: '1px', height: '14px', background: 'rgba(255,255,255,0.15)', marginRight: '4px' }} />
+        <span 
+          onClick={() => {
+            const el = document.getElementById("agent-notes-section");
+            if (el) el.scrollIntoView({ behavior: 'smooth' });
+          }}
+          style={{ 
+            color: 'var(--text-secondary)', 
+            borderBottom: '1px dashed rgba(255,255,255,0.4)', 
+            cursor: 'pointer',
+            transition: 'color 0.2s',
+          }}
+          onMouseOver={(e) => e.currentTarget.style.color = 'var(--accent-primary)'}
+          onMouseOut={(e) => e.currentTarget.style.color = 'var(--text-secondary)'}
+          title="Click to view full notes below"
+        >
+          See below
+        </span>
+        <span style={{ color: 'var(--text-muted)', fontSize: '12px' }}>notes</span>
+      </div>
+    );
+  }
+
   if (editing) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginLeft: '4px' }}>
@@ -186,6 +214,96 @@ function InlineNotes({ agent, onSaved }: { agent: Agent; onSaved: (note: string)
         {agent.note || "No notes"}
       </span>
       <span style={{ color: 'var(--text-muted)', fontSize: '12px' }}>notes</span>
+    </div>
+  );
+}
+
+function ExpandedNotes({ agent, onSaved }: { agent: Agent; onSaved: (note: string) => void }) {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(agent.note || "");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setValue(agent.note || "");
+  }, [agent.note]);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await fetchAPI("/api/agent", {
+        method: "PUT",
+        body: JSON.stringify({ agent_id: agent.agent_id, note: value })
+      });
+      onSaved(value);
+      setEditing(false);
+    } catch (err) {
+      alert("Failed to save note");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div id="agent-notes-section" className="flex-col gap-3 animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+      <div className="flex justify-between items-center" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div className="flex items-center gap-2" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <span className="material-symbols-outlined text-[var(--accent-primary)]" style={{ fontSize: '20px' }}>
+            edit_note
+          </span>
+          <h2 className="text-sm font-bold text-primary uppercase tracking-wider" style={{ letterSpacing: '0.05em' }}>Notes</h2>
+        </div>
+        {!editing && (
+          <button 
+            onClick={() => setEditing(true)} 
+            className="btn-secondary" 
+            style={{ padding: '4px 12px', fontSize: '11px', borderRadius: '8px', cursor: 'pointer' }}
+          >
+            Edit
+          </button>
+        )}
+      </div>
+
+      {editing ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          <textarea
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            placeholder="Write private notes..."
+            className="input-field font-mono text-sm"
+            style={{ minHeight: '120px', width: '100%', resize: 'vertical', padding: '12px', lineHeight: '1.5', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '8px', color: 'var(--text-primary)' }}
+            autoFocus
+          />
+          <div className="flex gap-2 justify-end mt-2" style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+            <button 
+              onClick={() => { setEditing(false); setValue(agent.note || ""); }} 
+              className="btn-secondary" 
+              style={{ padding: '6px 14px', borderRadius: '8px', cursor: 'pointer' }}
+            >
+              Cancel
+            </button>
+            <button 
+              onClick={handleSave} 
+              disabled={saving} 
+              className="btn-primary" 
+              style={{ padding: '6px 16px', borderRadius: '8px', cursor: 'pointer' }}
+            >
+              {saving ? "Saving..." : "Save Note"}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div 
+          onClick={() => setEditing(true)} 
+          className="cursor-pointer rounded-lg transition-colors duration-200"
+          style={{ cursor: 'pointer', padding: '12px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border-color)', borderRadius: '8px' }}
+          onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.03)'}
+          onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.02)'}
+        >
+          <p className="text-sm text-secondary whitespace-pre-wrap leading-relaxed font-mono" style={{ color: 'var(--text-secondary)' }}>
+            {agent.note}
+          </p>
+        </div>
+      )}
     </div>
   );
 }
@@ -819,6 +937,16 @@ export function AgentDetail({
               </div>
             ))}
           </div>
+        )}
+
+        {/* Expanded Notes Section (if notes are long) */}
+        {agent.note && (agent.note.length > 40 || agent.note.includes('\n')) && (
+          <>
+            <div style={{ height: '1px', background: 'rgba(255,255,255,0.06)', margin: '24px 0 16px 0' }} />
+            <ExpandedNotes agent={agent} onSaved={(note) => {
+              setAgents(prev => prev.map(a => a.agent_id === agent.agent_id ? { ...a, note: note } : a));
+            }} />
+          </>
         )}
       </div>
 
