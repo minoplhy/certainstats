@@ -22,7 +22,7 @@ func GenerateAgentID() string {
 
 func GenerateDeviceToken(agentType string) string {
 	// Exactly 32 characters, leaving room for the null terminator in a [33]byte array
-	if agentType == "ltstats" {
+	if agentType == "ltstats" || agentType == "hetrixtools" {
 		return GenerateRandomString(32)
 	}
 	return GenerateRandomString(64)
