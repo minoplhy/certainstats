@@ -52,6 +52,7 @@ const ActionMenu: FC<{
   }, [isOpen]);
 
   const handleToggle = (e: React.MouseEvent) => {
+    e.preventDefault();
     e.stopPropagation();
     if (!isOpen) {
       const rect = e.currentTarget.getBoundingClientRect();
