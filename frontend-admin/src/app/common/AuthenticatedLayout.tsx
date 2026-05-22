@@ -25,16 +25,14 @@ function Shell() {
     loadAgents,
     showToast,
     toast,
+    filter,
+    setFilter,
+    filteredAgents,
   } = useApp();
 
   const [provisioning, setProvisioning] = useState(false);
   const [showTypeSelect, setShowTypeSelect] = useState(false);
   const [provisionResult, setProvisionResult] = useState<ProvisionResponse | null>(null);
-  const [filter, setFilter] = useState("");
-
-  const filteredAgents = agents.filter(a =>
-    (a.nickname || a.agent_id).toLowerCase().includes(filter.toLowerCase())
-  );
 
   // Determine if sidebar is shown
   // We want the sidebar visible on almost every main view (Dashboard, Alerts, Settings, Management, Node details).

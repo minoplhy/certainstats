@@ -14,6 +14,9 @@ interface AppContextType {
   loadAgents: () => Promise<void>;
   showToast: (msg: string, ok?: boolean) => void;
   toast: { msg: string; ok: boolean } | null;
+  filter: string;
+  setFilter: (val: string) => void;
+  filteredAgents: Agent[];
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -27,6 +30,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     return localStorage.getItem("certainstats_sidebar_expanded") === "true";
   });
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
+  const [filter, setFilter] = useState("");
+
+  const filteredAgents = agents.filter(a => {
+    const term = filter.toLowerCase();
+    return (
+      (a.nickname || "").toLowerCase().includes(term) ||
+      (a.agent_id || "").toLowerCase().includes(term) ||
+      (a.cpu_model || "").toLowerCase().includes(term) ||
+      (a.agent_type || "").toLowerCase().includes(term) ||
+      (a.linux_version || "").toLowerCase().includes(term)
+    );
+  });
 
   const agentsRef = useRef<Agent[]>([]);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -130,6 +145,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         loadAgents,
         showToast,
         toast,
+        filter,
+        setFilter,
+        filteredAgents,
       }}
     >
       {children}
