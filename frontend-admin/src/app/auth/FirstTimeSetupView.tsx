@@ -69,7 +69,6 @@ export default function FirstTimeSetupView() {
     verifyToken(tokenInput);
   };
 
-  // Modern React 19 Form Action for credentials submission (Forces Reboot)
   const handleSubmit = async () => {
     setError('');
 
