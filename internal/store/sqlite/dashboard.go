@@ -11,7 +11,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
-	"time"
 )
 
 func (s *Store) DashboardCreate(ctx context.Context, d store.Dashboard) error {
@@ -577,7 +576,7 @@ func (s *Store) DashboardUpdate(ctx context.Context, d store.Dashboard, newAgent
 		defer stmt.Close()
 
 		for _, agent := range toAdd {
-			publicID := fmt.Sprintf("pub_%d_%s", time.Now().UnixMicro(), agentdata.GenerateRandomString(8))
+			publicID := fmt.Sprintf("pub_%s", agentdata.GenerateRandomString(36))
 			var sortKey *string
 			if agent.SortKey != "" {
 				sortKey = &agent.SortKey
