@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from "react";
 import { fetchAPI, getWSURL } from "../lib/api";
-import { Agent, AgentSnapshot } from "../types";
+import { Agent, AgentSnapshot, ProvisionResponse } from "../types";
 import { isUnauthorized } from "../lib/utils";
 import { useNavigate } from "react-router-dom";
 
@@ -17,6 +17,12 @@ interface AppContextType {
   filter: string;
   setFilter: (val: string) => void;
   filteredAgents: Agent[];
+  showTypeSelect: boolean;
+  setShowTypeSelect: (show: boolean) => void;
+  provisioning: boolean;
+  setProvisioning: (prov: boolean) => void;
+  provisionResult: ProvisionResponse | null;
+  setProvisionResult: (res: ProvisionResponse | null) => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -31,6 +37,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   });
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
   const [filter, setFilter] = useState("");
+  const [showTypeSelect, setShowTypeSelect] = useState(false);
+  const [provisioning, setProvisioning] = useState(false);
+  const [provisionResult, setProvisionResult] = useState<ProvisionResponse | null>(null);
 
   const filteredAgents = agents.filter(a => {
     const term = filter.toLowerCase();
@@ -148,6 +157,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         filter,
         setFilter,
         filteredAgents,
+        showTypeSelect,
+        setShowTypeSelect,
+        provisioning,
+        setProvisioning,
+        provisionResult,
+        setProvisionResult,
       }}
     >
       {children}
