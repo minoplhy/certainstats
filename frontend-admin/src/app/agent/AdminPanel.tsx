@@ -98,6 +98,9 @@ export default function AdminPanel() {
     filter,
     setFilter,
     filteredAgents,
+    showTypeSelect,
+    setShowTypeSelect,
+    provisioning,
   } = useApp();
 
   const path = location.pathname;
@@ -191,8 +194,8 @@ export default function AdminPanel() {
             setViewMode={setViewMode}
             gridDensity={gridDensity}
             setGridDensity={setGridDensity}
-            setShowTypeSelect={() => {}} // Done at layout level sidebar
-            provisioning={false}
+            setShowTypeSelect={setShowTypeSelect}
+            provisioning={provisioning}
             filter={filter}
             setFilter={setFilter}
             fmtBytes={fmtBytes}

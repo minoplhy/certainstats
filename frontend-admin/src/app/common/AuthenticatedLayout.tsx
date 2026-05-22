@@ -28,11 +28,13 @@ function Shell() {
     filter,
     setFilter,
     filteredAgents,
+    showTypeSelect,
+    setShowTypeSelect,
+    provisioning,
+    setProvisioning,
+    provisionResult,
+    setProvisionResult,
   } = useApp();
-
-  const [provisioning, setProvisioning] = useState(false);
-  const [showTypeSelect, setShowTypeSelect] = useState(false);
-  const [provisionResult, setProvisionResult] = useState<ProvisionResponse | null>(null);
 
   // Determine if sidebar is shown
   // We want the sidebar visible on almost every main view (Dashboard, Alerts, Settings, Management, Node details).
