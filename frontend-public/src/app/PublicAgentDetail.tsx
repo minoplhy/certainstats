@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useRef } from "react";
 import { createPortal } from "react-dom";
+import { useParams, Link } from "react-router-dom";
 import { fetchAPI } from "../lib/api";
 import { MetricResponse, PublicAgent, MetricKey } from "../types";
 import { TelemetryChart } from "./TelemetryChart";
@@ -298,7 +299,7 @@ function HwCard({ label, value, unit, icon, statusColor = "var(--accent-primary)
 
 interface PublicAgentDetailProps {
   active: PublicAgent;
-  setSelectedId: (id: string | null) => void;
+  onClose: () => void;
   hours: number;
   setHours: (val: number) => void;
   liveMetrics: Record<string, any>;
@@ -310,7 +311,7 @@ interface PublicAgentDetailProps {
 
 export function PublicAgentDetail({
   active,
-  setSelectedId,
+  onClose,
   hours,
   setHours,
   liveMetrics,
@@ -322,6 +323,7 @@ export function PublicAgentDetail({
   const [timePickerOpen, setTimePickerOpen] = useState(false);
   const [coords, setCoords] = useState({ top: 0, left: 0, openUp: false });
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const { slug } = useParams<{ slug: string }>();
 
   // Click outside and scroll listener for portal dropdown
   useEffect(() => {
@@ -351,8 +353,8 @@ export function PublicAgentDetail({
     <div className="animate-fade-in mobile-px-4" style={{ padding: '32px 8px', maxWidth: '1200px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '24px', width: '100%' }}>
 
       {/* ── HEADER NAVIGATION ────────────────────────────────── */}
-      <button
-        onClick={() => setSelectedId(null)}
+      <Link
+        to={`/${slug}`}
         className="btn-secondary"
         style={{
           alignSelf: 'flex-start',
@@ -367,12 +369,13 @@ export function PublicAgentDetail({
           borderRadius: '20px',
           background: 'rgba(255,255,255,0.03)',
           border: '1px solid var(--border-color)',
-          transition: 'var(--transition-fast)'
+          transition: 'var(--transition-fast)',
+          textDecoration: 'none'
         }}
       >
         <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>arrow_back</span>
         Back to Overview
-      </button>
+      </Link>
 
       {/* ── HERO BANNER ────────────────────────────────────────── */}
       <div className="detail-hero">
