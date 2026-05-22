@@ -95,6 +95,9 @@ export default function AdminPanel() {
     isSidebarExpanded,
     setIsSidebarExpanded,
     showToast,
+    filter,
+    setFilter,
+    filteredAgents,
   } = useApp();
 
   const path = location.pathname;
@@ -182,7 +185,7 @@ export default function AdminPanel() {
       {section === "agent" ? (
         !selectedAgent ? (
           <AgentView
-            filteredAgents={agents}
+            filteredAgents={filteredAgents}
             liveMetrics={liveMetrics}
             viewMode={viewMode}
             setViewMode={setViewMode}
@@ -190,8 +193,8 @@ export default function AdminPanel() {
             setGridDensity={setGridDensity}
             setShowTypeSelect={() => {}} // Done at layout level sidebar
             provisioning={false}
-            filter=""
-            setFilter={() => {}}
+            filter={filter}
+            setFilter={setFilter}
             fmtBytes={fmtBytes}
             fmtBps={fmtBps}
             onInstall={handleInstall}
