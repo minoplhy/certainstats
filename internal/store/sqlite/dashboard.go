@@ -90,10 +90,15 @@ func (s *Store) DashboardAddAgents(ctx context.Context, d store.Dashboard, a []b
 	for _, agent := range a {
 		publicID := fmt.Sprintf("pub_%s", agentdata.GenerateRandomString(36))
 
+		var sortKey *string
+		if agent.SortKey != "" {
+			sortKey = &agent.SortKey
+		}
+
 		_, err = tx.Exec(`
-			INSERT INTO dashboard_agents (dashboard_id, agent_id, agent_public_id, agent_public_nickname) 
-			VALUES (?, ?, ?, ?)
-		`, d.DashboardID, agent.AgentID, publicID, agent.Alias)
+			INSERT INTO dashboard_agents (dashboard_id, agent_id, agent_public_id, agent_public_nickname, sort_key) 
+			VALUES (?, ?, ?, ?, ?)
+		`, d.DashboardID, agent.AgentID, publicID, agent.Alias, sortKey)
 
 		if err != nil {
 			tx.Rollback()
@@ -225,7 +230,8 @@ func (s *Store) DashboardGetPublicAgents(
 		FROM agents a 
 		JOIN dashboard_agents da ON a.agent_id = da.agent_id 
 		JOIN dashboards d ON da.dashboard_id = d.dashboard_id 
-		WHERE d.slug = ?`,
+		WHERE d.slug = ?
+		ORDER BY COALESCE(da.sort_key, COALESCE(NULLIF(da.agent_public_nickname,''), NULLIF(a.nickname,''), a.agent_id)) COLLATE NOCASE ASC`,
 		strings.Join(colExpr, ", "),
 	)
 
@@ -426,10 +432,12 @@ func (s *Store) DashboardFindAgentbyPublicID(ctx context.Context, dashboardID st
 
 func (s *Store) DashboardGetAgents(ctx context.Context, dashboardID string, userID string) ([]store.PublicAgentIdentity, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT da.agent_id, da.agent_public_id, da.agent_public_nickname
+		SELECT da.agent_id, da.agent_public_id, da.agent_public_nickname, da.sort_key
 		FROM dashboards d
 		JOIN dashboard_agents da ON d.dashboard_id = da.dashboard_id
-		WHERE d.dashboard_id = ? AND d.user_id = ?`, dashboardID, userID,
+		JOIN agents a ON da.agent_id = a.agent_id
+		WHERE d.dashboard_id = ? AND d.user_id = ?
+		ORDER BY COALESCE(da.sort_key, COALESCE(NULLIF(da.agent_public_nickname,''), NULLIF(a.nickname,''), a.agent_id)) COLLATE NOCASE ASC`, dashboardID, userID,
 	)
 	if err != nil {
 		return nil, err
@@ -440,8 +448,12 @@ func (s *Store) DashboardGetAgents(ctx context.Context, dashboardID string, user
 
 	for rows.Next() {
 		var id store.PublicAgentIdentity
-		if err := rows.Scan(&id.AgentID, &id.PublicAgentID, &id.PublicAgentNickname); err != nil {
+		var sortKey sql.NullString
+		if err := rows.Scan(&id.AgentID, &id.PublicAgentID, &id.PublicAgentNickname, &sortKey); err != nil {
 			return nil, err
+		}
+		if sortKey.Valid {
+			id.SortKey = sortKey.String
 		}
 		agents = append(agents, id)
 	}
@@ -489,7 +501,7 @@ func (s *Store) DashboardUpdate(ctx context.Context, d store.Dashboard, newAgent
 
 	// 3. Fetch existing agents to compare in-memory
 	rows, err := tx.QueryContext(ctx, `
-        SELECT agent_id, agent_public_nickname 
+        SELECT agent_id, agent_public_nickname, sort_key 
         FROM dashboard_agents 
         WHERE dashboard_id = ?`,
 		d.DashboardID,
@@ -498,14 +510,22 @@ func (s *Store) DashboardUpdate(ctx context.Context, d store.Dashboard, newAgent
 		return err
 	}
 
-	existingAgents := make(map[string]string)
+	type agentMeta struct {
+		nickname string
+		sortKey  string
+	}
+	existingAgents := make(map[string]agentMeta)
 	for rows.Next() {
 		var agentID, nickname string
-		if err := rows.Scan(&agentID, &nickname); err != nil {
+		var sortKey sql.NullString
+		if err := rows.Scan(&agentID, &nickname, &sortKey); err != nil {
 			rows.Close()
 			return err
 		}
-		existingAgents[agentID] = nickname
+		existingAgents[agentID] = agentMeta{
+			nickname: nickname,
+			sortKey:  sortKey.String,
+		}
 	}
 	rows.Close()
 
@@ -517,11 +537,11 @@ func (s *Store) DashboardUpdate(ctx context.Context, d store.Dashboard, newAgent
 	newAgentsMap := make(map[string]string)
 	for _, na := range newAgents {
 		newAgentsMap[na.AgentID] = na.Alias
-		existingNickname, exists := existingAgents[na.AgentID]
+		meta, exists := existingAgents[na.AgentID]
 
 		if !exists {
 			toAdd = append(toAdd, na)
-		} else if existingNickname != na.Alias {
+		} else if meta.nickname != na.Alias || meta.sortKey != na.SortKey {
 			toUpdate = append(toUpdate, na)
 		}
 	}
@@ -549,8 +569,8 @@ func (s *Store) DashboardUpdate(ctx context.Context, d store.Dashboard, newAgent
 
 	if len(toAdd) > 0 {
 		stmt, err := tx.PrepareContext(ctx, `
-            INSERT INTO dashboard_agents (dashboard_id, agent_id, agent_public_id, agent_public_nickname) 
-            VALUES (?, ?, ?, ?)`)
+            INSERT INTO dashboard_agents (dashboard_id, agent_id, agent_public_id, agent_public_nickname, sort_key) 
+            VALUES (?, ?, ?, ?, ?)`)
 		if err != nil {
 			return err
 		}
@@ -558,7 +578,11 @@ func (s *Store) DashboardUpdate(ctx context.Context, d store.Dashboard, newAgent
 
 		for _, agent := range toAdd {
 			publicID := fmt.Sprintf("pub_%d_%s", time.Now().UnixMicro(), agentdata.GenerateRandomString(8))
-			if _, err := stmt.ExecContext(ctx, d.DashboardID, agent.AgentID, publicID, agent.Alias); err != nil {
+			var sortKey *string
+			if agent.SortKey != "" {
+				sortKey = &agent.SortKey
+			}
+			if _, err := stmt.ExecContext(ctx, d.DashboardID, agent.AgentID, publicID, agent.Alias, sortKey); err != nil {
 				return err
 			}
 		}
@@ -567,7 +591,7 @@ func (s *Store) DashboardUpdate(ctx context.Context, d store.Dashboard, newAgent
 	if len(toUpdate) > 0 {
 		stmt, err := tx.PrepareContext(ctx, `
             UPDATE dashboard_agents 
-            SET agent_public_nickname = ? 
+            SET agent_public_nickname = ?, sort_key = ? 
             WHERE dashboard_id = ? AND agent_id = ?`)
 		if err != nil {
 			return err
@@ -575,7 +599,11 @@ func (s *Store) DashboardUpdate(ctx context.Context, d store.Dashboard, newAgent
 		defer stmt.Close()
 
 		for _, agent := range toUpdate {
-			if _, err := stmt.ExecContext(ctx, agent.Alias, d.DashboardID, agent.AgentID); err != nil {
+			var sortKey *string
+			if agent.SortKey != "" {
+				sortKey = &agent.SortKey
+			}
+			if _, err := stmt.ExecContext(ctx, agent.Alias, sortKey, d.DashboardID, agent.AgentID); err != nil {
 				return err
 			}
 		}

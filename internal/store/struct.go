@@ -57,6 +57,7 @@ type PublicAgentIdentity struct {
 	AgentID             string `json:"agent_id"`
 	PublicAgentID       string `json:"public_agent_id"`
 	PublicAgentNickname string `json:"public_agent_nickname"`
+	SortKey             string `json:"sort_key"`
 }
 
 type AgentInfo struct {

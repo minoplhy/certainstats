@@ -11,6 +11,8 @@ import DashboardEditView from './app/dashboards/DashboardEditView';
 import AlertCreateView from './app/alerts/AlertCreateView';
 import AlertEditView from './app/alerts/AlertEditView';
 import FirstTimeSetupView from './app/auth/FirstTimeSetupView';
+import AuthenticatedLayout from './app/common/AuthenticatedLayout';
+
 
 function App() {
   // We use the panel path from our Go environment as the basename
@@ -71,18 +73,21 @@ function App() {
   return (
     <BrowserRouter basename={basename}>
       <Routes>
-        <Route path="/" element={<AdminPanel />} />
-        <Route path="/agent/:id" element={<AdminPanel />} />
-        <Route path="/dashboards" element={<AdminPanel />} />
-        <Route path="/alerts" element={<AdminPanel />} />
-
         <Route path="/login" element={<LoginView />} />
-        <Route path="/settings" element={<SettingsView />} />
-        <Route path="/agents/management" element={<ManagementView />} />
-        <Route path="/dashboards/create" element={<DashboardCreateView />} />
-        <Route path="/dashboards/edit" element={<DashboardEditView />} />
-        <Route path="/alerts/create" element={<AlertCreateView />} />
-        <Route path="/alerts/edit" element={<AlertEditView />} />
+
+        {/* Global shell with persistent WebSocket and Sidebar */}
+        <Route element={<AuthenticatedLayout />}>
+          <Route path="/" element={<AdminPanel />} />
+          <Route path="/agent/:id" element={<AdminPanel />} />
+          <Route path="/dashboards" element={<AdminPanel />} />
+          <Route path="/alerts" element={<AdminPanel />} />
+          <Route path="/settings" element={<SettingsView />} />
+          <Route path="/agents/management" element={<ManagementView />} />
+          <Route path="/dashboards/create" element={<DashboardCreateView />} />
+          <Route path="/dashboards/edit" element={<DashboardEditView />} />
+          <Route path="/alerts/create" element={<AlertCreateView />} />
+          <Route path="/alerts/edit" element={<AlertEditView />} />
+        </Route>
 
         {/* Catch all - redirect back to home */}
         <Route path="*" element={<Navigate to="/" replace />} />

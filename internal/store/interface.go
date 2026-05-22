@@ -29,8 +29,8 @@ type AgentStore interface {
 	// Provision inserts a new pre-authorised agent row.
 	AgentProvision(ctx context.Context, agentID, userID, token, nickname, agentType string) error
 
-	// Rename updates the human-readable nickname.
-	AgentRename(ctx context.Context, agentID, userID, nickname string) error
+	// Rename updates the human-readable nickname or notes.
+	AgentUpdate(ctx context.Context, agentID, userID string, nickname *string, note *string) error
 
 	// Delete removes the agent and invalidates any cached identity.
 	AgentDelete(ctx context.Context, agentID, userID string) error

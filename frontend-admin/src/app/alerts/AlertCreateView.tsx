@@ -2,7 +2,6 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { fetchAPI } from "../../lib/api";
 import { Agent, TriggerType, Operator, DestinationType } from "../../types";
-import PanelNav from "../common/PanelNav";
 import AlertFormFields from "./AlertFormFields";
 
 export default function AlertCreateView() {
@@ -100,16 +99,15 @@ export default function AlertCreateView() {
 
   if (isLoading) {
     return (
-      <div style={{ display: 'flex', height: '100vh', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-primary)' }}>
+      <div style={{ display: 'flex', height: '50vh', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-primary)' }}>
         <span className="material-symbols-outlined" style={{ fontSize: '32px', animation: 'spin 1s linear infinite', color: 'var(--accent-primary)' }}>sync</span>
       </div>
     );
   }
 
   return (
-    <>
-      <PanelNav />
-      <div className="mobile-p-sm" style={{ padding: '40px 24px', background: 'var(--bg-primary)', minHeight: 'calc(100vh - 56px)' }}>
+    <div className="mobile-p-sm" style={{ padding: '40px 24px' }}>
+
         <div className="animate-fade-in mobile-gap-sm" style={{ maxWidth: '800px', margin: '0 auto' }}>
 
           <div className="mobile-stack" style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '32px' }}>
@@ -191,10 +189,8 @@ export default function AlertCreateView() {
                 {saving ? "Saving..." : "Create Alert"}
               </button>
             </div>
-
           </form>
         </div>
       </div>
-    </>
   );
 }

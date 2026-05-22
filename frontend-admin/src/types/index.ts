@@ -24,6 +24,7 @@ export interface Agent {
   disk_size:     number;
   net:           NetOdometer;
   disks:         DiskOdometer[];
+  note?:         string;
 }
 
 export interface MetricSeries {
@@ -63,7 +64,7 @@ export interface Dashboard {
 export interface CreateDashboardReq {
   slug:           string;
   title:          string;
-  agents:         { agent_id: string; alias: string }[];
+  agents:         { agent_id: string; alias: string; sort_key?: string }[];
   allowed_fields: string[];
   max_days:       number;
 }

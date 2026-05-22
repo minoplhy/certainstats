@@ -2,7 +2,6 @@ import { useState, useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { fetchAPI } from "../../lib/api";
 import { Agent, TriggerType, Operator, DestinationType, Alert } from "../../types";
-import PanelNav from "../common/PanelNav";
 import DeleteConfirmModal from "../common/DeleteConfirmModal";
 import AlertFormFields from "./AlertFormFields";
 
@@ -141,16 +140,15 @@ export default function AlertEditView() {
 
   if (isLoading) {
     return (
-      <div style={{ display: 'flex', height: '100vh', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-primary)' }}>
+      <div style={{ display: 'flex', height: '50vh', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-primary)' }}>
         <span className="material-symbols-outlined" style={{ fontSize: '32px', animation: 'spin 1s linear infinite', color: 'var(--accent-primary)' }}>sync</span>
       </div>
     );
   }
 
   return (
-    <>
-      <PanelNav />
-      <div className="mobile-p-sm" style={{ padding: '40px 24px', background: 'var(--bg-primary)', minHeight: 'calc(100vh - 56px)' }}>
+    <div className="mobile-p-sm" style={{ padding: '40px 24px' }}>
+
         <div className="animate-fade-in mobile-gap-sm" style={{ maxWidth: '800px', margin: '0 auto' }}>
 
           <div className="mobile-stack" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '32px', gap: '16px' }}>
@@ -244,19 +242,17 @@ export default function AlertEditView() {
                 {saving ? "Saving..." : "Save Changes"}
               </button>
             </div>
-
           </form>
         </div>
-      </div>
 
-      <DeleteConfirmModal
-        isOpen={showDeleteModal}
-        title="Delete Alert?"
-        message="Are you sure you want to delete this alert? This action cannot be undone and will permanently remove this notification rule."
-        confirmText="Delete Alert"
-        onClose={() => setShowDeleteModal(false)}
-        onConfirm={handleDeleteExecute}
-      />
-    </>
+        <DeleteConfirmModal
+          isOpen={showDeleteModal}
+          title="Delete Alert?"
+          message="Are you sure you want to delete this alert? This action cannot be undone and will permanently remove this notification rule."
+          confirmText="Delete Alert"
+          onClose={() => setShowDeleteModal(false)}
+          onConfirm={handleDeleteExecute}
+        />
+      </div>
   );
 }

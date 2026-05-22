@@ -41,4 +41,5 @@ type Agent struct {
 	DiskSize     uint64         `json:"disk_size"`
 	Net          NetOdometer    `json:"net"`
 	Disks        []DiskOdometer `json:"disks"`
+	Note         string         `json:"note"`
 }

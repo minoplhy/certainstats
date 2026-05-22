@@ -39,6 +39,10 @@ interface DashboardFormFieldsProps {
   setAllowedFields: React.Dispatch<React.SetStateAction<MetricKey[]>>;
   selectedAgents: Record<string, string>;
   setSelectedAgents: React.Dispatch<React.SetStateAction<Record<string, string>>>;
+  selectedAgentsOrder: string[];
+  setSelectedAgentsOrder: React.Dispatch<React.SetStateAction<string[]>>;
+  isDragged: boolean;
+  setIsDragged: (v: boolean) => void;
   availableAgents: Agent[];
   loadingAgents: boolean;
 }
@@ -56,11 +60,89 @@ export default function DashboardFormFields({
   setAllowedFields,
   selectedAgents,
   setSelectedAgents,
+  selectedAgentsOrder,
+  setSelectedAgentsOrder,
+  isDragged,
+  setIsDragged,
   availableAgents,
   loadingAgents,
 }: DashboardFormFieldsProps) {
   const [agentSearch, setAgentSearch] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
+
+  const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
+  const [touchStartIndex, setTouchStartIndex] = useState<number | null>(null);
+
+  const handleDragStart = (e: React.DragEvent, index: number) => {
+    setDraggedIndex(index);
+    e.dataTransfer.effectAllowed = "move";
+  };
+
+  const handleDragOver = (e: React.DragEvent, index: number) => {
+    e.preventDefault();
+    if (draggedIndex === null || draggedIndex === index) return;
+
+    const newList = [...selectedAgentsOrder];
+    const draggedItem = newList[draggedIndex];
+    newList.splice(draggedIndex, 1);
+    newList.splice(index, 0, draggedItem);
+
+    setDraggedIndex(index);
+    setSelectedAgentsOrder(newList);
+    setIsDragged(true);
+  };
+
+  const handleDragEnd = () => {
+    setDraggedIndex(null);
+  };
+
+  const handleTouchStart = (index: number) => {
+    setTouchStartIndex(index);
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (touchStartIndex === null) return;
+
+    const touch = e.touches[0];
+    const element = document.elementFromPoint(touch.clientX, touch.clientY);
+    if (!element) return;
+
+    const itemContainer = element.closest("[data-reorder-index]");
+    if (!itemContainer) return;
+
+    const targetIndexStr = itemContainer.getAttribute("data-reorder-index");
+    if (targetIndexStr === null) return;
+
+    const targetIndex = parseInt(targetIndexStr, 10);
+    if (isNaN(targetIndex) || targetIndex === touchStartIndex) return;
+
+    const newList = [...selectedAgentsOrder];
+    const draggedItem = newList[touchStartIndex];
+    newList.splice(touchStartIndex, 1);
+    newList.splice(targetIndex, 0, draggedItem);
+
+    setTouchStartIndex(targetIndex);
+    setSelectedAgentsOrder(newList);
+    setIsDragged(true);
+  };
+
+  const handleTouchEnd = () => {
+    setTouchStartIndex(null);
+  };
+
+  const resetToAlphabetical = () => {
+    const sorted = [...selectedAgentsOrder].sort((aId, bId) => {
+      const agentA = availableAgents.find(x => x.agent_id === aId);
+      const agentB = availableAgents.find(x => x.agent_id === bId);
+
+      const nameA = (selectedAgents[aId] || agentA?.nickname || aId).toLowerCase();
+      const nameB = (selectedAgents[bId] || agentB?.nickname || bId).toLowerCase();
+
+      return nameA.localeCompare(nameB);
+    });
+    setSelectedAgentsOrder(sorted);
+    setIsDragged(false);
+  };
 
   const handleTitleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const v = e.target.value;
@@ -81,8 +163,10 @@ export default function DashboardFormFields({
       const next = { ...prev };
       if (next[agent.agent_id] !== undefined) {
         delete next[agent.agent_id];
+        setSelectedAgentsOrder(order => order.filter(id => id !== agent.agent_id));
       } else {
         next[agent.agent_id] = agent.nickname || "Server";
+        setSelectedAgentsOrder(order => [...order, agent.agent_id]);
       }
       return next;
     });
@@ -99,13 +183,19 @@ export default function DashboardFormFields({
     setSelectedAgents(prev => {
       const next = { ...prev };
       if (allFilteredSelected) {
-        filteredAgents.forEach(a => { delete next[a.agent_id]; });
+        filteredAgents.forEach(a => { 
+          delete next[a.agent_id]; 
+        });
+        setSelectedAgentsOrder(order => order.filter(id => !filteredAgents.some(fa => fa.agent_id === id)));
       } else {
+        const addedIds: string[] = [];
         filteredAgents.forEach(a => { 
           if (next[a.agent_id] === undefined) {
             next[a.agent_id] = a.nickname || "Server";
+            addedIds.push(a.agent_id);
           }
         });
+        setSelectedAgentsOrder(order => [...order, ...addedIds]);
       }
       return next;
     });
@@ -267,7 +357,7 @@ export default function DashboardFormFields({
 
             {/* Pagination Controls */}
             {totalPages > 1 && (
-              <div className="mobile-flex-col" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '20px', paddingTop: '16px', borderTop: '1px solid var(--border-color)', gap: '16px' }}>
+              <div className="mobile-flex-col" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '20px', paddingBottom: '16px', borderBottom: selectedAgentsOrder.length > 0 ? '1px solid var(--border-color)' : 'none', gap: '16px' }}>
                 <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
                   Showing <strong>{Math.min((currentPage - 1) * itemsPerPage + 1, filteredAgents.length)}</strong> to <strong>{Math.min(currentPage * itemsPerPage, filteredAgents.length)}</strong> of <strong>{filteredAgents.length}</strong> agents
                 </span>
@@ -319,6 +409,107 @@ export default function DashboardFormFields({
               </div>
             )}
           </>
+        )}
+
+        {/* CUSTOM DISPLAY ORDER SECTION */}
+        {selectedAgentsOrder.length > 0 && (
+          <div style={{ marginTop: '28px', paddingTop: '24px', borderTop: totalPages <= 1 ? '1px solid var(--border-color)' : 'none' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
+              <div>
+                <h3 style={{ fontSize: '12px', fontWeight: '700', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>swap_vert</span> Drag to Reorder
+                </h3>
+                <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px' }}>
+                  Drag and drop the items below to customize their sequence. Defaults to alphabetical if not reordered.
+                </p>
+              </div>
+              {isDragged && (
+                <button 
+                  type="button" 
+                  onClick={resetToAlphabetical} 
+                  className="btn-secondary"
+                  style={{ padding: '6px 12px', fontSize: '12px', gap: '6px', display: 'flex', alignItems: 'center' }}
+                >
+                  <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>restart_alt</span> Reset to Alphabetical
+                </button>
+              )}
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {selectedAgentsOrder.map((agentId, index) => {
+                const alias = selectedAgents[agentId] || "Server";
+                const agentMatch = availableAgents.find(a => a.agent_id === agentId);
+                const originalNickname = agentMatch?.nickname || "Server";
+
+                return (
+                  <div
+                    key={agentId}
+                    data-reorder-index={index}
+                    draggable
+                    onDragStart={(e) => handleDragStart(e, index)}
+                    onDragOver={(e) => handleDragOver(e, index)}
+                    onDragEnd={handleDragEnd}
+                    onTouchStart={() => handleTouchStart(index)}
+                    onTouchMove={handleTouchMove}
+                    onTouchEnd={handleTouchEnd}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '16px',
+                      padding: '14px 20px',
+                      background: (draggedIndex === index || touchStartIndex === index) ? 'rgba(99, 102, 241, 0.08)' : 'var(--bg-primary)',
+                      border: `1px solid ${(draggedIndex === index || touchStartIndex === index) ? 'var(--accent-primary)' : 'var(--border-color)'}`,
+                      borderRadius: '10px',
+                      cursor: 'grab',
+                      opacity: (draggedIndex === index || touchStartIndex === index) ? 0.6 : 1,
+                      transform: (draggedIndex === index || touchStartIndex === index) ? 'scale(1.01)' : 'scale(1)',
+                      transition: 'transform 0.15s ease, background-color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease',
+                      boxShadow: (draggedIndex === index || touchStartIndex === index) ? '0 10px 20px -5px rgba(0, 0, 0, 0.25)' : 'none',
+                      userSelect: 'none',
+                      touchAction: 'none',
+                    }}
+                  >
+                    <span 
+                      className="material-symbols-outlined" 
+                      style={{ color: 'var(--text-muted)', cursor: 'grab', userSelect: 'none' }}
+                    >
+                      drag_indicator
+                    </span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span 
+                        style={{ 
+                          fontSize: '11px', 
+                          fontWeight: '700', 
+                          background: 'var(--bg-secondary)', 
+                          padding: '2px 6px', 
+                          borderRadius: '4px', 
+                          color: 'var(--text-secondary)',
+                          fontFamily: 'var(--font-mono)'
+                        }}
+                      >
+                        #{index + 1}
+                      </span>
+                    </div>
+                    <div style={{ flex: 1, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div>
+                        <span style={{ fontWeight: '600', fontSize: '13px', color: 'var(--text-primary)' }}>
+                          {alias}
+                        </span>
+                        {alias !== originalNickname && (
+                          <span style={{ fontSize: '11px', color: 'var(--text-muted)', marginLeft: '8px' }}>
+                            ({originalNickname})
+                          </span>
+                        )}
+                      </div>
+                      <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
+                        {agentId}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
         )}
       </div>
     </>
