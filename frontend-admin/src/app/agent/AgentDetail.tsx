@@ -558,7 +558,6 @@ export function AgentDetail({
   // Manage Agent Action Dropdown states
   const actionDropdownRef = useRef<HTMLDivElement>(null);
   const [actionDropdownOpen, setActionDropdownOpen] = useState(false);
-  const [actionCoords, setActionCoords] = useState({ top: 0, left: 0, openUp: false });
   const [uninstallData, setUninstallData] = useState<any | null>(null);
   const [uninstallLoading, setUninstallLoading] = useState(false);
 
@@ -723,30 +722,7 @@ export function AgentDetail({
           <div className="action-btn-group mobile-w-full">
             <div style={{ position: 'relative' }} ref={actionDropdownRef}>
               <button
-                onClick={(e) => {
-                  if (!actionDropdownOpen) {
-                    const rect = e.currentTarget.getBoundingClientRect();
-                    const menuHeight = 130;
-                    const menuWidth = 200;
-                    const spaceBelow = window.innerHeight - rect.bottom;
-                    const openUp = spaceBelow < menuHeight && rect.top > menuHeight;
-
-                    let left = rect.right - menuWidth;
-                    if (left < 10) {
-                      left = Math.max(10, rect.left);
-                    }
-                    if (left + menuWidth > window.innerWidth - 10) {
-                      left = window.innerWidth - menuWidth - 10;
-                    }
-
-                    setActionCoords({
-                      top: openUp ? rect.top - 8 : rect.bottom + 8,
-                      left,
-                      openUp
-                    });
-                  }
-                  setActionDropdownOpen(!actionDropdownOpen);
-                }}
+                onClick={() => setActionDropdownOpen(!actionDropdownOpen)}
                 disabled={uninstallLoading}
                 className="btn-secondary"
                 style={{ padding: '8px 16px', fontSize: '12px', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '8px', borderRadius: '10px', height: '36px', cursor: 'pointer' }}
@@ -758,14 +734,14 @@ export function AgentDetail({
                 </span>
               </button>
 
-              {actionDropdownOpen && createPortal(
+              {actionDropdownOpen && (
                 <div
                   className="animate-fade-in portal-action-dropdown"
                   style={{
-                    position: 'fixed',
-                    top: actionCoords.openUp ? 'auto' : `${actionCoords.top}px`,
-                    bottom: actionCoords.openUp ? `${window.innerHeight - actionCoords.top}px` : 'auto',
-                    left: `${actionCoords.left}px`,
+                    position: 'absolute',
+                    top: '100%',
+                    right: 0,
+                    marginTop: '8px',
                     zIndex: 9999,
                     width: '200px',
                     padding: '8px',
@@ -799,8 +775,7 @@ export function AgentDetail({
                     <span className="material-symbols-outlined" style={{ fontSize: '18px', color: '#ef4444' }}>delete</span>
                     <span style={{ fontWeight: '500', color: '#ef4444' }}>Uninstall</span>
                   </button>
-                </div>,
-                document.body
+                </div>
               )}
             </div>
 
