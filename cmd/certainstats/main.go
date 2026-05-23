@@ -215,6 +215,7 @@ func main() {
 				authApi.Get("/agents", requireAuth(db, agent.ListAgentsHandler(db, metricsCache)))
 				authApi.Post("/agent", requireAuth(db, agent.ProvisionAgentHandler(db, parserRegistry)))
 				authApi.Get("/agent/install/{id}", requireAuth(db, agent.InstallAgentHandler(db)))
+				authApi.Get("/agent/uninstall/{id}", requireAuth(db, agent.UninstallAgentHandler(db)))
 				authApi.Put("/agent", requireAuth(db, agent.RenameAgentHandler(db)))
 				authApi.Delete("/agent", requireAuth(db, agent.RevokeAgentHandler(db, tdb)))
 				authApi.Post("/agent/reset/ssh/{id}", requireAuth(db, agent.ResetAgentSSHKeyHandler(db, wsManager)))

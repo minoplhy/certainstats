@@ -189,3 +189,45 @@ func InstallAgentHandler(agent store.AgentStore) http.HandlerFunc {
 		})
 	}
 }
+
+func UninstallAgentHandler(agent store.AgentStore) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		userID := r.Context().Value(ctx.UserIDKey).(string)
+		agentID := chi.URLParam(r, "id")
+		if agentID == "" {
+			api_response.Error(w, http.StatusBadRequest, "Missing agent id")
+			return
+		}
+
+		// 1. Fetch management data to get token
+		mgtAgents, err := agent.AgentListManagement(r.Context(), userID)
+		if err != nil {
+			api_response.Error(w, http.StatusInternalServerError, "Database error")
+			return
+		}
+
+		var mgtTarget *store.AgentManagement
+		for _, a := range mgtAgents {
+			if a.AgentID == agentID {
+				mgtTarget = &a
+				break
+			}
+		}
+
+		if mgtTarget == nil {
+			api_response.Error(w, http.StatusNotFound, "Agent management data not found")
+			return
+		}
+
+		// Generate uninstall instructions using existing token
+		messages := getUninstallInstructions(mgtTarget.AgentType, mgtTarget.Token)
+
+		api_response.JSON(w, http.StatusOK, base.ProvisionResponse{
+			AgentID:   mgtTarget.AgentID,
+			Nickname:  mgtTarget.Nickname,
+			AgentType: mgtTarget.AgentType,
+			Messages:  messages,
+			Message:   "Uninstall instructions generated.",
+		})
+	}
+}
