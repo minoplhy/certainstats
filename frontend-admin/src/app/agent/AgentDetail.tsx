@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { fetchAPI } from "../../lib/api";
 import { Agent, MetricResponse, AgentSnapshot } from "../../types";
 import { TelemetryChart } from "./TelemetryChart";
+import ReinstallModal from "../common/ReinstallModal";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -554,6 +555,74 @@ export function AgentDetail({
   const [customEndStr, setCustomEndStr] = useState("");
   const dropdownRef = useRef<HTMLDivElement>(null);
 
+  // Manage Agent Action Dropdown states
+  const actionDropdownRef = useRef<HTMLDivElement>(null);
+  const [actionDropdownOpen, setActionDropdownOpen] = useState(false);
+  const [actionCoords, setActionCoords] = useState({ top: 0, left: 0, openUp: false });
+  const [uninstallData, setUninstallData] = useState<any | null>(null);
+  const [uninstallLoading, setUninstallLoading] = useState(false);
+
+  useEffect(() => {
+    const handleOutsideClick = (e: MouseEvent) => {
+      if (actionDropdownRef.current && !actionDropdownRef.current.contains(e.target as Node)) {
+        const portalDropdown = document.querySelector('.portal-action-dropdown');
+        if (portalDropdown && portalDropdown.contains(e.target as Node)) {
+          return;
+        }
+        setActionDropdownOpen(false);
+      }
+    };
+    const handleScroll = () => {
+      setActionDropdownOpen(false);
+    };
+    if (actionDropdownOpen) {
+      document.addEventListener("mousedown", handleOutsideClick);
+      window.addEventListener("scroll", handleScroll, true);
+    }
+    return () => {
+      document.removeEventListener("mousedown", handleOutsideClick);
+      window.removeEventListener("scroll", handleScroll, true);
+    };
+  }, [actionDropdownOpen]);
+
+  const handleUninstall = async () => {
+    setActionDropdownOpen(false);
+    setUninstallLoading(true);
+    try {
+      const mgtAgents = await fetchAPI<any[]>("/api/agents/management");
+      const mgtTarget = mgtAgents.find((a: any) => a.agent_id === agent.agent_id);
+      const token = mgtTarget ? mgtTarget.token : "";
+
+      let command = "";
+      const type = agent.agent_type;
+
+      if (type === "beszel") {
+        command = "curl -sL https://get.beszel.dev -o /tmp/install-agent.sh && chmod +x /tmp/install-agent.sh && /tmp/install-agent.sh -u";
+      } else if (type === "ltstats") {
+        command = "systemctl disable --now ltstats_agent; rm /etc/systemd/system/ltstats_agent.service /etc/monitoring_token /bin/ltstats_agent\nsystemctl disable --now ltstats_ntp; rm /etc/systemd/system/ltstats_ntp.service /bin/ltstats_ntp";
+      } else if (type === "hetrixtools") {
+        command = `wget -4 -qO- https://raw.githubusercontent.com/hetrixtools/agent/master/hetrixtools_uninstall.sh | sudo bash -s ${token}`;
+      } else {
+        command = `# No specific uninstall command for agent type: ${type || "unknown"}`;
+      }
+
+      setUninstallData({
+        message: "Uninstall Agent",
+        messages: [
+          {
+            name: "Uninstall Command",
+            content: command,
+            message_type: "command"
+          }
+        ]
+      });
+    } catch (err) {
+      alert("Failed to load agent token for uninstallation");
+    } finally {
+      setUninstallLoading(false);
+    }
+  };
+
   // Helper to format Date to datetime-local string (YYYY-MM-DDTHH:mm)
   const toDatetimeLocal = (date: Date) => {
     const ten = (i: number) => (i < 10 ? '0' : '') + i;
@@ -674,14 +743,88 @@ export function AgentDetail({
           </div>
 
           <div className="action-btn-group mobile-w-full">
-            <button
-              onClick={() => onInstall(agent.agent_id)}
-              className="btn-secondary"
-              style={{ padding: '8px 16px', fontSize: '12px', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '8px', borderRadius: '10px', height: '36px' }}
-            >
-              <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>terminal</span>
-              Reinstall
-            </button>
+            <div style={{ position: 'relative' }} ref={actionDropdownRef}>
+              <button
+                onClick={(e) => {
+                  if (!actionDropdownOpen) {
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    const menuHeight = 130;
+                    const menuWidth = 200;
+                    const spaceBelow = window.innerHeight - rect.bottom;
+                    const openUp = spaceBelow < menuHeight && rect.top > menuHeight;
+
+                    let left = rect.right - menuWidth;
+                    if (left < 10) {
+                      left = Math.max(10, rect.left);
+                    }
+                    if (left + menuWidth > window.innerWidth - 10) {
+                      left = window.innerWidth - menuWidth - 10;
+                    }
+
+                    setActionCoords({
+                      top: openUp ? rect.top - 8 : rect.bottom + 8,
+                      left,
+                      openUp
+                    });
+                  }
+                  setActionDropdownOpen(!actionDropdownOpen);
+                }}
+                disabled={uninstallLoading}
+                className="btn-secondary"
+                style={{ padding: '8px 16px', fontSize: '12px', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '8px', borderRadius: '10px', height: '36px', cursor: 'pointer' }}
+              >
+                <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>terminal</span>
+                {uninstallLoading ? "Loading..." : "Reinstall"}
+                <span className="material-symbols-outlined" style={{ fontSize: '16px', transition: 'transform 0.2s', transform: actionDropdownOpen ? 'rotate(180deg)' : 'none' }}>
+                  expand_more
+                </span>
+              </button>
+
+              {actionDropdownOpen && createPortal(
+                <div
+                  className="animate-fade-in portal-action-dropdown"
+                  style={{
+                    position: 'fixed',
+                    top: actionCoords.openUp ? 'auto' : `${actionCoords.top}px`,
+                    bottom: actionCoords.openUp ? `${window.innerHeight - actionCoords.top}px` : 'auto',
+                    left: `${actionCoords.left}px`,
+                    zIndex: 9999,
+                    width: '200px',
+                    padding: '8px',
+                    boxShadow: '0 20px 60px rgba(0,0,0,0.7)',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: '16px',
+                    background: 'var(--bg-secondary)',
+                    backdropFilter: 'blur(32px)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '4px'
+                  }}
+                  onClick={e => e.stopPropagation()}
+                >
+                  <button
+                    onClick={() => {
+                      onInstall(agent.agent_id);
+                      setActionDropdownOpen(false);
+                    }}
+                    className="flex items-center gap-3 w-full text-left p-3 rounded-lg hover:bg-white/5 transition-colors"
+                    style={{ fontSize: '12px', background: 'none', border: 'none', color: 'var(--text-primary)', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
+                  >
+                    <span className="material-symbols-outlined" style={{ fontSize: '18px', opacity: 0.6 }}>terminal</span>
+                    <span style={{ fontWeight: '500' }}>Reinstall</span>
+                  </button>
+                  <button
+                    onClick={handleUninstall}
+                    className="flex items-center gap-3 w-full text-left p-3 rounded-lg hover:bg-red-500/5 transition-colors"
+                    style={{ fontSize: '12px', background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
+                  >
+                    <span className="material-symbols-outlined" style={{ fontSize: '18px', color: '#ef4444' }}>delete</span>
+                    <span style={{ fontWeight: '500', color: '#ef4444' }}>Uninstall</span>
+                  </button>
+                </div>,
+                document.body
+              )}
+            </div>
 
             <div style={{ position: 'relative' }} ref={dropdownRef}>
               <button
@@ -994,6 +1137,12 @@ export function AgentDetail({
         <MetricChart agentId={agent.agent_id} tab="disk" hours={activeHours} livePoint={liveMetrics[agent.agent_id]} maxValue={agent.disk_size} TABS={TABS} customRange={customRange} onZoom={(start, end) => setCustomRange({ start, end })} />
         <MetricChart agentId={agent.agent_id} tab="disk_io" hours={activeHours} livePoint={liveMetrics[agent.agent_id]} TABS={TABS} customRange={customRange} onZoom={(start, end) => setCustomRange({ start, end })} />
       </div>
+      {uninstallData && (
+        <ReinstallModal
+          data={uninstallData}
+          onClose={() => setUninstallData(null)}
+        />
+      )}
     </div>
   );
 }
