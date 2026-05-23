@@ -589,35 +589,13 @@ export function AgentDetail({
     setActionDropdownOpen(false);
     setUninstallLoading(true);
     try {
-      const mgtAgents = await fetchAPI<any[]>("/api/agents/management");
-      const mgtTarget = mgtAgents.find((a: any) => a.agent_id === agent.agent_id);
-      const token = mgtTarget ? mgtTarget.token : "";
-
-      let command = "";
-      const type = agent.agent_type;
-
-      if (type === "beszel") {
-        command = "curl -sL https://get.beszel.dev -o /tmp/install-agent.sh && chmod +x /tmp/install-agent.sh && /tmp/install-agent.sh -u";
-      } else if (type === "ltstats") {
-        command = "systemctl disable --now ltstats_agent; rm /etc/systemd/system/ltstats_agent.service /etc/monitoring_token /bin/ltstats_agent\nsystemctl disable --now ltstats_ntp; rm /etc/systemd/system/ltstats_ntp.service /bin/ltstats_ntp";
-      } else if (type === "hetrixtools") {
-        command = `wget -4 -qO- https://raw.githubusercontent.com/hetrixtools/agent/master/hetrixtools_uninstall.sh | sudo bash -s ${token}`;
-      } else {
-        command = `# No specific uninstall command for agent type: ${type || "unknown"}`;
-      }
-
+      const resp = await fetchAPI<any>(`/api/agent/uninstall/${agent.agent_id}`);
       setUninstallData({
         message: "Uninstall Agent",
-        messages: [
-          {
-            name: "Uninstall Command",
-            content: command,
-            message_type: "command"
-          }
-        ]
+        messages: resp.messages
       });
     } catch (err) {
-      alert("Failed to load agent token for uninstallation");
+      alert("Failed to load agent uninstall instructions");
     } finally {
       setUninstallLoading(false);
     }
