@@ -10,14 +10,16 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 )
 
 type CreateAlertRequest struct {
-	Enabled bool              `json:"enabled"`
-	Trigger alert.Trigger     `json:"trigger"`
-	Action  alert.AlertAction `json:"action"`
-	Agents  []string          `json:"agents"` // List of AgentIDs
+	Nickname string            `json:"nickname"`
+	Enabled  bool              `json:"enabled"`
+	Trigger  alert.Trigger     `json:"trigger"`
+	Action   alert.AlertAction `json:"action"`
+	Agents   []string          `json:"agents"` // List of AgentIDs
 }
 
 // CreateAlertHandler handles POST /api/alert
@@ -35,6 +37,11 @@ func CreateAlertHandler(s store.AlertsStore) http.HandlerFunc {
 			return
 		}
 
+		if strings.TrimSpace(req.Nickname) == "" {
+			apiresponse.Error(w, http.StatusBadRequest, "Alert name / nickname is required")
+			return
+		}
+
 		// Normalize: agent_down alerts don't have a threshold/operator
 		if req.Trigger.Type == alert.TriggerTypeDown {
 			req.Trigger.Operator = ""
@@ -42,11 +49,12 @@ func CreateAlertHandler(s store.AlertsStore) http.HandlerFunc {
 		}
 
 		newAlert := store.Alert{
-			AlertID: fmt.Sprintf("alert_%d_%s", time.Now().UnixMicro(), agentdata.GenerateRandomString(6)),
-			UserID:  userID,
-			Enabled: req.Enabled,
-			Trigger: req.Trigger,
-			Action:  req.Action,
+			AlertID:  fmt.Sprintf("alert_%d_%s", time.Now().UnixMicro(), agentdata.GenerateRandomString(6)),
+			UserID:   userID,
+			Nickname: req.Nickname,
+			Enabled:  req.Enabled,
+			Trigger:  req.Trigger,
+			Action:   req.Action,
 		}
 
 		for _, agentID := range req.Agents {

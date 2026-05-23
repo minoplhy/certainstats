@@ -2,6 +2,8 @@ import React from "react";
 import { Agent, TriggerType, Operator, DestinationType } from "../../types";
 
 interface AlertFormFieldsProps {
+  nickname: string;
+  setNickname: (v: string) => void;
   enabled: boolean;
   setEnabled: (v: boolean) => void;
   type: TriggerType;
@@ -24,6 +26,8 @@ interface AlertFormFieldsProps {
 }
 
 export default function AlertFormFields({
+  nickname,
+  setNickname,
   enabled,
   setEnabled,
   type,
@@ -53,6 +57,28 @@ export default function AlertFormFields({
 
   return (
     <>
+      {/* Alert Nickname */}
+      <div className="card" style={{ padding: '24px' }}>
+        <h2 style={{ fontSize: '12px', fontWeight: '700', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>label</span>
+          Alert Name / Nickname
+        </h2>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          <input
+            required
+            type="text"
+            value={nickname}
+            onChange={(e) => setNickname(e.target.value)}
+            className="input-field"
+            placeholder="e.g. Production Database Offline, CPU Spike Warning"
+            style={{ width: '100%' }}
+          />
+          <p style={{ fontSize: '13px', color: 'var(--text-secondary)', opacity: 0.8, margin: '4px 0 0 0' }}>
+            Give this alert a custom name to quickly identify it in history lists and notification headers.
+          </p>
+        </div>
+      </div>
+
       {/* Tactical Switch Toggle for Enabled State */}
       <div className="card" style={{ padding: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>

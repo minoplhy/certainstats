@@ -106,6 +106,8 @@ func (s *Store) migrate() error {
 
 		`CREATE INDEX IF NOT EXISTS idx_alert_history_alert ON alert_history(alert_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_alert_history_agent ON alert_history(agent_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_alert_history_triggered_desc ON alert_history(triggered_at DESC)`,
+		`CREATE INDEX IF NOT EXISTS idx_alert_agents_agent ON alert_agents(agent_id)`,
 
 		`CREATE TABLE IF NOT EXISTS beszel_ssh (
 			agent_id    TEXT PRIMARY KEY REFERENCES agents(agent_id) ON DELETE CASCADE,
@@ -141,6 +143,7 @@ func (s *Store) migrate() error {
 		`ALTER TABLE sessions ADD COLUMN user_agent TEXT DEFAULT 'Unknown'`,
 		`ALTER TABLE dashboard_agents ADD COLUMN sort_key TEXT DEFAULT NULL`,
 		`ALTER TABLE agents ADD COLUMN note TEXT DEFAULT ''`,
+		`ALTER TABLE alerts ADD COLUMN nickname TEXT DEFAULT ''`,
 	} {
 		if _, err := s.db.Exec(m); err != nil {
 			// Ignore "duplicate column" — expected on every boot after first run.

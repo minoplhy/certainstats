@@ -29,9 +29,9 @@ func (s *Store) AlertCreate(ctx context.Context, d store.Alert) error {
 		return fmt.Errorf("failed to marshal action: %w", err)
 	}
 	_, err = tx.ExecContext(ctx, `
-        INSERT INTO alerts (alert_id, user_id, enabled, trigger_config, action_config)
-        VALUES (?, ?, ?, ?, ?)
-    `, d.AlertID, d.UserID, d.Enabled, triggerJSON, actionJSON)
+        INSERT INTO alerts (alert_id, user_id, nickname, enabled, trigger_config, action_config)
+        VALUES (?, ?, ?, ?, ?, ?)
+    `, d.AlertID, d.UserID, d.Nickname, d.Enabled, triggerJSON, actionJSON)
 	if err != nil {
 		return err
 	}
@@ -60,7 +60,7 @@ func (s *Store) AlertList(ctx context.Context, userID string) ([]store.Alert, er
 	// We use LEFT JOIN and GROUP_CONCAT to fetch the alert and all its agents in ONE query
 	// By concatenating agent_id and status with a colon, we can split them later
 	rows, err := s.db.QueryContext(ctx, `
-        SELECT a.alert_id, a.user_id, a.enabled, a.trigger_config, a.action_config,
+        SELECT a.alert_id, a.user_id, a.nickname, a.enabled, a.trigger_config, a.action_config,
                COALESCE(GROUP_CONCAT(aa.agent_id || ':' || aa.status, ','), '') as agents
         FROM alerts a
         LEFT JOIN alert_agents aa ON a.alert_id = aa.alert_id
@@ -79,7 +79,7 @@ func (s *Store) AlertList(ctx context.Context, userID string) ([]store.Alert, er
 		var triggerJSON, actionJSON string // Temporary strings to hold the JSON from SQLite
 
 		// 1. Scan into the temporary string variables
-		if err := rows.Scan(&a.AlertID, &a.UserID, &a.Enabled, &triggerJSON, &actionJSON, &agentsStr); err != nil {
+		if err := rows.Scan(&a.AlertID, &a.UserID, &a.Nickname, &a.Enabled, &triggerJSON, &actionJSON, &agentsStr); err != nil {
 			return nil, err
 		}
 
@@ -116,7 +116,7 @@ func (s *Store) AlertList(ctx context.Context, userID string) ([]store.Alert, er
 // AlertGetInfo fetches a single alert and its mapped agents
 func (s *Store) AlertGetInfo(ctx context.Context, alertID string, userID string) (store.Alert, error) {
 	row := s.db.QueryRowContext(ctx, `
-        SELECT a.alert_id, a.user_id, a.enabled, a.trigger_config, a.action_config,
+        SELECT a.alert_id, a.user_id, a.nickname, a.enabled, a.trigger_config, a.action_config,
                COALESCE(GROUP_CONCAT(aa.agent_id, ','), '') as agents
         FROM alerts a
         LEFT JOIN alert_agents aa ON a.alert_id = aa.alert_id
@@ -129,7 +129,7 @@ func (s *Store) AlertGetInfo(ctx context.Context, alertID string, userID string)
 	var triggerJSON, actionJSON string
 
 	// Scan into strings
-	err := row.Scan(&a.AlertID, &a.UserID, &a.Enabled, &triggerJSON, &actionJSON, &agentsStr)
+	err := row.Scan(&a.AlertID, &a.UserID, &a.Nickname, &a.Enabled, &triggerJSON, &actionJSON, &agentsStr)
 	if err != nil {
 		return store.Alert{}, err // Will return sql.ErrNoRows if not found
 	}
@@ -234,9 +234,9 @@ func (s *Store) AlertUpdate(ctx context.Context, d store.Alert, newAgents []stri
 	// 2. Update the main alert record with the JSON strings
 	res, err := tx.ExecContext(ctx, `
         UPDATE alerts 
-        SET enabled = ?, trigger_config = ?, action_config = ?
+        SET nickname = ?, enabled = ?, trigger_config = ?, action_config = ?
         WHERE alert_id = ? AND user_id = ?
-    `, d.Enabled, string(triggerJSON), string(actionJSON), d.AlertID, d.UserID)
+    `, d.Nickname, d.Enabled, string(triggerJSON), string(actionJSON), d.AlertID, d.UserID)
 	if err != nil {
 		return err
 	}
@@ -483,44 +483,79 @@ func (s *Store) GetActiveAlertsWithState(ctx context.Context) ([]store.Alert, ma
 	return out, agentInfoMap, nil
 }
 
-func (s *Store) AlertHistoryListPaginated(ctx context.Context, userID string, page, limit int) ([]alert.AlertHistory, int, error) {
+func (s *Store) AlertHistoryListPaginated(ctx context.Context, userID string, page, limit int, search string, status string) ([]alert.AlertHistory, int, error) {
 	if page < 1 {
 		page = 1
 	}
 	if limit < 1 {
 		limit = 25
 	}
+	if limit > 100 {
+		limit = 100
+	}
 	offset := (page - 1) * limit
 
-	countQuery := `
+	var conditions []string
+	var args []interface{}
+
+	// Always filter by userID
+	conditions = append(conditions, "a.user_id = ?")
+	args = append(args, userID)
+
+	switch status {
+	case "firing":
+		conditions = append(conditions, "h.resolved_at IS NULL")
+	case "resolved":
+		conditions = append(conditions, "h.resolved_at IS NOT NULL")
+	}
+
+	if search != "" {
+		searchPattern := "%" + search + "%"
+		conditions = append(conditions, "(ag.nickname LIKE ? OR h.agent_id LIKE ? OR a.trigger_config LIKE ? OR a.nickname LIKE ?)")
+		args = append(args, searchPattern, searchPattern, searchPattern, searchPattern)
+	}
+
+	whereClause := "WHERE " + strings.Join(conditions, " AND ")
+
+	// Performance optimization: Avoid joining the large agents table for count queries
+	// unless we are actively filtering by its attributes (nickname/id/config).
+	var countJoinClause string
+	if search != "" {
+		countJoinClause = "LEFT JOIN agents ag ON h.agent_id = ag.agent_id"
+	}
+
+	countQuery := fmt.Sprintf(`
 		SELECT COUNT(1)
 		FROM alert_history h
 		JOIN alerts a ON h.alert_id = a.alert_id
-		JOIN agents ag ON h.agent_id = ag.agent_id
-		WHERE a.user_id = ?
-	`
+		%s
+		%s
+	`, countJoinClause, whereClause)
 
 	var total int
-	err := s.db.QueryRowContext(ctx, countQuery, userID).Scan(&total)
+	err := s.db.QueryRowContext(ctx, countQuery, args...).Scan(&total)
 	if err != nil {
 		return nil, 0, err
 	}
 
-	query := `
+	// Build final query arguments
+	queryArgs := append(args, limit, offset)
+
+	query := fmt.Sprintf(`
 		SELECT 
 			h.history_id, h.alert_id, h.agent_id, 
-			COALESCE(NULLIF(ag.nickname, ''), ag.agent_id),
+			COALESCE(NULLIF(ag.nickname, ''), h.agent_id),
 			h.triggered_at, h.resolved_at, h.trigger_value, h.notified_status,
-			a.trigger_config
+			a.trigger_config, a.nickname
 		FROM alert_history h
 		JOIN alerts a ON h.alert_id = a.alert_id
-		JOIN agents ag ON h.agent_id = ag.agent_id
-		WHERE a.user_id = ?
+		LEFT JOIN agents ag ON h.agent_id = ag.agent_id
+		%s
 		ORDER BY h.triggered_at DESC
 		LIMIT ? OFFSET ?
-	`
+	`, whereClause)
 
-	rows, err := s.db.QueryContext(ctx, query, userID, limit, offset)
+	rows, err := s.db.QueryContext(ctx, query, queryArgs...)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -533,10 +568,10 @@ func (s *Store) AlertHistoryListPaginated(ctx context.Context, userID string, pa
 		var triggerJSON string
 
 		err := rows.Scan(
-			&h.HistoryID, &h.AlertID, &h.AgentID, 
+			&h.HistoryID, &h.AlertID, &h.AgentID,
 			&h.AgentNickname,
 			&h.TriggeredAt, &resolvedAt, &h.TriggerValue, &h.NotifiedStatus,
-			&triggerJSON,
+			&triggerJSON, &h.AlertNickname,
 		)
 		if err != nil {
 			return nil, 0, err

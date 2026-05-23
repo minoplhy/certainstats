@@ -155,6 +155,7 @@ export interface AgentState {
 export interface Alert {
   alert_id: string;
   user_id:  string;
+  nickname: string;
   enabled:  boolean;
   trigger:  AlertTrigger;
   action:   AlertAction;
@@ -166,6 +167,7 @@ export interface AlertHistory {
   alert_id: string;
   agent_id: string;
   agent_nickname: string;
+  alert_nickname: string;
   triggered_at: string;
   resolved_at?: string;
   trigger_value: number;

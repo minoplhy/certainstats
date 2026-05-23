@@ -15,6 +15,7 @@ export default function AlertEditView() {
   const [saving, setSaving] = useState(false);
 
   // Form State
+  const [nickname, setNickname] = useState("");
   const [enabled, setEnabled] = useState(true);
   const [type, setType] = useState<TriggerType>("cpu_usage");
   const [operator, setOperator] = useState<Operator>(">");
@@ -52,6 +53,7 @@ export default function AlertEditView() {
       setAgents(agentsData);
 
       // Fill form
+      setNickname(alertData.nickname || "");
       setEnabled(alertData.enabled);
       setType(alertData.trigger.type);
       setOperator(alertData.trigger.operator);
@@ -72,6 +74,10 @@ export default function AlertEditView() {
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!nickname.trim()) {
+      alert("Please provide an alert name / nickname.");
+      return;
+    }
     if (selectedAgents.length === 0) {
       alert("Please select at least one node.");
       return;
@@ -86,6 +92,7 @@ export default function AlertEditView() {
       await fetchAPI(`/api/alerts/${alertId}`, {
         method: "PUT",
         body: JSON.stringify({
+          nickname,
           enabled,
           trigger: {
             type,
@@ -201,6 +208,8 @@ export default function AlertEditView() {
             )}
 
             <AlertFormFields
+              nickname={nickname}
+              setNickname={setNickname}
               enabled={enabled}
               setEnabled={setEnabled}
               type={type}

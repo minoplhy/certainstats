@@ -25,7 +25,10 @@ func HistoryAlertHandler(db store.AlertsStore) http.HandlerFunc {
 			page = p
 		}
 
-		history, total, err := db.AlertHistoryListPaginated(r.Context(), userID, page, limit)
+		search := r.URL.Query().Get("q")
+		status := r.URL.Query().Get("status")
+
+		history, total, err := db.AlertHistoryListPaginated(r.Context(), userID, page, limit, search, status)
 		if err != nil {
 			apiresponse.Error(w, http.StatusInternalServerError, "Failed to retrieve alert history")
 			return

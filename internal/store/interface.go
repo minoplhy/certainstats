@@ -82,7 +82,7 @@ type AlertsStore interface {
 
 	GetActiveAlertsWithState(ctx context.Context) ([]Alert, map[string]AgentInfo, error)
 
-	AlertHistoryListPaginated(ctx context.Context, userID string, page, limit int) ([]c.AlertHistory, int, error)
+	AlertHistoryListPaginated(ctx context.Context, userID string, page, limit int, search string, status string) ([]c.AlertHistory, int, error)
 }
 
 // UserStore handles user account lookups and updates.

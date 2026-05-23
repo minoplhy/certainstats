@@ -35,12 +35,13 @@ const (
 
 // --- Main Structs ---
 type Alert struct {
-	AlertID string       `json:"alert_id"`
-	UserID  string       `json:"user_id"`
-	Enabled bool         `json:"enabled"`
-	Trigger Trigger      `json:"trigger"`
-	Action  AlertAction  `json:"action"`
-	Agents  []AgentState `json:"agents"`
+	AlertID  string       `json:"alert_id"`
+	UserID   string       `json:"user_id"`
+	Nickname string       `json:"nickname"`
+	Enabled  bool         `json:"enabled"`
+	Trigger  Trigger      `json:"trigger"`
+	Action   AlertAction  `json:"action"`
+	Agents   []AgentState `json:"agents"`
 }
 
 type Trigger struct {
@@ -67,6 +68,7 @@ type AlertHistory struct {
 	AlertID        string     `json:"alert_id"`
 	AgentID        string     `json:"agent_id"`
 	AgentNickname  string     `json:"agent_nickname"`
+	AlertNickname  string     `json:"alert_nickname"`
 	TriggeredAt    time.Time  `json:"triggered_at"`
 	ResolvedAt     *time.Time `json:"resolved_at,omitempty"`
 	TriggerValue   float64    `json:"trigger_value"`
