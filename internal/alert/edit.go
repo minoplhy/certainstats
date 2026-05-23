@@ -9,15 +9,17 @@ import (
 	"database/sql"
 	"encoding/json"
 	"net/http"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 )
 
 type EditAlertRequest struct {
-	Enabled bool              `json:"enabled"`
-	Trigger alert.Trigger     `json:"trigger"`
-	Action  alert.AlertAction `json:"action"`
-	Agents  []string          `json:"agents"` // List of AgentIDs
+	Nickname string            `json:"nickname"`
+	Enabled  bool              `json:"enabled"`
+	Trigger  alert.Trigger     `json:"trigger"`
+	Action   alert.AlertAction `json:"action"`
+	Agents   []string          `json:"agents"` // List of AgentIDs
 }
 
 // EditAlertHandler handles PUT /api/alert/{id}
@@ -41,6 +43,11 @@ func EditAlertHandler(s store.AlertsStore) http.HandlerFunc {
 			return
 		}
 
+		if strings.TrimSpace(req.Nickname) == "" {
+			apiresponse.Error(w, http.StatusBadRequest, "Alert name / nickname is required")
+			return
+		}
+
 		// Normalize: agent_down alerts don't have a threshold/operator
 		if req.Trigger.Type == alert.TriggerTypeDown {
 			req.Trigger.Operator = ""
@@ -48,11 +55,12 @@ func EditAlertHandler(s store.AlertsStore) http.HandlerFunc {
 		}
 
 		updatedAlert := store.Alert{
-			AlertID: alertID,
-			UserID:  userID,
-			Enabled: req.Enabled,
-			Trigger: req.Trigger,
-			Action:  req.Action,
+			AlertID:  alertID,
+			UserID:   userID,
+			Nickname: req.Nickname,
+			Enabled:  req.Enabled,
+			Trigger:  req.Trigger,
+			Action:   req.Action,
 		}
 
 		if err := s.AlertUpdate(r.Context(), updatedAlert, req.Agents); err != nil {

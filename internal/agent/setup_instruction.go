@@ -36,16 +36,18 @@ func getSetupInstructions(agentType, token, host, panelPath, publicKey string) [
 			Content:     publicKey,
 		})
 		messages = append(messages, base.ProvisionMessage{
-			Name:        "Linux Command",
-			MessageType: "command",
-			Content:     fmt.Sprintf("curl -sL https://get.beszel.dev -o /tmp/install-agent.sh && chmod +x /tmp/install-agent.sh && /tmp/install-agent.sh -p 45876 -k \"%s\" -t \"%s\" -url \"%s\"", publicKey, token, hubBaseURL),
-		})
-
-		messages = append(messages, base.ProvisionMessage{
-			Name:        "docker-compose.yml",
-			MessageType: "big_copy",
-			Description: "Deployment configuration for Beszel Agent",
-			Content: fmt.Sprintf(`services:
+			Name:        "Installation Guide",
+			MessageType: "tabs",
+			Children: []base.ProvisionMessage{
+				{
+					Name:        "Docker Compose",
+					MessageType: "tab",
+					Children: []base.ProvisionMessage{
+						{
+							Name:        "docker-compose.yml",
+							MessageType: "big_copy",
+							Description: "Deployment configuration for Beszel Agent",
+							Content: fmt.Sprintf(`services:
   beszel-agent:
     image: henrygd/beszel-agent
     container_name: beszel-agent
@@ -61,7 +63,22 @@ func getSetupInstructions(agentType, token, host, panelPath, publicKey string) [
       KEY: "%s"
       TOKEN: "%s"
       HUB_URL: "%s"`,
-				publicKey, token, hubBaseURL),
+								publicKey, token, hubBaseURL),
+						},
+					},
+				},
+				{
+					Name:        "Linux",
+					MessageType: "tab",
+					Children: []base.ProvisionMessage{
+						{
+							Name:        "Installation script",
+							MessageType: "command",
+							Content:     fmt.Sprintf("curl -sL https://get.beszel.dev -o /tmp/install-agent.sh && chmod +x /tmp/install-agent.sh && /tmp/install-agent.sh -p 45876 -k \"%s\" -t \"%s\" -url \"%s\"", publicKey, token, hubBaseURL),
+						},
+					},
+				},
+			},
 		})
 
 	case "ltstats":
@@ -91,13 +108,40 @@ func getSetupInstructions(agentType, token, host, panelPath, publicKey string) [
 			Content:     token,
 		})
 		messages = append(messages, base.ProvisionMessage{
-			Name:        "Linux Command(Debian-based)",
-			MessageType: "command",
-			Content: fmt.Sprintf(`wget -4 -qO- https://raw.githubusercontent.com/hetrixtools/agent/master/hetrixtools_install.sh \
+			Name:        "Installation Guide",
+			MessageType: "tabs",
+			Children: []base.ProvisionMessage{
+				{
+					Name:        "Linux",
+					MessageType: "tab",
+					Children: []base.ProvisionMessage{
+						{
+							Name:        "Installation script",
+							MessageType: "command",
+							Content: fmt.Sprintf(`wget -4 -qO- https://raw.githubusercontent.com/hetrixtools/agent/master/hetrixtools_install.sh \
 | sed -e 's|https://sm.hetrixtools.net/|%s/submit|g' \
       -e '/Fetching the agent/,/\.\.\. done\./{/\.\.\. done\./a sed -i '\''s|https://sm.hetrixtools.net/v2/|%s/submit|g'\'' /etc/hetrixtools/hetrixtools_agent.sh
 }' \
 | sudo bash -s -- %s 0 0 0 0 0 0`, hubBaseURL, hubBaseURL, token),
+						},
+					},
+				},
+				{
+					Name:        "Linux(Alpine)",
+					MessageType: "tab",
+					Children: []base.ProvisionMessage{
+						{
+							Name:        "Installation script",
+							MessageType: "command",
+							Content: fmt.Sprintf(`wget -qO- https://raw.githubusercontent.com/minoplhy/hetrixtools-agent-alpine/master/hetrixtools_install.sh \
+| sed -e 's|https://sm.hetrixtools.net/|%s/submit|g' \
+      -e '/Fetching the agent/,/\.\.\. done\./{/\.\.\. done\./a sed -i '\''s|https://sm.hetrixtools.net/v2/|%s/submit|g'\'' /etc/hetrixtools/hetrixtools_agent.sh
+}' \
+| sudo bash -s -- %s 0 0 0 0 0 0`, hubBaseURL, hubBaseURL, token),
+						},
+					},
+				},
+			},
 		})
 
 	default:

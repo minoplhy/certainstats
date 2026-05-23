@@ -6,13 +6,12 @@ type ProvisionRequest struct {
 }
 
 type ProvisionMessage struct {
-	Name        string `json:"name"`
-	MessageType string `json:"message_type"` // "copy", "command", "note", "big_copy", "warning"
-	Content     string `json:"content"`
-	Description string `json:"description,omitempty"`
+	Name        string             `json:"name"`
+	MessageType string             `json:"message_type"` // "copy", "command", "note", "big_copy", "warning", "tabs", "tab"
+	Content     string             `json:"content"`
+	Description string             `json:"description,omitempty"`
+	Children    []ProvisionMessage `json:"children,omitempty"`
 }
-
-
 
 type ProvisionResponse struct {
 	AgentID   string             `json:"agent_id"`

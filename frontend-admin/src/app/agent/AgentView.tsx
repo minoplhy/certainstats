@@ -56,13 +56,13 @@ const ActionMenu: FC<{
     e.stopPropagation();
     if (!isOpen) {
       const rect = e.currentTarget.getBoundingClientRect();
-      const menuHeight = 280; // Estimated height with more spacing
+      const menuHeight = 220; // Estimated height for node management menu
       const spaceBelow = window.innerHeight - rect.bottom;
       const openUp = spaceBelow < menuHeight && rect.top > menuHeight;
 
       setCoords({
         top: openUp ? rect.top - 8 : rect.bottom + 8,
-        left: rect.right - 240, // Increased width to 240px
+        left: Math.max(12, Math.min(window.innerWidth - 252, rect.right - 240)), // Keep 12px safe horizontal screen margins
         openUp
       });
     }
@@ -71,6 +71,89 @@ const ActionMenu: FC<{
 
   return (
     <div style={{ display: 'flex' }}>
+      <style>{`
+        @keyframes menuExpand {
+          from {
+            opacity: 0;
+            transform: scale(0.95) translateY(-4px);
+          }
+          to {
+            opacity: 1;
+            transform: scale(1) translateY(0);
+          }
+        }
+
+        .action-menu-popover {
+          background: var(--bg-secondary) !important;
+          border: 1px solid var(--border-color) !important;
+          border-radius: 12px !important;
+          box-shadow: 0 16px 36px rgba(0, 0, 0, 0.3) !important;
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
+          padding: 6px !important;
+          animation: menuExpand 0.12s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+          transform-origin: top right;
+        }
+        .action-menu-header {
+          padding: 8px 12px 6px;
+        }
+        .action-menu-header-text {
+          font-size: 11px;
+          font-weight: 700;
+          color: var(--text-muted);
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+        }
+        .action-menu-item {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          width: 100%;
+          text-align: left;
+          padding: 10px 12px;
+          border-radius: 8px;
+          font-size: 13px;
+          font-weight: 500;
+          color: var(--text-secondary);
+          background: transparent;
+          border: none;
+          cursor: pointer;
+          transition: background 0.15s ease, color 0.15s ease;
+        }
+        .action-menu-item:hover {
+          color: var(--text-primary);
+          background: var(--bar-bg);
+        }
+        .action-menu-item .material-symbols-outlined {
+          font-size: 18px;
+          color: var(--text-muted);
+          transition: color 0.15s ease;
+        }
+        .action-menu-item:hover .material-symbols-outlined {
+          color: var(--text-primary);
+        }
+        .action-menu-divider {
+          height: 1px;
+          background: var(--border-color);
+          margin: 6px 0;
+        }
+        .action-menu-item-danger {
+          color: var(--status-offline);
+        }
+        .action-menu-item-danger:hover {
+          color: var(--status-offline);
+          background: rgba(239, 68, 68, 0.08);
+        }
+        .action-menu-item-danger .material-symbols-outlined {
+          color: var(--status-offline);
+          opacity: 0.8;
+        }
+        .action-menu-item-danger:hover .material-symbols-outlined {
+          opacity: 1;
+        }
+      `}</style>
+
       <button
         onClick={handleToggle}
         className="text-muted hover:text-primary transition-colors"
@@ -82,56 +165,46 @@ const ActionMenu: FC<{
       {isOpen && createPortal(
         <div
           ref={menuRef}
-          className="animate-fade-in"
+          className="action-menu-popover"
           style={{
             position: 'fixed',
             top: coords.openUp ? 'auto' : `${coords.top}px`,
             bottom: coords.openUp ? `${window.innerHeight - coords.top}px` : 'auto',
             left: `${coords.left}px`,
             zIndex: 9999,
-            width: '240px',
-            padding: '12px',
-            boxShadow: '0 20px 60px rgba(0,0,0,0.7)',
-            border: '1px solid var(--border-color)',
-            borderRadius: '20px',
-            background: 'var(--bg-secondary)',
-            backdropFilter: 'blur(32px)',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '4px'
+            width: '240px'
           }}
           onClick={e => e.stopPropagation()}
         >
-          <div style={{ padding: '12px 16px 16px', borderBottom: '1px solid var(--border-color)', marginBottom: '8px' }}>
-            <div style={{ fontSize: '11px', fontWeight: '900', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Node Management</div>
+          <div className="action-menu-header">
+            <div className="action-menu-header-text">
+              Actions
+            </div>
           </div>
 
           <button
             onClick={() => { onRename(agent); setIsOpen(false); }}
-            className="flex items-center gap-4 w-full text-left p-4 rounded-xl hover:bg-white/5 transition-colors"
-            style={{ fontSize: '14px', background: 'none', border: 'none', color: 'var(--text-primary)', cursor: 'pointer' }}
+            className="action-menu-item"
           >
-            <span className="material-symbols-outlined" style={{ fontSize: '22px', opacity: 0.6 }}>edit</span>
-            <span style={{ fontWeight: '500' }}>Rename</span>
+            <span className="material-symbols-outlined">edit</span>
+            <span>Rename</span>
           </button>
 
           <button
             onClick={() => { onInstall(agent.agent_id); setIsOpen(false); }}
-            className="flex items-center gap-4 w-full text-left p-4 rounded-xl hover:bg-white/5 transition-colors"
-            style={{ fontSize: '14px', background: 'none', border: 'none', color: 'var(--text-primary)', cursor: 'pointer' }}
+            className="action-menu-item"
           >
-            <span className="material-symbols-outlined" style={{ fontSize: '22px', opacity: 0.6 }}>terminal</span>
-            <span style={{ fontWeight: '500' }}>Reinstall</span>
+            <span className="material-symbols-outlined">terminal</span>
+            <span>Reinstall</span>
           </button>
 
-          <div style={{ height: '1px', background: 'var(--border-color)', margin: '8px 4px' }} />
+          <div className="action-menu-divider" />
 
           <button
             onClick={() => { onRevoke(agent); setIsOpen(false); }}
-            className="flex items-center gap-4 w-full text-left p-4 rounded-xl hover:bg-red-500/5 transition-colors"
-            style={{ fontSize: '14px', color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer' }}
+            className="action-menu-item action-menu-item-danger"
           >
-            <span className="material-symbols-outlined" style={{ fontSize: '22px', color: '#ef4444' }}>delete_forever</span>
+            <span className="material-symbols-outlined">delete_forever</span>
             <span style={{ fontWeight: '600' }}>Terminate</span>
           </button>
         </div>,
