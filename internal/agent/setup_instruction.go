@@ -114,3 +114,35 @@ func getSetupInstructions(agentType, token, host, panelPath, publicKey string) [
 	}
 	return messages
 }
+
+func getUninstallInstructions(agentType, token string) []base.ProvisionMessage {
+	var messages []base.ProvisionMessage
+
+	switch agentType {
+	case "beszel":
+		messages = append(messages, base.ProvisionMessage{
+			Name:        "Linux Command",
+			MessageType: "command",
+			Content:     "curl -sL https://get.beszel.dev -o /tmp/install-agent.sh && chmod +x /tmp/install-agent.sh && /tmp/install-agent.sh -u",
+		})
+	case "ltstats":
+		messages = append(messages, base.ProvisionMessage{
+			Name:        "Linux Command",
+			MessageType: "command",
+			Content:     "systemctl disable --now ltstats_agent; rm /etc/systemd/system/ltstats_agent.service /etc/monitoring_token /bin/ltstats_agent\nsystemctl disable --now ltstats_ntp; rm /etc/systemd/system/ltstats_ntp.service /bin/ltstats_ntp",
+		})
+	case "hetrixtools":
+		messages = append(messages, base.ProvisionMessage{
+			Name:        "Linux Command",
+			MessageType: "command",
+			Content:     fmt.Sprintf("wget -4 -qO- https://raw.githubusercontent.com/hetrixtools/agent/master/hetrixtools_uninstall.sh | sudo bash -s %s", token),
+		})
+	default:
+		messages = append(messages, base.ProvisionMessage{
+			Name:        "Note",
+			MessageType: "note",
+			Content:     fmt.Sprintf("No specific uninstall command for agent type: %s", agentType),
+		})
+	}
+	return messages
+}
