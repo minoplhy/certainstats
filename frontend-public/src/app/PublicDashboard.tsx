@@ -63,8 +63,22 @@ function DashboardContent() {
   const [maxDays, setMaxDays] = useState<number>(30);
 
   const [searchQuery, setSearchQuery] = useState("");
-  const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
-  const [gridDensity, setGridDensity] = useState<"detailed" | "simplified">("detailed");
+  const [viewMode, setViewMode] = useState<"grid" | "list">(() => {
+    const saved = localStorage.getItem("certainstats_public_view_mode");
+    return (saved === "list" || saved === "grid") ? saved as "grid" | "list" : "grid";
+  });
+  const [gridDensity, setGridDensity] = useState<"detailed" | "simplified">(() => {
+    const saved = localStorage.getItem("certainstats_public_grid_density");
+    return (saved === "simplified" || saved === "detailed") ? saved as "detailed" | "simplified" : "detailed";
+  });
+
+  useEffect(() => {
+    localStorage.setItem("certainstats_public_view_mode", viewMode);
+  }, [viewMode]);
+
+  useEffect(() => {
+    localStorage.setItem("certainstats_public_grid_density", gridDensity);
+  }, [gridDensity]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 

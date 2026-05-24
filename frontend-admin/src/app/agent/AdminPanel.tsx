@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { useNavigate, useLocation, useParams } from "react-router-dom";
 
 import { fetchAPI } from "../../lib/api";
@@ -126,6 +126,18 @@ export default function AdminPanel() {
     }
     return 6;
   });
+
+  useEffect(() => {
+    localStorage.setItem("certainstats_active_hours", String(activeHours));
+  }, [activeHours]);
+
+  useEffect(() => {
+    localStorage.setItem("certainstats_agent_view_mode", viewMode);
+  }, [viewMode]);
+
+  useEffect(() => {
+    localStorage.setItem("certainstats_grid_density", gridDensity);
+  }, [gridDensity]);
 
   // Local Modals
   const [provisionResult, setProvisionResult] = useState<ProvisionResponse | null>(null);
