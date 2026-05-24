@@ -246,6 +246,18 @@ func main() {
 				alertApi.Get("/history", requireAuth(db, alert.HistoryAlertHandler(db)))
 				alertApi.Post("/", requireAuth(db, alert.CreateAlertHandler(db)))
 				alertApi.Post("/test", requireAuth(db, alert.TestAlertHandler(db)))
+
+				alertApi.Route("/targets", func(targetApi chi.Router) {
+					targetApi.Get("/", requireAuth(db, alert.ListTargetsHandler(db)))
+					targetApi.Post("/", requireAuth(db, alert.CreateTargetHandler(db)))
+					targetApi.Post("/test", requireAuth(db, alert.TestTargetHandler(db)))
+					targetApi.Route("/{id}", func(idApi chi.Router) {
+						idApi.Get("/", requireAuth(db, alert.GetTargetHandler(db)))
+						idApi.Put("/", requireAuth(db, alert.EditTargetHandler(db)))
+						idApi.Delete("/", requireAuth(db, alert.DeleteTargetHandler(db)))
+					})
+				})
+
 				alertApi.Route("/{id}", func(idApi chi.Router) {
 					idApi.Get("/", requireAuth(db, alert.GetAlertHandler(db)))
 					idApi.Put("/", requireAuth(db, alert.EditAlertHandler(db)))

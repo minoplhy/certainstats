@@ -31,17 +31,26 @@ type DestinationType string
 const (
 	DestWebhook DestinationType = "webhook"
 	DestDiscord DestinationType = "discord"
+	DestPreset  DestinationType = "preset"
 )
 
 // --- Main Structs ---
 type Alert struct {
 	AlertID  string       `json:"alert_id"`
-	UserID   string       `json:"user_id"`
+	UserID   string       `json:"-"`
 	Nickname string       `json:"nickname"`
 	Enabled  bool         `json:"enabled"`
 	Trigger  Trigger      `json:"trigger"`
 	Action   AlertAction  `json:"action"`
 	Agents   []AgentState `json:"agents"`
+}
+
+type AlertPayload struct {
+	Nickname string      `json:"nickname"`
+	Enabled  bool        `json:"enabled"`
+	Trigger  Trigger     `json:"trigger"`
+	Action   AlertAction `json:"action"`
+	Agents   []string    `json:"agents"` // List of AgentIDs
 }
 
 type Trigger struct {
@@ -52,9 +61,20 @@ type Trigger struct {
 }
 
 type AlertAction struct {
-	Type        DestinationType `json:"type"`        // e.g., "webhook"
-	Destination string          `json:"destination"` // e.g., "https://discord.com/api/webhooks/..."
-	Payload     string          `json:"payload"`     // A custom JSON template to send
+	Type        DestinationType `json:"type"`                  // e.g., "webhook", "discord", "preset"
+	TargetID    string          `json:"target_id,omitempty"`   // Referenced AlertTarget ID
+	Destination string          `json:"destination,omitempty"` // e.g., "https://discord.com/api/webhooks/..."
+	Payload     string          `json:"payload,omitempty"`     // A custom JSON template to send
+}
+
+type AlertTarget struct {
+	TargetID    string          `json:"target_id"`
+	UserID      string          `json:"-"`
+	Name        string          `json:"name"`
+	Type        DestinationType `json:"type"`
+	Destination string          `json:"destination"`
+	Payload     string          `json:"payload"`
+	CreatedAt   time.Time       `json:"created_at"`
 }
 
 type AgentState struct {
@@ -66,6 +86,7 @@ type AgentState struct {
 type AlertHistory struct {
 	HistoryID      string     `json:"history_id"`
 	AlertID        string     `json:"alert_id"`
+	UserID         string     `json:"-"` // Denormalized for ultra-fast query
 	AgentID        string     `json:"agent_id"`
 	AgentNickname  string     `json:"agent_nickname"`
 	AlertNickname  string     `json:"alert_nickname"`
@@ -74,4 +95,7 @@ type AlertHistory struct {
 	TriggerValue   float64    `json:"trigger_value"`
 	NotifiedStatus string     `json:"notified_status"`
 	Trigger        Trigger    `json:"trigger"`
+	TargetID       string     `json:"target_id,omitempty"`
+	TargetName     string     `json:"target_name,omitempty"`
 }
+

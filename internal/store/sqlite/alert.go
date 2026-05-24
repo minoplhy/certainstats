@@ -335,7 +335,7 @@ func (s *Store) AlertDelete(ctx context.Context, alertID string, userID string) 
 	return nil
 }
 
-func (s *Store) AlertTrigger(ctx context.Context, d store.Alert, agentID string, historyID string, violationValue float64, notifStatus string) error {
+func (s *Store) AlertTrigger(ctx context.Context, d store.Alert, agentID string, agentNickname string, historyID string, violationValue float64, notifStatus string, targetID string, targetName string) error {
 	now := time.Now()
 
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -356,10 +356,10 @@ func (s *Store) AlertTrigger(ctx context.Context, d store.Alert, agentID string,
 		return err
 	}
 
-	// Create a new History Log entry
-	_, err = tx.ExecContext(ctx, `INSERT INTO alert_history (history_id, alert_id, agent_id, triggered_at, trigger_value, notified_status) 
-             VALUES (?, ?, ?, ?, ?, ?)`,
-		historyID, d.AlertID, agentID, now, violationValue, notifStatus)
+	// Create a new History Log entry with all snapshot and denormalized columns
+	_, err = tx.ExecContext(ctx, `INSERT INTO alert_history (history_id, alert_id, user_id, agent_id, triggered_at, trigger_value, notified_status, target_id, target_name, agent_nickname, alert_nickname) 
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		historyID, d.AlertID, d.UserID, agentID, now, violationValue, notifStatus, targetID, targetName, agentNickname, d.Nickname)
 	if err != nil {
 		return err
 	}
@@ -498,8 +498,8 @@ func (s *Store) AlertHistoryListPaginated(ctx context.Context, userID string, pa
 	var conditions []string
 	var args []interface{}
 
-	// Always filter by userID
-	conditions = append(conditions, "a.user_id = ?")
+	// Direct filter by h.user_id instead of a.user_id to use the compound index
+	conditions = append(conditions, "h.user_id = ?")
 	args = append(args, userID)
 
 	switch status {
@@ -511,26 +511,18 @@ func (s *Store) AlertHistoryListPaginated(ctx context.Context, userID string, pa
 
 	if search != "" {
 		searchPattern := "%" + search + "%"
-		conditions = append(conditions, "(ag.nickname LIKE ? OR h.agent_id LIKE ? OR a.trigger_config LIKE ? OR a.nickname LIKE ?)")
-		args = append(args, searchPattern, searchPattern, searchPattern, searchPattern)
+		conditions = append(conditions, "(h.agent_nickname LIKE ? OR h.agent_id LIKE ? OR h.alert_nickname LIKE ?)")
+		args = append(args, searchPattern, searchPattern, searchPattern)
 	}
 
 	whereClause := "WHERE " + strings.Join(conditions, " AND ")
 
-	// Performance optimization: Avoid joining the large agents table for count queries
-	// unless we are actively filtering by its attributes (nickname/id/config).
-	var countJoinClause string
-	if search != "" {
-		countJoinClause = "LEFT JOIN agents ag ON h.agent_id = ag.agent_id"
-	}
-
+	// Zero-join count query! Extremely fast.
 	countQuery := fmt.Sprintf(`
 		SELECT COUNT(1)
 		FROM alert_history h
-		JOIN alerts a ON h.alert_id = a.alert_id
 		%s
-		%s
-	`, countJoinClause, whereClause)
+	`, whereClause)
 
 	var total int
 	err := s.db.QueryRowContext(ctx, countQuery, args...).Scan(&total)
@@ -541,15 +533,15 @@ func (s *Store) AlertHistoryListPaginated(ctx context.Context, userID string, pa
 	// Build final query arguments
 	queryArgs := append(args, limit, offset)
 
+	// Fetch history with a single LEFT JOIN to alerts on primary key to get trigger_config
 	query := fmt.Sprintf(`
 		SELECT 
 			h.history_id, h.alert_id, h.agent_id, 
-			COALESCE(NULLIF(ag.nickname, ''), h.agent_id),
+			COALESCE(NULLIF(h.agent_nickname, ''), h.agent_id),
 			h.triggered_at, h.resolved_at, h.trigger_value, h.notified_status,
-			a.trigger_config, a.nickname
+			a.trigger_config, h.alert_nickname, h.target_id, h.target_name
 		FROM alert_history h
-		JOIN alerts a ON h.alert_id = a.alert_id
-		LEFT JOIN agents ag ON h.agent_id = ag.agent_id
+		LEFT JOIN alerts a ON h.alert_id = a.alert_id
 		%s
 		ORDER BY h.triggered_at DESC
 		LIMIT ? OFFSET ?
@@ -565,13 +557,15 @@ func (s *Store) AlertHistoryListPaginated(ctx context.Context, userID string, pa
 	for rows.Next() {
 		var h alert.AlertHistory
 		var resolvedAt sql.NullTime
-		var triggerJSON string
+		var triggerJSON sql.NullString
+		var targetID, targetName sql.NullString
 
 		err := rows.Scan(
 			&h.HistoryID, &h.AlertID, &h.AgentID,
 			&h.AgentNickname,
 			&h.TriggeredAt, &resolvedAt, &h.TriggerValue, &h.NotifiedStatus,
 			&triggerJSON, &h.AlertNickname,
+			&targetID, &targetName,
 		)
 		if err != nil {
 			return nil, 0, err
@@ -581,8 +575,17 @@ func (s *Store) AlertHistoryListPaginated(ctx context.Context, userID string, pa
 			h.ResolvedAt = &resolvedAt.Time
 		}
 
-		if err := json.Unmarshal([]byte(triggerJSON), &h.Trigger); err != nil {
-			// Log and continue, or ignore
+		if targetID.Valid {
+			h.TargetID = targetID.String
+		}
+		if targetName.Valid {
+			h.TargetName = targetName.String
+		}
+
+		if triggerJSON.Valid && triggerJSON.String != "" {
+			if err := json.Unmarshal([]byte(triggerJSON.String), &h.Trigger); err != nil {
+				// Log and continue
+			}
 		}
 
 		out = append(out, h)

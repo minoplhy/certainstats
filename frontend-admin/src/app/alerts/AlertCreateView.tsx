@@ -17,7 +17,8 @@ export default function AlertCreateView() {
   const [operator, setOperator] = useState<Operator>(">");
   const [threshold, setThreshold] = useState(80);
   const [duration, setDuration] = useState("5m");
-  const [destType, setDestType] = useState<DestinationType>("webhook");
+  const [destType, setDestType] = useState<DestinationType>("preset");
+  const [targetId, setTargetId] = useState("");
   const [destination, setDestination] = useState("");
   const [payload, setPayload] = useState("");
   const [selectedAgents, setSelectedAgents] = useState<string[]>([]);
@@ -39,8 +40,12 @@ export default function AlertCreateView() {
       alert("Please select at least one node.");
       return;
     }
-    if (!destination) {
+    if (destType !== "preset" && !destination) {
       alert("Please provide a notification destination.");
+      return;
+    }
+    if (destType === "preset" && !targetId) {
+      alert("Please select an alert target preset.");
       return;
     }
 
@@ -59,14 +64,15 @@ export default function AlertCreateView() {
           },
           action: {
             type: destType,
-            destination,
+            target_id: destType === "preset" ? targetId : undefined,
+            destination: destType === "preset" ? "" : destination,
             payload: payload
           },
           agents: selectedAgents
         })
       });
 
-      navigate("/alerts"); // Redirect back to dashboard (where AlertsPanel will be)
+      navigate("/alerts");
     } catch (err) {
       alert(err instanceof Error ? err.message : "Failed to create alert");
     } finally {
@@ -77,8 +83,12 @@ export default function AlertCreateView() {
   const [testStatus, setTestStatus] = useState<{ type: 'success' | 'error', message: string } | null>(null);
 
   const handleTest = async () => {
-    if (!destination) {
+    if (destType !== "preset" && !destination) {
       setTestStatus({ type: 'error', message: 'Please provide a notification destination to test.' });
+      return;
+    }
+    if (destType === "preset" && !targetId) {
+      setTestStatus({ type: 'error', message: 'Please select a preset target to test.' });
       return;
     }
 
@@ -90,7 +100,8 @@ export default function AlertCreateView() {
         body: JSON.stringify({
           action: {
             type: destType,
-            destination,
+            target_id: destType === "preset" ? targetId : undefined,
+            destination: destType === "preset" ? "" : destination,
             payload: payload
           }
         })
@@ -113,92 +124,91 @@ export default function AlertCreateView() {
 
   return (
     <div className="mobile-p-sm" style={{ padding: '40px 24px' }}>
+      <div className="animate-fade-in mobile-gap-sm" style={{ maxWidth: '800px', margin: '0 auto' }}>
+        <div className="mobile-stack" style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '32px' }}>
+          <button 
+            type="button" 
+            onClick={() => navigate("/alerts")} 
+            className="btn-secondary" 
+            style={{ width: '36px', height: '36px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
+          >
+            <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>arrow_back</span>
+          </button>
+          <div>
+            <h1 className="font-display mobile-text-lg" style={{ fontSize: '24px', fontWeight: '700', marginBottom: '4px' }}>New Alert</h1>
+            <p style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Define how and when you want to be notified.</p>
+          </div>
+        </div>
 
-        <div className="animate-fade-in mobile-gap-sm" style={{ maxWidth: '800px', margin: '0 auto' }}>
+        <form onSubmit={handleSave} style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+          {testStatus && (
+            <div style={{
+              padding: '16px',
+              borderRadius: '8px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '12px',
+              background: testStatus.type === 'success' ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)',
+              border: `1px solid ${testStatus.type === 'success' ? '#10b981' : '#ef4444'}`,
+              color: testStatus.type === 'success' ? '#10b981' : '#ef4444',
+              fontSize: '14px',
+              fontWeight: '500'
+            }}>
+              <span className="material-symbols-outlined">
+                {testStatus.type === 'success' ? 'check_circle' : 'error'}
+              </span>
+              {testStatus.message}
+            </div>
+          )}
 
-          <div className="mobile-stack" style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '32px' }}>
+          <AlertFormFields
+            nickname={nickname}
+            setNickname={setNickname}
+            enabled={enabled}
+            setEnabled={setEnabled}
+            type={type}
+            setType={setType}
+            operator={operator}
+            setOperator={setOperator}
+            threshold={threshold}
+            setThreshold={setThreshold}
+            duration={duration}
+            setDuration={setDuration}
+            destType={destType}
+            setDestType={setDestType}
+            targetId={targetId}
+            setTargetId={setTargetId}
+            destination={destination}
+            setDestination={setDestination}
+            payload={payload}
+            setPayload={setPayload}
+            selectedAgents={selectedAgents}
+            setSelectedAgents={setSelectedAgents}
+            agents={agents}
+          />
+
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '16px', marginTop: '16px' }} className="mobile-stack">
             <button 
               type="button" 
-              onClick={() => navigate("/alerts")} 
-              className="btn-secondary" 
-              style={{ padding: '8px', borderRadius: '50%', display: 'flex' }}
+              onClick={handleTest} 
+              disabled={saving} 
+              className="btn-secondary mobile-full" 
+              style={{ padding: '12px 24px', display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'center' }}
             >
-              <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>arrow_back</span>
+              <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>send</span>
+              Test Notification
             </button>
-            <div>
-              <h1 className="font-display mobile-text-lg" style={{ fontSize: '24px', fontWeight: '700', marginBottom: '4px' }}>New Alert</h1>
-              <p style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Define how and when you want to be notified.</p>
-            </div>
+            <button 
+              type="submit" 
+              disabled={saving} 
+              className="btn-primary mobile-full" 
+              style={{ padding: '12px 32px' }}
+            >
+              {saving ? "Saving..." : "Create Alert"}
+            </button>
           </div>
-
-          <form onSubmit={handleSave} style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-
-            {testStatus && (
-              <div style={{
-                padding: '16px',
-                borderRadius: '8px',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '12px',
-                background: testStatus.type === 'success' ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)',
-                border: `1px solid ${testStatus.type === 'success' ? '#10b981' : '#ef4444'}`,
-                color: testStatus.type === 'success' ? '#10b981' : '#ef4444',
-                fontSize: '14px',
-                fontWeight: '500'
-              }}>
-                <span className="material-symbols-outlined">
-                  {testStatus.type === 'success' ? 'check_circle' : 'error'}
-                </span>
-                {testStatus.message}
-              </div>
-            )}
-
-            <AlertFormFields
-              nickname={nickname}
-              setNickname={setNickname}
-              enabled={enabled}
-              setEnabled={setEnabled}
-              type={type}
-              setType={setType}
-              operator={operator}
-              setOperator={setOperator}
-              threshold={threshold}
-              setThreshold={setThreshold}
-              duration={duration}
-              setDuration={setDuration}
-              destType={destType}
-              setDestType={setDestType}
-              destination={destination}
-              setDestination={setDestination}
-              payload={payload}
-              setPayload={setPayload}
-              selectedAgents={selectedAgents}
-              setSelectedAgents={setSelectedAgents}
-              agents={agents}
-            />
-
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '16px', marginTop: '16px' }} className="mobile-stack">
-              <button 
-                type="button" 
-                onClick={handleTest} 
-                disabled={saving} 
-                className="btn-secondary mobile-full" 
-                style={{ padding: '12px 24px', display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'center' }}
-              >
-                <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>send</span>
-                Test Notification
-              </button>
-              <button 
-                type="submit" 
-                disabled={saving} 
-                className="btn-primary mobile-full" 
-                style={{ padding: '12px 32px' }}
-              >
-                {saving ? "Saving..." : "Create Alert"}
-              </button>
-            </div>
-          </form>
-        </div>
+        </form>
       </div>
+    </div>
   );
 }

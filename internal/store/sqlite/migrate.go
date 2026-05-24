@@ -104,6 +104,17 @@ func (s *Store) migrate() error {
 			notified_status TEXT NOT NULL
 		)`,
 
+		`CREATE TABLE IF NOT EXISTS alert_targets (
+			target_id   TEXT PRIMARY KEY,
+			user_id     TEXT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+			name        TEXT NOT NULL,
+			type        TEXT NOT NULL,
+			destination TEXT NOT NULL,
+			payload     TEXT NOT NULL DEFAULT '',
+			created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)`,
+
+		`CREATE INDEX IF NOT EXISTS idx_alert_targets_user ON alert_targets(user_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_alert_history_alert ON alert_history(alert_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_alert_history_agent ON alert_history(agent_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_alert_history_triggered_desc ON alert_history(triggered_at DESC)`,
@@ -144,6 +155,16 @@ func (s *Store) migrate() error {
 		`ALTER TABLE dashboard_agents ADD COLUMN sort_key TEXT DEFAULT NULL`,
 		`ALTER TABLE agents ADD COLUMN note TEXT DEFAULT ''`,
 		`ALTER TABLE alerts ADD COLUMN nickname TEXT DEFAULT ''`,
+		`ALTER TABLE alert_history ADD COLUMN user_id TEXT DEFAULT ''`,
+		`ALTER TABLE alert_history ADD COLUMN target_id TEXT DEFAULT ''`,
+		`ALTER TABLE alert_history ADD COLUMN target_name TEXT DEFAULT ''`,
+		`ALTER TABLE alert_history ADD COLUMN agent_nickname TEXT DEFAULT ''`,
+		`ALTER TABLE alert_history ADD COLUMN alert_nickname TEXT DEFAULT ''`,
+		`CREATE INDEX IF NOT EXISTS idx_alert_history_user ON alert_history(user_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_alert_history_user_triggered ON alert_history(user_id, triggered_at DESC)`,
+		`UPDATE alert_history SET user_id = (SELECT user_id FROM agents WHERE agents.agent_id = alert_history.agent_id) WHERE COALESCE(user_id, '') = ''`,
+		`UPDATE alert_history SET alert_nickname = (SELECT nickname FROM alerts WHERE alerts.alert_id = alert_history.alert_id) WHERE COALESCE(alert_nickname, '') = ''`,
+		`UPDATE alert_history SET agent_nickname = (SELECT nickname FROM agents WHERE agents.agent_id = alert_history.agent_id) WHERE COALESCE(agent_nickname, '') = ''`,
 	} {
 		if _, err := s.db.Exec(m); err != nil {
 			// Ignore "duplicate column" — expected on every boot after first run.

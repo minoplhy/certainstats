@@ -77,12 +77,19 @@ type AlertsStore interface {
 	AlertUpdate(ctx context.Context, d Alert, newAgents []string) error
 	AlertDelete(ctx context.Context, alertID string, userID string) error
 
-	AlertTrigger(ctx context.Context, d Alert, agentID string, historyID string, violationValue float64, notifStatus string) error
+	AlertTrigger(ctx context.Context, d Alert, agentID string, agentNickname string, historyID string, violationValue float64, notifStatus string, targetID string, targetName string) error
 	AlertResolve(ctx context.Context, d Alert, agentID string) error
 
 	GetActiveAlertsWithState(ctx context.Context) ([]Alert, map[string]AgentInfo, error)
 
 	AlertHistoryListPaginated(ctx context.Context, userID string, page, limit int, search string, status string) ([]c.AlertHistory, int, error)
+
+	// Target CRUD Operations
+	TargetCreate(ctx context.Context, t c.AlertTarget) error
+	TargetList(ctx context.Context, userID string) ([]c.AlertTarget, error)
+	TargetGetByID(ctx context.Context, targetID string, userID string) (c.AlertTarget, error)
+	TargetUpdate(ctx context.Context, t c.AlertTarget) error
+	TargetDelete(ctx context.Context, targetID string, userID string) error
 }
 
 // UserStore handles user account lookups and updates.

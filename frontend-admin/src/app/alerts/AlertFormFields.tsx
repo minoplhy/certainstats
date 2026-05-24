@@ -1,5 +1,8 @@
 import React from "react";
-import { Agent, TriggerType, Operator, DestinationType } from "../../types";
+import { Link } from "react-router-dom";
+import { Agent, TriggerType, Operator, DestinationType, AlertTarget } from "../../types";
+import { fetchAPI } from "../../lib/api";
+import PayloadTemplateGuide from "../common/PayloadTemplateGuide";
 
 interface AlertFormFieldsProps {
   nickname: string;
@@ -16,6 +19,8 @@ interface AlertFormFieldsProps {
   setDuration: (v: string) => void;
   destType: DestinationType;
   setDestType: (v: DestinationType) => void;
+  targetId?: string;
+  setTargetId?: (v: string) => void;
   destination: string;
   setDestination: (v: string) => void;
   payload: string;
@@ -40,6 +45,8 @@ export default function AlertFormFields({
   setDuration,
   destType,
   setDestType,
+  targetId = "",
+  setTargetId = () => {},
   destination,
   setDestination,
   payload,
@@ -49,11 +56,23 @@ export default function AlertFormFields({
   agents,
 }: AlertFormFieldsProps) {
 
+  const [targets, setTargets] = React.useState<AlertTarget[]>([]);
+  React.useEffect(() => {
+    fetchAPI<AlertTarget[]>("/api/alerts/targets")
+      .then(res => setTargets(res || []))
+      .catch((err: any) => {
+        console.error("Failed to load targets", err);
+        setTargets([]);
+      });
+  }, []);
+
   const toggleAgent = (id: string) => {
     setSelectedAgents(prev =>
       prev.includes(id) ? prev.filter(a => a !== id) : [...prev, id]
     );
   };
+
+  const selectedTarget = (targets || []).find(t => t.target_id === targetId);
 
   return (
     <>
@@ -198,101 +217,118 @@ export default function AlertFormFields({
             <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Channel Type</label>
             <select
               value={destType}
-              onChange={(e) => setDestType(e.target.value as DestinationType)}
+              onChange={(e) => {
+                const val = e.target.value as DestinationType;
+                setDestType(val);
+                if (val === "preset" && (targets || []).length > 0 && !targetId) {
+                  setTargetId(targets[0].target_id);
+                }
+              }}
               className="input-field"
               style={{ width: '100%', cursor: 'pointer' }}
             >
+              <option value="preset">Preset Target Channel</option>
               <option value="discord">Discord Webhook</option>
               <option value="webhook">Custom Webhook URL</option>
             </select>
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Webhook Endpoint URL</label>
-            <input
-              type="text"
-              value={destination}
-              onChange={(e) => setDestination(e.target.value)}
-              className="input-field"
-              placeholder="https://..."
-            />
-          </div>
+          {destType === "preset" ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  Select Preset Target
+                </label>
+                <Link to="/alerts?tab=targets" style={{ fontSize: "11px", color: "var(--accent-primary)", fontWeight: "600", textDecoration: "none" }}>
+                  Manage Targets
+                </Link>
+              </div>
+              {(targets || []).length === 0 ? (
+                <div style={{
+                  padding: "10px 14px",
+                  borderRadius: "8px",
+                  background: "rgba(255,255,255,0.02)",
+                  border: "1px solid var(--border-color)",
+                  color: "var(--text-secondary)",
+                  fontSize: "13px"
+                }}>
+                  No targets configured. <Link to="/alerts?tab=targets" style={{ color: "var(--accent-primary)" }}>Configure here first.</Link>
+                </div>
+              ) : (
+                <select
+                  value={targetId}
+                  onChange={(e) => setTargetId(e.target.value)}
+                  className="input-field"
+                  style={{ width: '100%', cursor: 'pointer' }}
+                >
+                  <option value="">-- Select a Preset Target --</option>
+                  {(targets || []).map(t => (
+                    <option key={t.target_id} value={t.target_id}>{t.name} ({t.type})</option>
+                  ))}
+                </select>
+              )}
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Webhook Endpoint URL</label>
+              <input
+                type="text"
+                value={destination}
+                onChange={(e) => setDestination(e.target.value)}
+                className="input-field"
+                placeholder="https://..."
+              />
+            </div>
+          )}
         </div>
 
+        {destType === "preset" && selectedTarget && (
+          <div style={{
+            marginBottom: "20px",
+            padding: "12px 16px",
+            background: "rgba(255,255,255,0.01)",
+            border: "1px solid var(--border-color)",
+            borderRadius: "8px"
+          }}>
+            <div style={{ fontSize: "12px", color: "var(--text-secondary)", fontWeight: "600" }}>Active target details:</div>
+            <div style={{ display: "flex", gap: "12px", marginTop: "8px" }}>
+              <div style={{ fontSize: "11px", color: "var(--text-secondary)", opacity: 0.8 }}>URL:</div>
+              <div style={{ fontSize: "11px", color: "var(--text-primary)", wordBreak: "break-all" }}>{selectedTarget.destination}</div>
+            </div>
+            {selectedTarget.payload && (
+              <div style={{ display: "flex", flexDirection: "column", gap: "4px", marginTop: "8px" }}>
+                <div style={{ fontSize: "11px", color: "var(--text-secondary)", opacity: 0.8 }}>Default template:</div>
+                <pre style={{
+                  fontSize: "11px",
+                  background: "var(--bg-secondary)",
+                  padding: "8px",
+                  borderRadius: "6px",
+                  overflowX: "auto",
+                  margin: 0
+                }}>{selectedTarget.payload}</pre>
+              </div>
+            )}
+          </div>
+        )}
+
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Custom Payload Template (Optional JSON)</label>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              {destType === "preset" ? "Payload Override (Optional JSON)" : "Custom Payload Template (Optional JSON)"}
+            </label>
+            {destType === "preset" && (
+              <span style={{ fontSize: "11px" }} className="text-secondary">If left empty, the preset target's default template is used.</span>
+            )}
+          </div>
           <textarea
             value={payload}
             onChange={(e) => setPayload(e.target.value)}
             className="input-field"
             style={{ minHeight: '80px', fontFamily: 'var(--font-mono)', fontSize: '13px' }}
-            placeholder={'{\n  "text": "Agent {{NICKNAME}} is {{STATUS}}"\n}'}
+            placeholder={destType === "preset" ? 'Leave empty to use target default, or customize here...' : '{\n  "text": "Agent {{NICKNAME}} is {{STATUS}}"\n}'}
           />
           
-          <div style={{
-            marginTop: '12px',
-            padding: '16px',
-            background: 'var(--bg-secondary)',
-            borderRadius: '8px',
-            borderLeft: '4px solid var(--accent-primary)',
-            fontSize: '13px',
-            lineHeight: '1.6'
-          }}>
-            <p style={{ fontWeight: 'bold', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--text-primary)' }}>
-              <span className="material-symbols-outlined" style={{ fontSize: '16px', color: 'var(--accent-primary)' }}>info</span>
-              Custom Payload Template Guide
-            </p>
-            <p style={{ color: 'var(--text-secondary)', marginBottom: '12px', fontSize: '13px' }}>
-              Customize the JSON body of your webhook. If left empty, a standard notification payload is dispatched. Use the following placeholders to inject dynamic telemetry state:
-            </p>
-            
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 16px', fontFamily: 'var(--font-mono)', fontSize: '12px' }}>
-              <div>
-                <span style={{ color: 'var(--accent-primary)', fontWeight: 'bold' }}>{"{{AGENT_ID}}"}</span>
-                <span style={{ color: 'var(--text-secondary)', opacity: 0.8, marginLeft: '8px' }}>— Node ID</span>
-              </div>
-              <div>
-                <span style={{ color: 'var(--accent-primary)', fontWeight: 'bold' }}>{"{{NICKNAME}}"}</span>
-                <span style={{ color: 'var(--text-secondary)', opacity: 0.8, marginLeft: '8px' }}>— Readable Nickname</span>
-              </div>
-              <div>
-                <span style={{ color: 'var(--accent-primary)', fontWeight: 'bold' }}>{"{{STATUS}}"}</span>
-                <span style={{ color: 'var(--text-secondary)', opacity: 0.8, marginLeft: '8px' }}>— Alert state (FIRING/RESOLVED)</span>
-              </div>
-              <div>
-                <span style={{ color: 'var(--accent-primary)', fontWeight: 'bold' }}>{"{{VALUE}}"}</span>
-                <span style={{ color: 'var(--text-secondary)', opacity: 0.8, marginLeft: '8px' }}>— Current Value (e.g. 85.50%)</span>
-              </div>
-              <div>
-                <span style={{ color: 'var(--accent-primary)', fontWeight: 'bold' }}>{"{{TRIGGER_LABEL}}"}</span>
-                <span style={{ color: 'var(--text-secondary)', opacity: 0.8, marginLeft: '8px' }}>— Metric Label (e.g. CPU IO Wait)</span>
-              </div>
-              <div>
-                <span style={{ color: 'var(--accent-primary)', fontWeight: 'bold' }}>{"{{THRESHOLD}}"}</span>
-                <span style={{ color: 'var(--text-secondary)', opacity: 0.8, marginLeft: '8px' }}>— Condition Boundary</span>
-              </div>
-              <div>
-                <span style={{ color: 'var(--accent-primary)', fontWeight: 'bold' }}>{"{{TIME_TRIGGER}}"}</span>
-                <span style={{ color: 'var(--text-secondary)', opacity: 0.8, marginLeft: '8px' }}>— Breach/Offline Timestamp</span>
-              </div>
-              <div>
-                <span style={{ color: 'var(--accent-primary)', fontWeight: 'bold' }}>{"{{TIME_RESOLVED}}"}</span>
-                <span style={{ color: 'var(--text-secondary)', opacity: 0.8, marginLeft: '8px' }}>— Recovery/Online Timestamp</span>
-              </div>
-            </div>
-            
-            <div style={{
-              marginTop: '12px',
-              paddingTop: '8px',
-              borderTop: '1px solid var(--border-color)',
-              fontSize: '12px'
-            }}>
-              <p style={{ fontWeight: 'bold', color: 'var(--text-primary)', marginBottom: '4px' }}>Downtime & Discord Integration Note:</p>
-              <p style={{ color: 'var(--text-secondary)', opacity: 0.8, fontSize: '12px', margin: 0, lineHeight: '1.5' }}>
-                For Discord Webhooks, <code style={{ color: 'var(--accent-primary)' }}>{"{{TIME_TRIGGER}}"}</code> and <code style={{ color: 'var(--accent-primary)' }}>{"{{TIME_RESOLVED}}"}</code> render client-side relative timestamps dynamically. You can also use <code style={{ color: 'var(--accent-primary)' }}>{"{{DOWN_DURATION}}"}</code> (e.g., <code style={{ color: 'var(--text-primary)' }}>5m 12s</code>) on resolved notifications for offline events.
-              </p>
-            </div>
-          </div>
+          <PayloadTemplateGuide />
         </div>
       </div>
 

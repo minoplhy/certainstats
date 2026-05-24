@@ -4,7 +4,6 @@ import (
 	"certainstats/internal/base/alert"
 	ctx "certainstats/internal/context"
 	apiresponse "certainstats/internal/response"
-
 	"certainstats/internal/store"
 	"database/sql"
 	"encoding/json"
@@ -13,14 +12,6 @@ import (
 
 	"github.com/go-chi/chi/v5"
 )
-
-type EditAlertRequest struct {
-	Nickname string            `json:"nickname"`
-	Enabled  bool              `json:"enabled"`
-	Trigger  alert.Trigger     `json:"trigger"`
-	Action   alert.AlertAction `json:"action"`
-	Agents   []string          `json:"agents"` // List of AgentIDs
-}
 
 // EditAlertHandler handles PUT /api/alert/{id}
 func EditAlertHandler(s store.AlertsStore) http.HandlerFunc {
@@ -37,21 +28,39 @@ func EditAlertHandler(s store.AlertsStore) http.HandlerFunc {
 			return
 		}
 
-		var req EditAlertRequest
+		var req alert.AlertPayload
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			apiresponse.Error(w, http.StatusBadRequest, "Invalid request body")
 			return
 		}
 
-		if strings.TrimSpace(req.Nickname) == "" {
+		req.Nickname = strings.TrimSpace(req.Nickname)
+		if req.Nickname == "" {
 			apiresponse.Error(w, http.StatusBadRequest, "Alert name / nickname is required")
 			return
 		}
 
-		// Normalize: agent_down alerts don't have a threshold/operator
-		if req.Trigger.Type == alert.TriggerTypeDown {
-			req.Trigger.Operator = ""
-			req.Trigger.Threshold = 0
+		if err := ParseTrigger(&req.Trigger); err != nil {
+			apiresponse.Error(w, http.StatusBadRequest, err.Error())
+			return
+		}
+
+		if err := ParseAction(&req.Action); err != nil {
+			apiresponse.Error(w, http.StatusBadRequest, err.Error())
+			return
+		}
+
+		// Verify target ownership if preset is selected
+		if req.Action.Type == alert.DestPreset {
+			_, err := s.TargetGetByID(r.Context(), req.Action.TargetID, userID)
+			if err != nil {
+				if err == sql.ErrNoRows {
+					apiresponse.Error(w, http.StatusBadRequest, "Invalid or unauthorized preset target selected")
+				} else {
+					apiresponse.Error(w, http.StatusInternalServerError, "Database verification error")
+				}
+				return
+			}
 		}
 
 		updatedAlert := store.Alert{
