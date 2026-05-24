@@ -150,7 +150,7 @@ function EditDashboardForm() {
                 type="button"
                 onClick={() => navigate("/dashboards")}
                 className="btn-secondary"
-                style={{ padding: '8px', borderRadius: '50%', display: 'flex' }}
+                style={{ width: '36px', height: '36px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
               >
                 <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>arrow_back</span>
               </button>

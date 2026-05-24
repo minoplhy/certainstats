@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate, Link, useSearchParams } from "react-router-dom";
 import { fetchAPI } from "../../lib/api";
-import { Alert, AlertHistory } from "../../types";
+import { Alert, AlertHistory, AlertTarget } from "../../types";
 import DeleteConfirmModal from "../common/DeleteConfirmModal";
+import AlertTargetsTab from "../settings/AlertTargetsTab";
 
 function isUnauthorized(err: unknown): boolean {
   if (typeof err === "object" && err !== null && "status" in err && (err as any).status === 401) {
@@ -46,15 +47,32 @@ const getSuffix = (type: string) => {
 };
 
 const getAlertConditionString = (trigger: any) => {
+  if (!trigger || !trigger.type) {
+    return "Unknown Condition";
+  }
   if (trigger.type === "agent_down") {
     return TRIGGER_LABELS[trigger.type] || "Node Offline";
   }
-  return `${TRIGGER_LABELS[trigger.type] || trigger.type} ${trigger.operator} ${trigger.threshold}${getSuffix(trigger.type)}`;
+  return `${TRIGGER_LABELS[trigger.type] || trigger.type} ${trigger.operator || ""} ${trigger.threshold ?? 0}${getSuffix(trigger.type)}`;
 };
 
 export default function AlertsPanel({ onSelectNode }: { onSelectNode?: (id: string) => void }) {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const activeTab = searchParams.get("tab") === "targets" ? "targets" : "rules";
+
+  const setActiveTab = (tab: "rules" | "targets") => {
+    if (tab === "rules") {
+      setSearchParams({});
+    } else {
+      setSearchParams({ tab: "targets" });
+    }
+  };
+
+  const [showDropdown, setShowDropdown] = useState(false);
+
   const [alerts, setAlerts] = useState<Alert[]>([]);
+  const [targets, setTargets] = useState<AlertTarget[]>([]);
   const [history, setHistory] = useState<AlertHistory[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -62,6 +80,7 @@ export default function AlertsPanel({ onSelectNode }: { onSelectNode?: (id: stri
   const [totalPages, setTotalPages] = useState(0);
   const [isHistoryLoading, setIsHistoryLoading] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingTargets, setIsLoadingTargets] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [deleteConfirmAlertId, setDeleteConfirmAlertId] = useState<string | null>(null);
@@ -97,12 +116,17 @@ export default function AlertsPanel({ onSelectNode }: { onSelectNode?: (id: stri
     }
   };
 
-  // 1. Initial alerts configuration load
+  // 1. Initial alerts and targets configuration load
   useEffect(() => {
     setIsLoading(true);
-    fetchAPI<Alert[]>("/api/alerts")
-      .then((alertsData) => {
+    setIsLoadingTargets(true);
+    Promise.all([
+      fetchAPI<Alert[]>("/api/alerts"),
+      fetchAPI<AlertTarget[]>("/api/alerts/targets")
+    ])
+      .then(([alertsData, targetsData]) => {
         setAlerts(alertsData || []);
+        setTargets(targetsData || []);
       })
       .catch((err) => {
         if (isUnauthorized(err)) {
@@ -113,6 +137,7 @@ export default function AlertsPanel({ onSelectNode }: { onSelectNode?: (id: stri
       })
       .finally(() => {
         setIsLoading(false);
+        setIsLoadingTargets(false);
       });
   }, [navigate]);
 
@@ -180,15 +205,131 @@ export default function AlertsPanel({ onSelectNode }: { onSelectNode?: (id: stri
         <div className="mobile-stack" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px', gap: '16px', flexWrap: 'wrap' }}>
           <div>
             <h1 className="font-display mobile-text-lg" style={{ fontSize: '28px', fontWeight: '700', marginBottom: '8px' }}>Alerting</h1>
-            <p style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>Configure thresholds and notifications for your agent.</p>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>Configure thresholds, notification targets, and alert rules.</p>
           </div>
-          <Link to="/alerts/create" className="btn-primary mobile-full" style={{ gap: '8px', justifyContent: 'center' }}>
-            <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>add_alert</span>
-            New Alert
-          </Link>
+          <div style={{ position: "relative" }} className="mobile-full">
+            <button
+              onClick={() => setShowDropdown(prev => !prev)}
+              className="btn-primary mobile-full"
+              style={{ gap: '8px', justifyContent: 'center', display: 'flex', alignItems: 'center' }}
+            >
+              <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>add_circle</span>
+              Create
+              <span className="material-symbols-outlined" style={{ fontSize: '16px', marginLeft: '4px' }}>arrow_drop_down</span>
+            </button>
+
+            {showDropdown && (
+              <>
+                <div
+                  onClick={() => setShowDropdown(false)}
+                  style={{ position: 'fixed', inset: 0, zIndex: 999 }}
+                />
+                <div
+                  style={{
+                    position: "absolute",
+                    right: 0,
+                    top: "100%",
+                    marginTop: "8px",
+                    background: "var(--bg-secondary)",
+                    border: "1px solid var(--border-color)",
+                    borderRadius: "8px",
+                    boxShadow: "0 10px 15px -3px rgba(0, 0, 0, 0.5)",
+                    zIndex: 1000,
+                    minWidth: "180px",
+                    overflow: "hidden",
+                    display: "flex",
+                    flexDirection: "column"
+                  }}
+                >
+                  <Link
+                    to="/alerts/create"
+                    onClick={() => setShowDropdown(false)}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "10px",
+                      padding: "12px 16px",
+                      color: "var(--text-primary)",
+                      textDecoration: "none",
+                      fontSize: "13px",
+                      fontWeight: "500",
+                      transition: "background 0.2s"
+                    }}
+                    onMouseOver={e => e.currentTarget.style.background = "rgba(255,255,255,0.05)"}
+                    onMouseOut={e => e.currentTarget.style.background = "transparent"}
+                  >
+                    <span className="material-symbols-outlined text-accent" style={{ fontSize: "18px" }}>add_alert</span>
+                    New Alert Rule
+                  </Link>
+                  <Link
+                    to="/targets/create"
+                    onClick={() => setShowDropdown(false)}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "10px",
+                      padding: "12px 16px",
+                      color: "var(--text-primary)",
+                      textDecoration: "none",
+                      fontSize: "13px",
+                      fontWeight: "500",
+                      transition: "background 0.2s"
+                    }}
+                    onMouseOver={e => e.currentTarget.style.background = "rgba(255,255,255,0.05)"}
+                    onMouseOut={e => e.currentTarget.style.background = "transparent"}
+                  >
+                    <span className="material-symbols-outlined text-accent" style={{ fontSize: "18px" }}>forum</span>
+                    New Preset Target
+                  </Link>
+                </div>
+              </>
+            )}
+          </div>
         </div>
 
-        {isLoading ? (
+        {/* Tab Menu Selector */}
+        <div style={{ display: 'flex', gap: '8px', borderBottom: '1px solid var(--border-color)', marginBottom: '32px' }}>
+          <button
+            onClick={() => setActiveTab("rules")}
+            style={{
+              background: "none",
+              border: "none",
+              color: activeTab === "rules" ? "var(--text-primary)" : "var(--text-secondary)",
+              padding: "10px 16px",
+              fontSize: "14px",
+              fontWeight: "600",
+              cursor: "pointer",
+              borderBottom: activeTab === "rules" ? "2px solid var(--accent-primary)" : "2px solid transparent",
+              transition: "all 0.2s"
+            }}
+          >
+            Alert Rules & History
+          </button>
+          <button
+            onClick={() => setActiveTab("targets")}
+            style={{
+              background: "none",
+              border: "none",
+              color: activeTab === "targets" ? "var(--text-primary)" : "var(--text-secondary)",
+              padding: "10px 16px",
+              fontSize: "14px",
+              fontWeight: "600",
+              cursor: "pointer",
+              borderBottom: activeTab === "targets" ? "2px solid var(--accent-primary)" : "2px solid transparent",
+              transition: "all 0.2s"
+            }}
+          >
+            Preset Targets
+          </button>
+        </div>
+
+        {activeTab === "targets" ? (
+          <AlertTargetsTab
+            targets={targets}
+            setTargets={setTargets}
+            isLoadingTargets={isLoadingTargets}
+          />
+        ) : isLoading ? (
           <div style={{ padding: '64px', textAlign: 'center', color: 'var(--text-muted)' }}>
             <span className="material-symbols-outlined" style={{ fontSize: '32px', animation: 'spin 1s linear infinite' }}>sync</span>
             <p style={{ marginTop: '16px', fontSize: '14px', fontWeight: '500' }}>Loading alerts...</p>
@@ -323,7 +464,7 @@ export default function AlertsPanel({ onSelectNode }: { onSelectNode?: (id: stri
                             {getAlertConditionString(alert.trigger)} •
                           </span>
                         )}
-                        Targeting {alert.agents.length} nodes • Notify via {alert.action.type}
+                        Targeting {alert.agents.length} nodes • Notify via {alert.action.type === 'preset' ? 'Preset Target' : alert.action.type}
                       </p>
                     </div>
                   </div>
@@ -507,11 +648,11 @@ export default function AlertsPanel({ onSelectNode }: { onSelectNode?: (id: stri
                               <td style={{ padding: '16px', fontSize: '13px', color: 'var(--text-secondary)', verticalAlign: 'top' }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: '600', color: 'var(--text-primary)', marginBottom: '6px' }}>
                                   <span className="material-symbols-outlined" style={{ fontSize: '18px', color: 'var(--accent-primary)' }}>
-                                    {TRIGGER_ICONS[h.trigger.type] || "notifications"}
+                                    {TRIGGER_ICONS[h.trigger?.type || ""] || "notifications"}
                                   </span>
-                                  {h.alert_nickname || TRIGGER_LABELS[h.trigger.type] || h.trigger.type}
+                                  {h.alert_nickname || TRIGGER_LABELS[h.trigger?.type || ""] || h.trigger?.type || "Unknown Alert"}
                                 </div>
-                                {h.alert_nickname && (
+                                {h.alert_nickname && h.trigger?.type && (
                                   <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '4px' }}>
                                     Type: <span style={{ color: 'var(--text-secondary)', fontWeight: '500' }}>{TRIGGER_LABELS[h.trigger.type] || h.trigger.type}</span>
                                   </div>
@@ -519,7 +660,12 @@ export default function AlertsPanel({ onSelectNode }: { onSelectNode?: (id: stri
                                 <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
                                   Condition: <span style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--text-primary)', background: 'var(--bg-secondary)', padding: '2px 6px', borderRadius: '4px' }}>{getAlertConditionString(h.trigger)}</span>
                                 </div>
-                                {h.trigger.type !== "agent_down" && (
+                                {h.target_name && (
+                                  <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px' }}>
+                                    Target Preset: <span className="badge" style={{ background: 'rgba(99, 102, 241, 0.1)', color: 'var(--accent-primary)', fontSize: '11px', padding: '2px 6px', borderRadius: '4px', fontWeight: '600' }}>{h.target_name}</span>
+                                  </div>
+                                )}
+                                {h.trigger?.type && h.trigger.type !== "agent_down" && (
                                   <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '6px' }}>
                                     Breach Value: <strong style={{ color: 'var(--status-offline)' }}>{h.trigger_value.toFixed(1)}{getSuffix(h.trigger.type)}</strong>
                                   </div>

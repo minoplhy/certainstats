@@ -26,16 +26,34 @@ func (e *Routine) TriggerAlert(ctx context.Context, alert store.Alert, agentStat
 		WentOfflineAt: &now,
 	}
 
+	actionToDispatch := alert.Action
+	var targetID, targetName string
+	if alert.Action.Type == basealert.DestPreset && alert.Action.TargetID != "" {
+		target, err := e.Store.TargetGetByID(ctx, alert.Action.TargetID, alert.UserID)
+		if err == nil {
+			actionToDispatch.Type = target.Type
+			actionToDispatch.Destination = target.Destination
+			// Use action custom payload override if specified, otherwise target payload template
+			if actionToDispatch.Payload == "" {
+				actionToDispatch.Payload = target.Payload
+			}
+			targetID = target.TargetID
+			targetName = target.Name
+		} else {
+			log.Printf("ALERT RESOLVE TARGET FAILED: target %s missing or unauthorized, falling back: %v", alert.Action.TargetID, err)
+		}
+	}
+
 	// 1. Send the Notification (Webhook, Discord, etc.)
-	notifErr := notifications.DispatchNotification(alert.Action, nctx)
+	notifErr := notifications.DispatchNotification(actionToDispatch, nctx)
 	notifStatus := "success"
 	if notifErr != nil {
 		log.Printf("ALERT NOTIFY FAILED: %v", notifErr)
 		notifStatus = "failed"
 	}
 
-	// 2. Database Updates
-	err := e.Store.AlertTrigger(ctx, alert, agentState.AgentID, historyID, violationValue, notifStatus)
+	// 2. Database Updates with snapshot and denormalized columns
+	err := e.Store.AlertTrigger(ctx, alert, agentState.AgentID, info.Nickname, historyID, violationValue, notifStatus, targetID, targetName)
 	if err != nil {
 		return err
 	}
@@ -58,8 +76,23 @@ func (e *Routine) ResolveAlert(ctx context.Context, alert store.Alert, agentStat
 		ResolvedAt:    &now,
 	}
 
+	actionToDispatch := alert.Action
+	if alert.Action.Type == basealert.DestPreset && alert.Action.TargetID != "" {
+		target, err := e.Store.TargetGetByID(ctx, alert.Action.TargetID, alert.UserID)
+		if err == nil {
+			actionToDispatch.Type = target.Type
+			actionToDispatch.Destination = target.Destination
+			// Use action custom payload override if specified, otherwise target payload template
+			if actionToDispatch.Payload == "" {
+				actionToDispatch.Payload = target.Payload
+			}
+		} else {
+			log.Printf("ALERT RESOLVE TARGET FAILED: target %s missing or unauthorized, falling back: %v", alert.Action.TargetID, err)
+		}
+	}
+
 	// 1. Send "Resolved" Notification
-	notifErr := notifications.DispatchNotification(alert.Action, nctx)
+	notifErr := notifications.DispatchNotification(actionToDispatch, nctx)
 	if notifErr != nil {
 		log.Printf("ALERT RESOLVE NOTIFY FAILED: %v", notifErr)
 	}

@@ -132,7 +132,7 @@ export type TriggerType =
   | "disk_read"
   | "disk_write";
 export type Operator = ">" | "<" | "==";
-export type DestinationType = "webhook" | "discord";
+export type DestinationType = "webhook" | "discord" | "preset";
 
 export interface AlertTrigger {
   type:      TriggerType;
@@ -143,8 +143,18 @@ export interface AlertTrigger {
 
 export interface AlertAction {
   type:        DestinationType;
+  target_id?:  string;
   destination: string;
   payload:     string;
+}
+
+export interface AlertTarget {
+  target_id:   string;
+  name:        string;
+  type:        "webhook" | "discord";
+  destination: string;
+  payload:     string;
+  created_at:  string;
 }
 
 export interface AgentState {
@@ -154,7 +164,6 @@ export interface AgentState {
 
 export interface Alert {
   alert_id: string;
-  user_id:  string;
   nickname: string;
   enabled:  boolean;
   trigger:  AlertTrigger;
@@ -173,6 +182,8 @@ export interface AlertHistory {
   trigger_value: number;
   notified_status: string;
   trigger: AlertTrigger;
+  target_id?: string;
+  target_name?: string;
 }
 export interface AgentSnapshot {
   Timestamp: string;

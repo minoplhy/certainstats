@@ -2,6 +2,7 @@ package alert
 
 import (
 	"certainstats/internal/base/alert"
+	ctx "certainstats/internal/context"
 	"certainstats/internal/notifications"
 	apiresponse "certainstats/internal/response"
 
@@ -22,8 +23,23 @@ func TestAlertHandler(s store.AlertsStore) http.HandlerFunc {
 			return
 		}
 
+		action := req.Action
+		if action.Type == alert.DestPreset && action.TargetID != "" {
+			userID := r.Context().Value(ctx.UserIDKey).(string)
+			target, err := s.TargetGetByID(r.Context(), action.TargetID, userID)
+			if err != nil {
+				apiresponse.Error(w, http.StatusBadRequest, "Failed to resolve target: "+err.Error())
+				return
+			}
+			action.Type = target.Type
+			action.Destination = target.Destination
+			if action.Payload == "" {
+				action.Payload = target.Payload
+			}
+		}
+
 		// Dispatch a dummy notification
-		err := notifications.DispatchNotification(req.Action, notifications.NotificationContext{
+		err := notifications.DispatchNotification(action, notifications.NotificationContext{
 			AgentID:     "agt_test123",
 			Nickname:    "Test Node",
 			TriggerType: "cpu_usage",

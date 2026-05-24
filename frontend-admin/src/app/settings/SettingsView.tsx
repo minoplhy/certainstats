@@ -76,7 +76,7 @@ export default function SettingsView() {
     return { browser, platform };
   };
 
-  const handleSubmit = async (e: React.SubmitEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (newPassword !== confirmPassword) {
       setMessage({ type: "error", text: "New passwords do not match" });
@@ -107,199 +107,199 @@ export default function SettingsView() {
 
   return (
     <div style={{ padding: "40px 24px", maxWidth: "960px", margin: "0 auto", width: '100%' }} className="animate-fade-in mobile-p-sm">
-          <header style={{ marginBottom: "32px" }}>
-            <h1 className="font-display font-bold text-2xl text-primary mobile-text-lg" style={{ letterSpacing: "-0.02em" }}>
-              User Settings
-            </h1>
-            <p className="text-secondary text-sm" style={{ marginTop: "4px" }}>
-              Manage your account security, devices, and preferences.
-            </p>
-          </header>
+      <header style={{ marginBottom: "24px" }}>
+        <h1 className="font-display font-bold text-2xl text-primary mobile-text-lg" style={{ letterSpacing: "-0.02em" }}>
+          User Settings
+        </h1>
+        <p className="text-secondary text-sm" style={{ marginTop: "4px" }}>
+          Manage your account security, connected devices, and personal preferences.
+        </p>
+      </header>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: '32px', alignItems: 'start' }}>
-            {/* Password Change Card */}
-            <div className="card" style={{ width: "100%" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "24px" }}>
-                <span className="material-symbols-outlined text-accent" style={{ fontSize: "24px" }}>lock</span>
-                <h2 className="font-display font-semibold text-lg text-primary">Security</h2>
-              </div>
-
-              <form onSubmit={handleSubmit} className="flex-col gap-4">
-                <div className="flex-col gap-2">
-                  <label className="text-xs font-semibold text-muted uppercase" style={{ letterSpacing: "0.05em" }}>
-                    Current Password
-                  </label>
-                  <input
-                    type="password"
-                    className="input-field"
-                    placeholder="••••••••"
-                    value={oldPassword}
-                    onChange={(e) => setOldPassword(e.target.value)}
-                    required
-                  />
-                </div>
-
-                <div className="flex-col gap-2">
-                  <label className="text-xs font-semibold text-muted uppercase" style={{ letterSpacing: "0.05em" }}>
-                    New Password
-                  </label>
-                  <input
-                    type="password"
-                    className="input-field"
-                    placeholder="••••••••"
-                    value={newPassword}
-                    onChange={(e) => setNewPassword(e.target.value)}
-                    required
-                  />
-                </div>
-
-                <div className="flex-col gap-2">
-                  <label className="text-xs font-semibold text-muted uppercase" style={{ letterSpacing: "0.05em" }}>
-                    Confirm New Password
-                  </label>
-                  <input
-                    type="password"
-                    className="input-field"
-                    placeholder="••••••••"
-                    value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
-                    required
-                  />
-                </div>
-
-                {message && (
-                  <div style={{
-                    padding: "12px 16px",
-                    borderRadius: "8px",
-                    fontSize: "13px",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "8px",
-                    background: message.type === "success" ? "rgba(16, 185, 129, 0.1)" : "rgba(239, 68, 68, 0.1)",
-                    color: message.type === "success" ? "var(--status-online)" : "var(--status-offline)",
-                    border: `1px solid ${message.type === "success" ? "rgba(16, 185, 129, 0.2)" : "rgba(239, 68, 68, 0.2)"}`,
-                    marginTop: "8px"
-                  }}>
-                    <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>
-                      {message.type === "success" ? "check_circle" : "error"}
-                    </span>
-                    {message.text}
-                  </div>
-                )}
-
-                <div style={{ marginTop: "12px" }}>
-                  <button
-                    type="submit"
-                    className="btn-primary w-full"
-                    disabled={loading}
-                  >
-                    {loading ? "Updating..." : "Update Password"}
-                  </button>
-                </div>
-              </form>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: '32px', alignItems: 'start' }}>
+        {/* Password Change Card */}
+          <div className="card" style={{ width: "100%" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "24px" }}>
+              <span className="material-symbols-outlined text-accent" style={{ fontSize: "24px" }}>lock</span>
+              <h2 className="font-display font-semibold text-lg text-primary">Security</h2>
             </div>
 
-            {/* Active Sessions Card */}
-            <div className="card" style={{ width: "100%" }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "24px" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-                  <span className="material-symbols-outlined text-accent" style={{ fontSize: "24px" }}>devices</span>
-                  <h2 className="font-display font-semibold text-lg text-primary">Connected Devices</h2>
+            <form onSubmit={handleSubmit} className="flex-col gap-4">
+              <div className="flex-col gap-2">
+                <label className="text-xs font-semibold text-muted uppercase" style={{ letterSpacing: "0.05em" }}>
+                  Current Password
+                </label>
+                <input
+                  type="password"
+                  className="input-field"
+                  placeholder="••••••••"
+                  value={oldPassword}
+                  onChange={(e) => setOldPassword(e.target.value)}
+                  required
+                />
+              </div>
+
+              <div className="flex-col gap-2">
+                <label className="text-xs font-semibold text-muted uppercase" style={{ letterSpacing: "0.05em" }}>
+                  New Password
+                </label>
+                <input
+                  type="password"
+                  className="input-field"
+                  placeholder="••••••••"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  required
+                />
+              </div>
+
+              <div className="flex-col gap-2">
+                <label className="text-xs font-semibold text-muted uppercase" style={{ letterSpacing: "0.05em" }}>
+                  Confirm New Password
+                </label>
+                <input
+                  type="password"
+                  className="input-field"
+                  placeholder="••••••••"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  required
+                />
+              </div>
+
+              {message && (
+                <div style={{
+                  padding: "12px 16px",
+                  borderRadius: "8px",
+                  fontSize: "13px",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px",
+                  background: message.type === "success" ? "rgba(16, 185, 129, 0.1)" : "rgba(239, 68, 68, 0.1)",
+                  color: message.type === "success" ? "var(--status-online)" : "var(--status-offline)",
+                  border: `1px solid ${message.type === "success" ? "rgba(16, 185, 129, 0.2)" : "rgba(239, 68, 68, 0.2)"}`,
+                  marginTop: "8px"
+                }}>
+                  <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>
+                    {message.type === "success" ? "check_circle" : "error"}
+                  </span>
+                  {message.text}
                 </div>
-                {sessions.length > 1 && (
-                  <button
-                    onClick={handleEjectOthers}
+              )}
+
+              <div style={{ marginTop: "12px" }}>
+                <button
+                  type="submit"
+                  className="btn-primary w-full"
+                  disabled={loading}
+                >
+                  {loading ? "Updating..." : "Update Password"}
+                </button>
+              </div>
+            </form>
+          </div>
+
+          {/* Active Sessions Card */}
+          <div className="card" style={{ width: "100%" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "24px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                <span className="material-symbols-outlined text-accent" style={{ fontSize: "24px" }}>devices</span>
+                <h2 className="font-display font-semibold text-lg text-primary">Connected Devices</h2>
+              </div>
+              {sessions.length > 1 && (
+                <button
+                  onClick={handleEjectOthers}
+                  style={{
+                    fontSize: "11px",
+                    padding: "6px 12px",
+                    background: "rgba(239, 68, 68, 0.1)",
+                    border: "1px solid rgba(239, 68, 68, 0.2)",
+                    color: "var(--status-offline)",
+                    cursor: "pointer",
+                    borderRadius: "6px",
+                    fontWeight: "600"
+                  }}
+                >
+                  Revoke Others
+                </button>
+              )}
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+              {sessions.map((sess) => {
+                const { browser, platform } = parseUA(sess.user_agent);
+                const createdTime = new Date(sess.created_at).toLocaleDateString();
+                const lastTime = new Date(sess.last_connected_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+                return (
+                  <div
+                    key={sess.token_prefix}
                     style={{
-                      fontSize: "11px",
-                      padding: "6px 12px",
-                      background: "rgba(239, 68, 68, 0.1)",
-                      border: "1px solid rgba(239, 68, 68, 0.2)",
-                      color: "var(--status-offline)",
-                      cursor: "pointer",
-                      borderRadius: "6px",
-                      fontWeight: "600"
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      padding: "16px",
+                      borderRadius: "10px",
+                      background: sess.is_current ? "rgba(99, 102, 241, 0.05)" : "rgba(255, 255, 255, 0.02)",
+                      border: sess.is_current ? "1px solid rgba(99, 102, 241, 0.2)" : "1px solid var(--border-color)",
                     }}
                   >
-                    Revoke Others
-                  </button>
-                )}
-              </div>
-
-              <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-                {sessions.map((sess) => {
-                  const { browser, platform } = parseUA(sess.user_agent);
-                  const createdTime = new Date(sess.created_at).toLocaleDateString();
-                  const lastTime = new Date(sess.last_connected_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-
-                  return (
-                    <div
-                      key={sess.token_prefix}
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        padding: "16px",
-                        borderRadius: "10px",
-                        background: sess.is_current ? "rgba(99, 102, 241, 0.05)" : "rgba(255, 255, 255, 0.02)",
-                        border: sess.is_current ? "1px solid rgba(99, 102, 241, 0.2)" : "1px solid var(--border-color)",
-                      }}
-                    >
-                      <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
-                        <span className="material-symbols-outlined" style={{ fontSize: "28px", color: sess.is_current ? "var(--accent-primary)" : "var(--text-secondary)" }}>
-                          {sess.user_agent.toLowerCase().includes("mobi") ? "phone_iphone" : "desktop_windows"}
-                        </span>
-                        <div>
-                          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                            <span style={{ fontSize: "14px", fontWeight: "600", color: "var(--text-primary)" }}>
-                              {browser.name} on {platform}
+                    <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
+                      <span className="material-symbols-outlined" style={{ fontSize: "28px", color: sess.is_current ? "var(--accent-primary)" : "var(--text-secondary)" }}>
+                        {sess.user_agent.toLowerCase().includes("mobi") ? "phone_iphone" : "desktop_windows"}
+                      </span>
+                      <div>
+                        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                          <span style={{ fontSize: "14px", fontWeight: "600", color: "var(--text-primary)" }}>
+                            {browser.name} on {platform}
+                          </span>
+                          {sess.is_current && (
+                            <span style={{
+                              fontSize: "10px",
+                              fontWeight: "bold",
+                              padding: "2px 6px",
+                              borderRadius: "4px",
+                              background: "rgba(99, 102, 241, 0.2)",
+                              color: "var(--accent-primary)"
+                            }}>
+                              This Device
                             </span>
-                            {sess.is_current && (
-                              <span style={{
-                                fontSize: "10px",
-                                fontWeight: "bold",
-                                padding: "2px 6px",
-                                borderRadius: "4px",
-                                background: "rgba(99, 102, 241, 0.2)",
-                                color: "var(--accent-primary)"
-                              }}>
-                                This Device
-                              </span>
-                            )}
-                          </div>
-                          <div style={{ fontSize: "12px", color: "var(--text-secondary)", marginTop: "4px", opacity: 0.8 }}>
-                            IP: {sess.ip_address} • Connected {createdTime}
-                          </div>
-                          <div style={{ fontSize: "11px", color: "var(--text-secondary)", marginTop: "2px", opacity: 0.6 }}>
-                            Last active: {sess.is_current ? "Active now" : `Last seen at ${lastTime}`}
-                          </div>
+                          )}
+                        </div>
+                        <div style={{ fontSize: "12px", color: "var(--text-secondary)", marginTop: "4px", opacity: 0.8 }}>
+                          IP: {sess.ip_address} • Connected {createdTime}
+                        </div>
+                        <div style={{ fontSize: "11px", color: "var(--text-secondary)", marginTop: "2px", opacity: 0.6 }}>
+                          Last active: {sess.is_current ? "Active now" : `Last seen at ${lastTime}`}
                         </div>
                       </div>
-
-                      <button
-                        onClick={() => handleEject(sess.token_prefix)}
-                        style={{
-                          padding: "6px",
-                          borderRadius: "6px",
-                          border: "none",
-                          background: "transparent",
-                          cursor: "pointer",
-                          display: "flex",
-                          alignItems: "center",
-                          color: "var(--text-secondary)",
-                          transition: "color 0.2s"
-                        }}
-                        onMouseOver={(e) => e.currentTarget.style.color = "var(--status-offline)"}
-                        onMouseOut={(e) => e.currentTarget.style.color = "var(--text-secondary)"}
-                        title="Revoke session"
-                      >
-                        <span className="material-symbols-outlined" style={{ fontSize: "20px" }}>logout</span>
-                      </button>
                     </div>
-                  );
-                })}
-              </div>
+
+                    <button
+                      onClick={() => handleEject(sess.token_prefix)}
+                      style={{
+                        padding: "6px",
+                        borderRadius: "6px",
+                        border: "none",
+                        background: "transparent",
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        color: "var(--text-secondary)",
+                        transition: "color 0.2s"
+                      }}
+                      onMouseOver={(e) => e.currentTarget.style.color = "var(--status-offline)"}
+                      onMouseOut={(e) => e.currentTarget.style.color = "var(--text-secondary)"}
+                      title="Revoke session"
+                    >
+                      <span className="material-symbols-outlined" style={{ fontSize: "20px" }}>logout</span>
+                    </button>
+                  </div>
+                );
+              })}
             </div>
           </div>
+        </div>
     </div>
   );
 }

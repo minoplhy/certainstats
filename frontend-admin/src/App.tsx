@@ -10,6 +10,8 @@ import DashboardCreateView from './app/dashboards/DashboardCreateView';
 import DashboardEditView from './app/dashboards/DashboardEditView';
 import AlertCreateView from './app/alerts/AlertCreateView';
 import AlertEditView from './app/alerts/AlertEditView';
+import TargetCreateView from './app/settings/TargetCreateView';
+import TargetEditView from './app/settings/TargetEditView';
 import FirstTimeSetupView from './app/auth/FirstTimeSetupView';
 import AuthenticatedLayout from './app/common/AuthenticatedLayout';
 
@@ -87,6 +89,8 @@ function App() {
           <Route path="/dashboards/edit" element={<DashboardEditView />} />
           <Route path="/alerts/create" element={<AlertCreateView />} />
           <Route path="/alerts/edit" element={<AlertEditView />} />
+          <Route path="/targets/create" element={<TargetCreateView />} />
+          <Route path="/targets/edit" element={<TargetEditView />} />
         </Route>
 
         {/* Catch all - redirect back to home */}

@@ -22,6 +22,7 @@ export default function AlertEditView() {
   const [threshold, setThreshold] = useState(80);
   const [duration, setDuration] = useState("5m");
   const [destType, setDestType] = useState<DestinationType>("webhook");
+  const [targetId, setTargetId] = useState("");
   const [destination, setDestination] = useState("");
   const [payload, setPayload] = useState("");
   const [selectedAgents, setSelectedAgents] = useState<string[]>([]);
@@ -60,6 +61,7 @@ export default function AlertEditView() {
       setThreshold(alertData.trigger.threshold);
       setDuration(alertData.trigger.duration);
       setDestType(alertData.action.type);
+      setTargetId(alertData.action.target_id || "");
       setDestination(alertData.action.destination);
       setPayload(alertData.action.payload || "");
       setSelectedAgents(alertData.agents.map(a => a.agent_id));
@@ -82,8 +84,12 @@ export default function AlertEditView() {
       alert("Please select at least one node.");
       return;
     }
-    if (!destination) {
+    if (destType !== "preset" && !destination) {
       alert("Please provide a notification destination.");
+      return;
+    }
+    if (destType === "preset" && !targetId) {
+      alert("Please select an alert target preset.");
       return;
     }
 
@@ -102,7 +108,8 @@ export default function AlertEditView() {
           },
           action: {
             type: destType,
-            destination,
+            target_id: destType === "preset" ? targetId : undefined,
+            destination: destType === "preset" ? "" : destination,
             payload: payload
           },
           agents: selectedAgents
@@ -119,8 +126,12 @@ export default function AlertEditView() {
   const [testStatus, setTestStatus] = useState<{ type: 'success' | 'error', message: string } | null>(null);
 
   const handleTest = async () => {
-    if (!destination) {
+    if (destType !== "preset" && !destination) {
       setTestStatus({ type: 'error', message: 'Please provide a notification destination to test.' });
+      return;
+    }
+    if (destType === "preset" && !targetId) {
+      setTestStatus({ type: 'error', message: 'Please select a preset target to test.' });
       return;
     }
 
@@ -132,7 +143,8 @@ export default function AlertEditView() {
         body: JSON.stringify({
           action: {
             type: destType,
-            destination,
+            target_id: destType === "preset" ? targetId : undefined,
+            destination: destType === "preset" ? "" : destination,
             payload: payload
           }
         })
@@ -164,7 +176,7 @@ export default function AlertEditView() {
                 type="button" 
                 onClick={() => navigate("/alerts")} 
                 className="btn-secondary" 
-                style={{ padding: '8px', borderRadius: '50%', display: 'flex' }}
+                style={{ width: '36px', height: '36px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
               >
                 <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>arrow_back</span>
               </button>
@@ -222,6 +234,8 @@ export default function AlertEditView() {
               setDuration={setDuration}
               destType={destType}
               setDestType={setDestType}
+              targetId={targetId}
+              setTargetId={setTargetId}
               destination={destination}
               setDestination={setDestination}
               payload={payload}
