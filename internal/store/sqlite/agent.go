@@ -88,7 +88,7 @@ func (s *Store) AgentList(ctx context.Context, userID string) ([]store.Agent, er
 		       note
 		FROM   agents
 		WHERE  user_id = ?
-		ORDER  BY is_online DESC, nickname ASC`,
+		ORDER  BY is_online ASC, nickname ASC`,
 		userID,
 	)
 	if err != nil {
