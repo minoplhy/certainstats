@@ -300,7 +300,7 @@ export const AgentView: FC<AgentViewProps> = ({
               <span className="material-symbols-outlined" style={{ position: 'absolute', left: '16px', top: '50%', transform: 'translateY(-50%)', fontSize: '20px', color: 'var(--text-muted)', pointerEvents: 'none' }}>search</span>
               <input
                 type="text"
-                placeholder="Search by nickname, IP, or OS..."
+                placeholder="Search by nickname, agent or OS..."
                 value={filter}
                 onChange={(e) => setFilter(e.target.value)}
                 style={{
