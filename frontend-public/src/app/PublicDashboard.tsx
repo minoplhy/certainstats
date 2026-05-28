@@ -13,6 +13,7 @@ import { MetricKey } from "../types";
 
 import { PublicAgentDetail, fmtUptime, fmtBps, fmtBytes, TIME_RANGES } from "./PublicAgentDetail";
 import { PublicAgent, DashboardResponse } from "../types";
+import { TotalTelemetryPanel } from "../lib/TotalTelemetryPanel";
 
 const PULSE_CSS = `
   @keyframes pulse-update {
@@ -225,7 +226,6 @@ function DashboardContent() {
     (a.cpu_model && a.cpu_model.toLowerCase().includes(searchQuery.toLowerCase())) ||
     (a.linux_version && a.linux_version.toLowerCase().includes(searchQuery.toLowerCase()))
   );
-
   if (loading) {
     return (
       <div style={{ height: '100vh', width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-primary)' }}>
@@ -437,6 +437,15 @@ function DashboardContent() {
                 </div>
               </div>
             </div>
+
+            <TotalTelemetryPanel
+              filteredAgents={filteredAgents}
+              liveMetrics={liveMetrics}
+              allowedMetrics={allowedMetrics}
+              fmtBytes={fmtBytes}
+              fmtBps={fmtBps}
+              isPublic={true}
+            />
 
             {filteredAgents.length === 0 ? (
               <div style={{ textAlign: 'center', color: 'var(--text-muted)', marginTop: '48px' }}>

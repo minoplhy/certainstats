@@ -5,6 +5,7 @@ import { getPanelPath } from "../../lib/env";
 import { Agent, AgentSnapshot } from "../../types";
 import { UsageBar } from "../../lib/UsageBar";
 import { fmtUptime } from "../../lib/utils";
+import { TotalTelemetryPanel } from "../../lib/TotalTelemetryPanel";
 
 interface AgentViewProps {
   filteredAgents: Agent[];
@@ -233,7 +234,6 @@ export const AgentView: FC<AgentViewProps> = ({
 }) => {
   const navigate = useNavigate();
   const base = getPanelPath().replace(/\/$/, "");
-
   return (
     <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '0 32px' }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>
@@ -378,6 +378,13 @@ export const AgentView: FC<AgentViewProps> = ({
             </div>
           </div>
         </div>
+
+        <TotalTelemetryPanel
+          filteredAgents={filteredAgents}
+          liveMetrics={liveMetrics}
+          fmtBytes={fmtBytes}
+          fmtBps={fmtBps}
+        />
 
         {filteredAgents.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '80px 20px', background: 'var(--bg-secondary)', borderRadius: '16px', border: '1px dashed var(--border-color)' }}>
