@@ -18,6 +18,7 @@ import (
 	"certainstats/internal/agent_parser/registry"
 	"certainstats/internal/alert"
 	"certainstats/internal/auth"
+	"certainstats/internal/compress"
 	b_ctx "certainstats/internal/context"
 	"certainstats/internal/dashboard"
 	"certainstats/internal/lifecycle"
@@ -170,7 +171,7 @@ func main() {
 		rt.Use(middleware.RealIP)
 		rt.Use(middleware.Logger)
 		rt.Use(middleware.Recoverer)
-		rt.Use(CompressionMiddleware)
+		rt.Use(compress.CompressionMiddleware)
 	}
 
 	panelRouter := chi.NewRouter()

@@ -1,8 +1,7 @@
-package main
+package compress
 
 import (
 	"bytes"
-	"io"
 	"net/http"
 	"strings"
 	"sync"
@@ -11,16 +10,11 @@ import (
 	"github.com/klauspost/compress/zstd"
 )
 
-var (
-	zstdEncoderPool sync.Pool
-	gzipEncoderPool sync.Pool
-
-	// Limit concurrent compression routines globally to prevent CPU exhaustion under DoS attacks
-	activeCompressors = make(chan struct{}, 512) // Max 512 concurrent active compressions
-)
-
 func init() {
-	// Initialize ZStandard encoder pool
+	// Initialize single-shot ZStandard encoder
+	zstdEncoder, _ = zstd.NewWriter(nil, zstd.WithEncoderLevel(zstd.SpeedFastest))
+
+	// Initialize ZStandard encoder pool for streaming
 	zstdEncoderPool = sync.Pool{
 		New: func() interface{} {
 			zw, _ := zstd.NewWriter(nil, zstd.WithEncoderLevel(zstd.SpeedFastest))
@@ -28,7 +22,7 @@ func init() {
 		},
 	}
 
-	// Initialize GZIP encoder pool
+	// Initialize GZIP encoder pool for streaming
 	gzipEncoderPool = sync.Pool{
 		New: func() interface{} {
 			gw, _ := gzip.NewWriterLevel(nil, gzip.BestSpeed)
@@ -37,16 +31,24 @@ func init() {
 	}
 }
 
-// compressionResponseWriter lazily decides whether to compress based on response size
-type compressionResponseWriter struct {
-	http.ResponseWriter
-	ae          string
-	buf         *bytes.Buffer
-	writer      io.WriteCloser
-	wroteHeader bool
-	status      int
-	bypassed    bool
-	release     func()
+// CompressZstd compresses the source slice using Klauspost's high-speed ZStandard writer.
+func CompressZstd(src []byte) []byte {
+	if len(src) < 256 {
+		return nil
+	}
+	return zstdEncoder.EncodeAll(src, make([]byte, 0, len(src)/2))
+}
+
+// CompressGzip compresses the source slice using the standard library's GZIP writer.
+func CompressGzip(src []byte) []byte {
+	if len(src) < 256 {
+		return nil
+	}
+	var buf bytes.Buffer
+	gw, _ := gzip.NewWriterLevel(&buf, gzip.BestSpeed)
+	_, _ = gw.Write(src)
+	_ = gw.Close()
+	return buf.Bytes()
 }
 
 func (w *compressionResponseWriter) Header() http.Header {
@@ -94,14 +96,14 @@ func (w *compressionResponseWriter) Write(b []byte) (int, error) {
 		return w.ResponseWriter.Write(b)
 	}
 
-	// Buffer the output up to 1400 bytes (standard MTU packet size)
+	// Buffer the output up to 256 bytes
 	n, err := w.buf.Write(b)
 	if err != nil {
 		return n, err
 	}
 
 	// If the buffered size exceeds our threshold, initialize dynamic compression
-	if w.buf.Len() > 1400 {
+	if w.buf.Len() > 256 {
 		w.startCompression()
 	}
 
@@ -198,7 +200,7 @@ func (w *compressionResponseWriter) Close() error {
 		return w.writer.Close()
 	}
 
-	// Otherwise, serve uncompressed (either response size < 1400 bytes, or bypassed due to load shedding)
+	// Otherwise, serve uncompressed (either response size < 256 bytes, or bypassed due to load shedding)
 	if w.bypassed {
 		return nil
 	}
@@ -225,11 +227,6 @@ func (w *compressionResponseWriter) Close() error {
 	return err
 }
 
-type closerWrapper struct {
-	io.Writer
-	close func() error
-}
-
 func (cw *closerWrapper) Close() error {
 	return cw.close()
 }
@@ -237,8 +234,9 @@ func (cw *closerWrapper) Close() error {
 // CompressionMiddleware negotiates dynamic response compression (Zstd or Gzip)
 func CompressionMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// 1. WebSocket / Upgrade safety: Skip standard compression to avoid breaking hijacked TCP streams
-		if strings.ToLower(r.Header.Get("Upgrade")) == "websocket" ||
+		// WebSocket / Upgrade safety: Skip standard compression to avoid breaking hijacked TCP streams
+		// A true WebSocket connection requires BOTH Upgrade: websocket and Connection: upgrade.
+		if strings.ToLower(r.Header.Get("Upgrade")) == "websocket" &&
 			strings.Contains(strings.ToLower(r.Header.Get("Connection")), "upgrade") {
 			next.ServeHTTP(w, r)
 			return
@@ -250,11 +248,11 @@ func CompressionMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
-		// 2. Wrap writer with lazy, threshold-aware compression response writer
+		// Wrap writer with lazy, threshold-aware compression response writer
 		cw := &compressionResponseWriter{
 			ResponseWriter: w,
 			ae:             ae,
-			buf:            bytes.NewBuffer(make([]byte, 0, 1400)),
+			buf:            bytes.NewBuffer(make([]byte, 0, 256)),
 		}
 		defer cw.Close()
 
