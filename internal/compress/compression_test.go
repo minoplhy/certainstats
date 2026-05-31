@@ -1,4 +1,4 @@
-package main
+package compress
 
 import (
 	"bytes"
@@ -8,8 +8,8 @@ import (
 )
 
 func TestCompressionMiddleware(t *testing.T) {
-	// A helper string that is larger than the 1400 bytes threshold to trigger dynamic compression
-	largePayload := make([]byte, 2000)
+	// A helper string that is larger than the 256 bytes threshold to trigger dynamic compression
+	largePayload := make([]byte, 1000)
 	for i := range largePayload {
 		largePayload[i] = 'A'
 	}

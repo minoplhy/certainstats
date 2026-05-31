@@ -204,7 +204,7 @@ function DashboardContent() {
   }, [dashboard_id]);
 
   const [hours, setHours] = useState<number>(() => {
-    const saved = localStorage.getItem("certainstats_active_hours");
+    const saved = localStorage.getItem("certainstats_public_active_hours");
     if (saved) {
       const v = parseInt(saved, 10);
       if (TIME_RANGES.some((r: any) => r.value === v)) return v;
@@ -213,7 +213,7 @@ function DashboardContent() {
   });
 
   useEffect(() => {
-    localStorage.setItem("certainstats_active_hours", hours.toString());
+    localStorage.setItem("certainstats_public_active_hours", hours.toString());
   }, [hours]);
 
   // Navigation and back-button history flows are natively driven by standard routing Link components
