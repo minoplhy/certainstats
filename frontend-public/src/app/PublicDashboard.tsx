@@ -332,7 +332,7 @@ function DashboardContent() {
       {/* ── Main Layout (Overview / Detail) ── */}
       <div style={{ flex: 1, background: 'var(--bg-primary)' }}>
         {!active ? (
-          <div className="animate-fade-in mobile-px-4" style={{ padding: '40px 32px', maxWidth: '1200px', margin: '0 auto' }}>
+          <div className="animate-fade-in mobile-px-4" style={{ padding: '40px 32px', maxWidth: '1200px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '32px' }}>
             {/* Redesigned Header Row */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', marginBottom: '32px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '20px' }}>
@@ -611,18 +611,17 @@ function DashboardContent() {
                 })}
               </div>
             ) : (
-              <div className="card animate-fade-in" style={{ padding: '0', overflowX: 'auto', border: '1px solid var(--border-color)', borderRadius: '24px', background: 'var(--bg-secondary)', boxShadow: 'var(--card-shadow)' }}>
-                <table style={{ width: '100%', minWidth: '1200px', borderCollapse: 'collapse', textAlign: 'left' }}>
+              <div className="card animate-fade-in" style={{ padding: '0', overflowX: 'auto', border: '1px solid var(--border-color)', borderRadius: '12px', background: 'var(--bg-secondary)', boxShadow: 'var(--card-shadow)' }}>
+                <table style={{ width: '100%', minWidth: '700px', borderCollapse: 'collapse', textAlign: 'left' }}>
                   <thead>
-                    <tr style={{ background: 'var(--bg-primary)', borderBottom: '1px solid var(--border-color)' }}>
-                      <th style={{ padding: '20px 28px', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--text-muted)', fontWeight: '800' }}>Status</th>
-                      <th style={{ padding: '20px 28px', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--text-muted)', fontWeight: '800' }}>Node</th>
-                      <th style={{ padding: '20px 28px', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--text-muted)', fontWeight: '800' }}>Current Load</th>
-                      {agents.some(a => a.cpu_model) && <th style={{ padding: '20px 28px', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--text-muted)', fontWeight: '800' }}>CPU</th>}
-                      {agents.some(a => a.linux_version) && <th style={{ padding: '20px 28px', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--text-muted)', fontWeight: '800' }}>OS</th>}
-                      {agents.some(a => a.ram_size) && <th style={{ padding: '20px 28px', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--text-muted)', fontWeight: '800' }}>RAM</th>}
-                      {agents.some(a => a.disk_size) && <th style={{ padding: '20px 28px', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--text-muted)', fontWeight: '800' }}>Disk</th>}
-                      {agents.some(a => a.uptime) && <th style={{ padding: '20px 28px', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--text-muted)', fontWeight: '800' }}>Uptime</th>}
+                    <tr style={{ background: 'var(--bar-bg)', borderBottom: '1px solid var(--border-color)' }}>
+                      <th style={{ padding: '16px 24px', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)' }}>Agent</th>
+                      <th style={{ padding: '16px 24px', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)' }}>Current Load</th>
+                      {agents.some(a => a.cpu_model) && <th style={{ padding: '16px 24px', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)' }}>CPU</th>}
+                      {agents.some(a => a.linux_version) && <th style={{ padding: '16px 24px', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)' }}>OS</th>}
+                      {agents.some(a => a.ram_size) && <th style={{ padding: '16px 24px', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)' }}>RAM</th>}
+                      {agents.some(a => a.disk_size) && <th style={{ padding: '16px 24px', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)' }}>Disk</th>}
+                      {agents.some(a => a.uptime) && <th style={{ padding: '16px 24px', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)' }}>Uptime</th>}
                     </tr>
                   </thead>
                   <tbody>
@@ -645,22 +644,22 @@ function DashboardContent() {
                           }}
                           className={snap ? "pulse-flash" : ""}
                           style={{ borderBottom: '1px solid var(--border-color)', cursor: 'pointer', transition: 'background 0.2s ease' }}
-                          onMouseOver={(e) => e.currentTarget.style.background = 'var(--bg-primary)'}
+                          onMouseOver={(e) => e.currentTarget.style.background = 'var(--bar-bg)'}
                           onMouseOut={(e) => e.currentTarget.style.background = 'transparent'}
                         >
-                          <td style={{ padding: '20px 28px', verticalAlign: 'middle' }}>
-                            <div style={{ position: 'relative', display: 'flex', width: '10px' }}>
-                              <div className={a.is_online ? "status-dot-online" : "status-dot-offline"} />
-                              {a.is_online && <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, borderRadius: '50%', background: 'var(--status-online)', filter: 'blur(3px)', opacity: 0.4 }} />}
+                          <td style={{ padding: '16px 24px', verticalAlign: 'middle' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                              <div style={{ position: 'relative', display: 'flex', width: '10px', flexShrink: 0 }}>
+                                <div className={a.is_online ? "status-dot-online" : "status-dot-offline"} />
+                                {a.is_online && <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, borderRadius: '50%', background: 'var(--status-online)', filter: 'blur(3px)', opacity: 0.4 }} />}
+                              </div>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                <span style={{ fontSize: '14px', fontWeight: '600', color: 'var(--text-primary)' }}>{a.display_name}</span>
+                                <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>{a.public_id.substring(0, 12)}</span>
+                              </div>
                             </div>
                           </td>
-                          <td style={{ padding: '20px 28px', verticalAlign: 'middle' }}>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                              <span style={{ fontSize: '15px', fontWeight: '800', color: 'var(--text-primary)', letterSpacing: '-0.01em' }}>{a.display_name}</span>
-                              <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>{a.public_id.substring(0, 12)}</span>
-                            </div>
-                          </td>
-                          <td style={{ padding: '20px 28px', minWidth: '240px', verticalAlign: 'middle' }}>
+                          <td style={{ padding: '16px 24px', minWidth: '220px', verticalAlign: 'middle' }}>
                             {snap && a.is_online ? (
                               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                                 {allowedMetrics.some(m => m.startsWith('agent_cpu')) && (
@@ -717,51 +716,49 @@ function DashboardContent() {
                                   />
                                 )}
                               </div>
-                            ) : <span style={{ color: 'var(--text-muted)', fontSize: '12px', fontWeight: '600' }}>-</span>}
+                            ) : <span style={{ color: 'var(--text-muted)', fontSize: '12px' }}>-</span>}
                           </td>
                           {agents.some(x => x.cpu_model) && (
-                            <td style={{ padding: '20px 28px', verticalAlign: 'middle' }}>
+                            <td style={{ padding: '16px 24px', verticalAlign: 'middle' }}>
                               {a.cpu_model ? (
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                                  <span style={{ fontSize: '13px', fontWeight: '800', color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '220px', letterSpacing: '-0.01em' }}>{a.cpu_model}</span>
-                                  <span style={{ fontSize: '11px', fontWeight: '900', color: 'var(--text-primary)', opacity: 0.8, letterSpacing: '0.02em' }}>{a.cpu_cores || "?"} CORES</span>
-                                </div>
-                              ) : <span style={{ color: 'var(--text-muted)' }}>-</span>}
-                            </td>
-                          )}
-                          {agents.some(x => x.ram_size) && (
-                            <td style={{ padding: '20px 28px', verticalAlign: 'middle' }}>
-                              {a.ram_size ? (
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                                  <span style={{ fontSize: '14px', fontWeight: '800', color: 'var(--text-primary)' }}>{fmtBytes(a.ram_size)}</span>
-                                  {Boolean(a.swap_size && a.swap_size > 0) && <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: '700' }}>+{fmtBytes(a.swap_size)} SWAP</span>}
-                                </div>
-                              ) : <span style={{ color: 'var(--text-muted)' }}>-</span>}
-                            </td>
-                          )}
-                          {agents.some(x => x.disk_size) && (
-                            <td style={{ padding: '20px 28px', verticalAlign: 'middle' }}>
-                              {a.disk_size ? (
-                                <span style={{ fontSize: '14px', fontWeight: '800', color: 'var(--text-primary)' }}>{fmtBytes(a.disk_size)}</span>
-                              ) : <span style={{ color: 'var(--text-muted)' }}>-</span>}
-                            </td>
-                          )}
-                          {agents.some(x => x.uptime) && (
-                            <td style={{ padding: '20px 28px', verticalAlign: 'middle' }}>
-                              {a.uptime ? (
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: 'var(--text-primary)', fontWeight: '800' }}>
-                                  <span className="material-symbols-outlined" style={{ fontSize: '18px', color: 'var(--text-muted)' }}>schedule</span>
-                                  <span>{fmtUptime(a.uptime)}</span>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                  <span style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '180px' }}>{a.cpu_model}</span>
+                                  <span style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-primary)', opacity: 0.8 }}>{a.cpu_cores || "?"} Cores</span>
                                 </div>
                               ) : <span style={{ color: 'var(--text-muted)' }}>-</span>}
                             </td>
                           )}
                           {agents.some(x => x.linux_version) && (
-                            <td style={{ padding: '20px 28px', verticalAlign: 'middle' }}>
+                            <td style={{ padding: '16px 24px', verticalAlign: 'middle' }}>
                               {a.linux_version ? (
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '600' }}>
-                                  <span className="material-symbols-outlined" style={{ fontSize: '18px', color: 'var(--text-muted)' }}>terminal</span>
-                                  <span>{a.linux_version.split(' ')[0] || "LINUX"}</span>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: 'var(--text-secondary)' }}>
+                                  <span className="material-symbols-outlined" style={{ fontSize: '16px', color: 'var(--text-muted)' }}>terminal</span>
+                                  <span>{a.linux_version.split(' ')[0] || "Linux"}</span>
+                                </div>
+                              ) : <span style={{ color: 'var(--text-muted)' }}>-</span>}
+                            </td>
+                          )}
+                          {agents.some(x => x.ram_size) && (
+                            <td style={{ padding: '16px 24px', fontSize: '13px', color: 'var(--text-secondary)', verticalAlign: 'middle' }}>
+                              {a.ram_size ? (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                  <span style={{ color: 'var(--text-primary)', fontWeight: '600' }}>{fmtBytes(a.ram_size)}</span>
+                                  {Boolean(a.swap_size && a.swap_size > 0) && <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>+{fmtBytes(a.swap_size)} swap</span>}
+                                </div>
+                              ) : "-"}
+                            </td>
+                          )}
+                          {agents.some(x => x.disk_size) && (
+                            <td style={{ padding: '16px 24px', fontSize: '13px', color: 'var(--text-secondary)', verticalAlign: 'middle' }}>
+                              {a.disk_size ? fmtBytes(a.disk_size) : "-"}
+                            </td>
+                          )}
+                          {agents.some(x => x.uptime) && (
+                            <td style={{ padding: '16px 24px', verticalAlign: 'middle' }}>
+                              {a.uptime ? (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: 'var(--text-secondary)' }}>
+                                  <span className="material-symbols-outlined" style={{ fontSize: '16px', color: 'var(--text-muted)' }}>schedule</span>
+                                  <span>{fmtUptime(a.uptime)}</span>
                                 </div>
                               ) : <span style={{ color: 'var(--text-muted)' }}>-</span>}
                             </td>
