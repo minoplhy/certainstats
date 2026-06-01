@@ -575,8 +575,7 @@ export const AgentView: FC<AgentViewProps> = ({
               <table style={{ width: '100%', minWidth: '700px', borderCollapse: 'collapse', textAlign: 'left' }}>
                 <thead>
                   <tr style={{ background: 'var(--bar-bg)', borderBottom: '1px solid var(--border-color)' }}>
-                    <th style={{ padding: '16px 24px', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)' }}>Status</th>
-                    <th style={{ padding: '16px 24px', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)' }}>Node</th>
+                    <th style={{ padding: '16px 24px', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)' }}>Agent</th>
                     <th style={{ padding: '16px 24px', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)' }}>Current Load</th>
                     <th style={{ padding: '16px 24px', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)' }}>CPU</th>
                     <th style={{ padding: '16px 24px', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)' }}>OS</th>
@@ -610,9 +609,14 @@ export const AgentView: FC<AgentViewProps> = ({
                         onMouseOut={(e) => e.currentTarget.style.background = 'transparent'}
                       >
                         <td style={{ padding: '16px 24px', verticalAlign: 'middle' }}>
-                          <div className={a.is_online ? "status-dot-online" : "status-dot-offline"} />
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                            <div style={{ position: 'relative', display: 'flex', width: '10px', flexShrink: 0 }}>
+                              <div className={a.is_online ? "status-dot-online" : "status-dot-offline"} />
+                              {a.is_online && <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, borderRadius: '50%', background: 'var(--status-online)', filter: 'blur(3px)', opacity: 0.4 }} />}
+                            </div>
+                            <span style={{ fontSize: '14px', fontWeight: '600', color: 'var(--text-primary)' }}>{a.nickname || a.agent_id}</span>
+                          </div>
                         </td>
-                        <td style={{ padding: '16px 24px', fontSize: '14px', fontWeight: '600', color: 'var(--text-primary)', verticalAlign: 'middle' }}>{a.nickname || a.agent_id}</td>
                         <td style={{ padding: '16px 24px', minWidth: '220px', verticalAlign: 'middle' }}>
                           {snap && a.is_online ? (
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
