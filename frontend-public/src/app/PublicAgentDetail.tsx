@@ -115,6 +115,15 @@ function MetricPanel({
   type ChartPoint = { time: number } & Record<string, number | null>;
   const [data, setData] = useState<ChartPoint[]>([]);
   const [loading, setLoading] = useState(true);
+  const [queryEndTime, setQueryEndTime] = useState(Date.now());
+
+  useEffect(() => {
+    if (loading) return;
+    const timer = setInterval(() => {
+      setQueryEndTime(Date.now());
+    }, 15000);
+    return () => clearInterval(timer);
+  }, [loading]);
   const lastProcessedTs = useRef<string | null>(null);
 
   const activeSeries = group.series.filter(s => allowedMetrics.includes(s.metric));
@@ -160,6 +169,7 @@ function MetricPanel({
       });
 
       setData(Array.from(map.values()).sort((a, b) => a.time - b.time));
+      setQueryEndTime(Date.now());
       setLoading(false);
     });
   }, [dashboardID, publicId, hours, activeSeries.length]);
@@ -265,6 +275,7 @@ function MetricPanel({
             series={activeSeries as any}
             maxValue={maxValue}
             fmt={group.fmt}
+            queryEndTime={queryEndTime}
           />
         </div>
       )}

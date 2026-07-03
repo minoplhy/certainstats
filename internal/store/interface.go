@@ -39,8 +39,8 @@ type AgentStore interface {
 	AgentGetByID(ctx context.Context, agentID, userID string) (*Agent, error)
 
 	// MarkOffline sets is_online=0 for agents not seen within olderThan.
-	// Returns the number of agents marked offline.
-	AgentMarkOffline(ctx context.Context, olderThan time.Duration) (int64, error)
+	// Returns the IDs of the agents that were marked offline.
+	AgentMarkOffline(ctx context.Context, olderThan time.Duration) ([]string, error)
 
 	// AgentResetToken updates the authentication token for an agent.
 	AgentResetToken(ctx context.Context, agentID, userID string, newToken string) error
@@ -77,12 +77,16 @@ type AlertsStore interface {
 	AlertUpdate(ctx context.Context, d Alert, newAgents []string) error
 	AlertDelete(ctx context.Context, alertID string, userID string) error
 
-	AlertTrigger(ctx context.Context, d Alert, agentID string, agentNickname string, historyID string, violationValue float64, notifStatus string, targetID string, targetName string) error
+	AlertTrigger(ctx context.Context, d Alert, agentID string, agentNickname string, historyID string, violationValue float64, notifStatus string, targetID string, targetName string, errorMsg string) error
 	AlertResolve(ctx context.Context, d Alert, agentID string) error
 
 	GetActiveAlertsWithState(ctx context.Context) ([]Alert, map[string]AgentInfo, error)
 
 	AlertHistoryListPaginated(ctx context.Context, userID string, page, limit int, search string, status string) ([]c.AlertHistory, int, error)
+	AlertHistoryGetByID(ctx context.Context, historyID string, userID string) (*c.AlertHistory, error)
+	AlertHistoryUpdateStatus(ctx context.Context, historyID string, status string, errMsg string) error
+	AlertAgentUpdateStatus(ctx context.Context, alertID string, agentID string, status string, errMsg string) error
+	AlertHistoryGetFailed(ctx context.Context) ([]*c.AlertHistory, error)
 
 	// Target CRUD Operations
 	TargetCreate(ctx context.Context, t c.AlertTarget) error

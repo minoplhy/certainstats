@@ -78,9 +78,10 @@ type AlertTarget struct {
 }
 
 type AgentState struct {
-	AgentID     string     `json:"agent_id"`
-	Status      string     `json:"status"` // "ok" or "firing"
-	LastFiredAt *time.Time `json:"last_fired_at,omitempty"`
+	AgentID      string     `json:"agent_id"`
+	Status       string     `json:"status"` // "ok" or "firing"
+	LastFiredAt  *time.Time `json:"last_fired_at,omitempty"`
+	ErrorMessage string     `json:"error_message,omitempty"`
 }
 
 type AlertHistory struct {
@@ -97,5 +98,6 @@ type AlertHistory struct {
 	Trigger        Trigger    `json:"trigger"`
 	TargetID       string     `json:"target_id,omitempty"`
 	TargetName     string     `json:"target_name,omitempty"`
+	ErrorMessage   string     `json:"error_message,omitempty"`
 }
 

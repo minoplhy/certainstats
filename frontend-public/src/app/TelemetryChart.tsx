@@ -13,6 +13,110 @@ export interface SeriesCfg {
 
 export type ChartPoint = { time: number } & Record<string, number | null>;
 
+export function calculateDowntimes(data: ChartPoint[], queryEndTime?: number): { start: number; end: number }[] {
+  if (data.length === 0) return [];
+  
+  const gaps: number[] = [];
+  for (let i = 1; i < data.length; i++) {
+    const d = data[i].time - data[i - 1].time;
+    if (d > 0) gaps.push(d);
+  }
+  let normalInterval = gaps.length > 0 ? (gaps[Math.floor(gaps.length * 0.15)] || gaps[0]) : 60000;
+  normalInterval = Math.max(15000, normalInterval);
+  const threshold = normalInterval * 2.5;
+
+  const intervals: { start: number; end: number }[] = [];
+
+  if (data.length >= 2) {
+    for (let i = 1; i < data.length; i++) {
+      const prev = data[i - 1].time;
+      const curr = data[i].time;
+      const diff = curr - prev;
+
+      if (diff > threshold) {
+        intervals.push({
+          start: prev + normalInterval,
+          end: curr - normalInterval,
+        });
+      }
+    }
+  }
+
+  if (queryEndTime && queryEndTime > data[data.length - 1].time + threshold) {
+    intervals.push({
+      start: data[data.length - 1].time + normalInterval,
+      end: queryEndTime,
+    });
+  }
+  return intervals;
+}
+
+export function buildChartData(data: ChartPoint[], series: SeriesCfg[], queryEndTime?: number): ChartPoint[] {
+  if (data.length < 2) {
+    if (data.length === 1 && queryEndTime) {
+      const last = data[0].time;
+      if (queryEndTime > last + 15000) {
+        const result = [data[0]];
+        const nullPoint1: any = { time: last + 15000 };
+        const nullPoint2: any = { time: queryEndTime };
+        series.forEach((s) => {
+          nullPoint1[s.label] = null;
+          nullPoint2[s.label] = null;
+        });
+        result.push(nullPoint1);
+        result.push(nullPoint2);
+        return result;
+      }
+    }
+    return data;
+  }
+  const gaps: number[] = [];
+  for (let i = 1; i < data.length; i++) {
+    const d = data[i].time - data[i - 1].time;
+    if (d > 0) gaps.push(d);
+  }
+  if (gaps.length === 0) return data;
+  gaps.sort((a, b) => a - b);
+  let normalInterval = gaps[Math.floor(gaps.length * 0.15)] || gaps[0];
+  normalInterval = Math.max(15000, normalInterval);
+
+  const threshold = normalInterval * 2.5;
+  const result: ChartPoint[] = [];
+
+  for (let i = 0; i < data.length; i++) {
+    if (i > 0) {
+      const prev = data[i - 1].time;
+      const curr = data[i].time;
+      const diff = curr - prev;
+
+      if (diff > threshold) {
+        const nullPoint1: any = { time: prev + normalInterval };
+        const nullPoint2: any = { time: curr - normalInterval };
+        series.forEach((s) => {
+          nullPoint1[s.label] = null;
+          nullPoint2[s.label] = null;
+        });
+        result.push(nullPoint1);
+        result.push(nullPoint2);
+      }
+    }
+    result.push(data[i]);
+  }
+
+  if (queryEndTime && queryEndTime > data[data.length - 1].time + threshold) {
+    const last = data[data.length - 1].time;
+    const nullPoint1: any = { time: last + normalInterval };
+    const nullPoint2: any = { time: queryEndTime };
+    series.forEach((s) => {
+      nullPoint1[s.label] = null;
+      nullPoint2[s.label] = null;
+    });
+    result.push(nullPoint1);
+    result.push(nullPoint2);
+  }
+  return result;
+}
+
 interface TelemetryChartProps {
   data: ChartPoint[];
   series: SeriesCfg[];
@@ -28,6 +132,7 @@ interface TelemetryChartProps {
 
   // Custom height (optional)
   height?: string | number;
+  queryEndTime?: number;
 }
 
 export function TelemetryChart({
@@ -40,7 +145,8 @@ export function TelemetryChart({
   setRefAreaLeft,
   setRefAreaRight,
   onZoom,
-  height
+  height,
+  queryEndTime
 }: TelemetryChartProps) {
   // ── Dynamic Peak & yMax Calculations ─────────────────────────────────────
   const computedMaxVal = React.useMemo(() => {
@@ -65,71 +171,12 @@ export function TelemetryChart({
 
   // ── Reactive Downtime Gap Detection & Insertion ──────────────────────────
   const downtimes = React.useMemo(() => {
-    if (data.length < 2) return [];
-    const gaps: number[] = [];
-    for (let i = 1; i < data.length; i++) {
-      const d = data[i].time - data[i - 1].time;
-      if (d > 0) gaps.push(d);
-    }
-    if (gaps.length === 0) return [];
-    gaps.sort((a, b) => a - b);
-    let normalInterval = gaps[Math.floor(gaps.length * 0.15)] || gaps[0];
-    normalInterval = Math.max(15000, normalInterval);
-
-    const threshold = normalInterval * 2.5;
-    const intervals: { start: number; end: number }[] = [];
-
-    for (let i = 1; i < data.length; i++) {
-      const prev = data[i - 1].time;
-      const curr = data[i].time;
-      const diff = curr - prev;
-
-      if (diff > threshold) {
-        intervals.push({
-          start: prev + normalInterval,
-          end: curr - normalInterval,
-        });
-      }
-    }
-    return intervals;
-  }, [data]);
+    return calculateDowntimes(data, queryEndTime);
+  }, [data, queryEndTime]);
 
   const chartData = React.useMemo(() => {
-    if (data.length < 2) return data;
-    const gaps: number[] = [];
-    for (let i = 1; i < data.length; i++) {
-      const d = data[i].time - data[i - 1].time;
-      if (d > 0) gaps.push(d);
-    }
-    if (gaps.length === 0) return data;
-    gaps.sort((a, b) => a - b);
-    let normalInterval = gaps[Math.floor(gaps.length * 0.15)] || gaps[0];
-    normalInterval = Math.max(15000, normalInterval);
-
-    const threshold = normalInterval * 2.5;
-    const result: ChartPoint[] = [];
-
-    for (let i = 0; i < data.length; i++) {
-      if (i > 0) {
-        const prev = data[i - 1].time;
-        const curr = data[i].time;
-        const diff = curr - prev;
-
-        if (diff > threshold) {
-          const nullPoint1: any = { time: prev + normalInterval };
-          const nullPoint2: any = { time: curr - normalInterval };
-          series.forEach((s) => {
-            nullPoint1[s.label] = null;
-            nullPoint2[s.label] = null;
-          });
-          result.push(nullPoint1);
-          result.push(nullPoint2);
-        }
-      }
-      result.push(data[i]);
-    }
-    return result;
-  }, [data, series]);
+    return buildChartData(data, series, queryEndTime);
+  }, [data, series, queryEndTime]);
 
   // ── Formatter ────────────────────────────────────────────────────────────
   const timeRange = React.useMemo(() => {

@@ -274,6 +274,13 @@ func (c *RealtimeCache) Get(agentID string) (*AgentSnapshot, bool) {
 	return s, ok
 }
 
+// Delete evicts the latest snapshot for an agent from memory.
+func (c *RealtimeCache) Delete(agentID string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	delete(c.agents, agentID)
+}
+
 // GetAll returns a shallow copy of all agent snapshots.
 func (c *RealtimeCache) GetAll() map[string]*AgentSnapshot {
 	c.mu.RLock()

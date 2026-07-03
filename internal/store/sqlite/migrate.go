@@ -91,6 +91,7 @@ func (s *Store) migrate() error {
 			agent_id      TEXT NOT NULL REFERENCES agents(agent_id) ON DELETE CASCADE,
 			status        TEXT NOT NULL DEFAULT 'ok',
 			last_fired_at DATETIME,
+			error_message TEXT DEFAULT '',
 			PRIMARY KEY (alert_id, agent_id)
 		)`,
 
@@ -98,10 +99,16 @@ func (s *Store) migrate() error {
 			history_id      TEXT PRIMARY KEY,
 			alert_id        TEXT NOT NULL REFERENCES alerts(alert_id) ON DELETE CASCADE,
 			agent_id        TEXT NOT NULL REFERENCES agents(agent_id) ON DELETE CASCADE,
+			user_id         TEXT DEFAULT '',
 			triggered_at    DATETIME NOT NULL,
 			resolved_at     DATETIME,
 			trigger_value   REAL NOT NULL,
-			notified_status TEXT NOT NULL
+			notified_status TEXT NOT NULL,
+			target_id       TEXT DEFAULT '',
+			target_name     TEXT DEFAULT '',
+			agent_nickname  TEXT DEFAULT '',
+			alert_nickname  TEXT DEFAULT '',
+			error_message   TEXT DEFAULT ''
 		)`,
 
 		`CREATE TABLE IF NOT EXISTS alert_targets (
@@ -165,6 +172,8 @@ func (s *Store) migrate() error {
 		`UPDATE alert_history SET user_id = (SELECT user_id FROM agents WHERE agents.agent_id = alert_history.agent_id) WHERE COALESCE(user_id, '') = ''`,
 		`UPDATE alert_history SET alert_nickname = (SELECT nickname FROM alerts WHERE alerts.alert_id = alert_history.alert_id) WHERE COALESCE(alert_nickname, '') = ''`,
 		`UPDATE alert_history SET agent_nickname = (SELECT nickname FROM agents WHERE agents.agent_id = alert_history.agent_id) WHERE COALESCE(agent_nickname, '') = ''`,
+		`ALTER TABLE alert_history ADD COLUMN error_message TEXT DEFAULT ''`,
+		`ALTER TABLE alert_agents ADD COLUMN error_message TEXT DEFAULT ''`,
 	} {
 		if _, err := s.db.Exec(m); err != nil {
 			// Ignore "duplicate column" — expected on every boot after first run.

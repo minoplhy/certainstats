@@ -54,14 +54,12 @@ func (s *Store) AlertCreate(ctx context.Context, d store.Alert) error {
 	return tx.Commit()
 }
 
-// AlertList fetches all alerts and neatly packs their Agents into the AgentsID slice
-// AlertList fetches all alerts and neatly packs their Agents into the Agents slice
 func (s *Store) AlertList(ctx context.Context, userID string) ([]store.Alert, error) {
 	// We use LEFT JOIN and GROUP_CONCAT to fetch the alert and all its agents in ONE query
-	// By concatenating agent_id and status with a colon, we can split them later
+	// By concatenating agent_id, status and error_message with a colon, we can split them later
 	rows, err := s.db.QueryContext(ctx, `
         SELECT a.alert_id, a.user_id, a.nickname, a.enabled, a.trigger_config, a.action_config,
-               COALESCE(GROUP_CONCAT(aa.agent_id || ':' || aa.status, ','), '') as agents
+               COALESCE(GROUP_CONCAT(aa.agent_id || ':' || aa.status || ':' || REPLACE(REPLACE(IFNULL(aa.error_message, ''), ',', ' '), ':', ' '), ','), '') as agents
         FROM alerts a
         LEFT JOIN alert_agents aa ON a.alert_id = aa.alert_id
         WHERE a.user_id = ?
@@ -92,15 +90,20 @@ func (s *Store) AlertList(ctx context.Context, userID string) ([]store.Alert, er
 			return nil, fmt.Errorf("failed to unmarshal action for alert %s: %w", a.AlertID, err)
 		}
 
-		// 3. Process the GROUP_CONCAT agent string (format: id:status,id:status)
+		// 3. Process the GROUP_CONCAT agent string (format: id:status:error_message,id:status:error_message)
 		if agentsStr != "" {
 			agentPairs := strings.Split(agentsStr, ",")
 			for _, pair := range agentPairs {
 				parts := strings.Split(pair, ":")
-				if len(parts) == 2 {
+				if len(parts) >= 2 {
+					var errMsg string
+					if len(parts) >= 3 {
+						errMsg = parts[2]
+					}
 					a.Agents = append(a.Agents, alert.AgentState{
-						AgentID: parts[0],
-						Status:  parts[1],
+						AgentID:      parts[0],
+						Status:       parts[1],
+						ErrorMessage: errMsg,
 					})
 				}
 			}
@@ -335,7 +338,7 @@ func (s *Store) AlertDelete(ctx context.Context, alertID string, userID string) 
 	return nil
 }
 
-func (s *Store) AlertTrigger(ctx context.Context, d store.Alert, agentID string, agentNickname string, historyID string, violationValue float64, notifStatus string, targetID string, targetName string) error {
+func (s *Store) AlertTrigger(ctx context.Context, d store.Alert, agentID string, agentNickname string, historyID string, violationValue float64, notifStatus string, targetID string, targetName string, errorMsg string) error {
 	now := time.Now()
 
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -350,16 +353,16 @@ func (s *Store) AlertTrigger(ctx context.Context, d store.Alert, agentID string,
 	}
 
 	// Update the agent's state
-	_, err = tx.ExecContext(ctx, `UPDATE alert_agents SET status = ?, last_fired_at = ? WHERE alert_id = ? AND agent_id = ?`,
-		agentStatus, now, d.AlertID, agentID)
+	_, err = tx.ExecContext(ctx, `UPDATE alert_agents SET status = ?, last_fired_at = ?, error_message = ? WHERE alert_id = ? AND agent_id = ?`,
+		agentStatus, now, errorMsg, d.AlertID, agentID)
 	if err != nil {
 		return err
 	}
 
 	// Create a new History Log entry with all snapshot and denormalized columns
-	_, err = tx.ExecContext(ctx, `INSERT INTO alert_history (history_id, alert_id, user_id, agent_id, triggered_at, trigger_value, notified_status, target_id, target_name, agent_nickname, alert_nickname) 
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		historyID, d.AlertID, d.UserID, agentID, now, violationValue, notifStatus, targetID, targetName, agentNickname, d.Nickname)
+	_, err = tx.ExecContext(ctx, `INSERT INTO alert_history (history_id, alert_id, user_id, agent_id, triggered_at, trigger_value, notified_status, target_id, target_name, agent_nickname, alert_nickname, error_message) 
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		historyID, d.AlertID, d.UserID, agentID, now, violationValue, notifStatus, targetID, targetName, agentNickname, d.Nickname, errorMsg)
 	if err != nil {
 		return err
 	}
@@ -377,7 +380,7 @@ func (s *Store) AlertResolve(ctx context.Context, d store.Alert, agentID string)
 	defer tx.Rollback()
 
 	// Update the agent's state back to OK
-	_, err = tx.ExecContext(ctx, `UPDATE alert_agents SET status = 'ok' WHERE alert_id = ? AND agent_id = ?`,
+	_, err = tx.ExecContext(ctx, `UPDATE alert_agents SET status = 'ok', error_message = '' WHERE alert_id = ? AND agent_id = ?`,
 		d.AlertID, agentID)
 	if err != nil {
 		return err
@@ -400,7 +403,7 @@ func (s *Store) GetActiveAlertsWithState(ctx context.Context) ([]store.Alert, ma
 	query := `
 		SELECT 
 			a.alert_id, a.trigger_config, a.action_config, 
-			aa.agent_id, aa.status, aa.last_fired_at,
+			aa.agent_id, aa.status, aa.last_fired_at, aa.error_message,
 			ag.is_online, COALESCE(ag.nickname, ag.agent_id),
 			ag.ram_size, ag.swap_size, ag.disk_size
 		FROM alerts a
@@ -424,8 +427,9 @@ func (s *Store) GetActiveAlertsWithState(ctx context.Context) ([]store.Alert, ma
 		var isOnline bool
 		var ramSize, swapSize, diskSize uint64
 		var lastFiredAt sql.NullTime
+		var errorMsg sql.NullString
 
-		err := rows.Scan(&alertID, &triggerJSON, &actionJSON, &agentID, &status, &lastFiredAt, &isOnline, &nickname, &ramSize, &swapSize, &diskSize)
+		err := rows.Scan(&alertID, &triggerJSON, &actionJSON, &agentID, &status, &lastFiredAt, &errorMsg, &isOnline, &nickname, &ramSize, &swapSize, &diskSize)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -464,9 +468,10 @@ func (s *Store) GetActiveAlertsWithState(ctx context.Context) ([]store.Alert, ma
 
 		// Append this agent's state to the alert
 		alertMap[alertID].Agents = append(alertMap[alertID].Agents, alert.AgentState{
-			AgentID:     agentID,
-			Status:      status,
-			LastFiredAt: lastFiredPtr,
+			AgentID:      agentID,
+			Status:       status,
+			LastFiredAt:  lastFiredPtr,
+			ErrorMessage: errorMsg.String,
 		})
 	}
 
@@ -539,7 +544,8 @@ func (s *Store) AlertHistoryListPaginated(ctx context.Context, userID string, pa
 			h.history_id, h.alert_id, h.agent_id, 
 			COALESCE(NULLIF(h.agent_nickname, ''), h.agent_id),
 			h.triggered_at, h.resolved_at, h.trigger_value, h.notified_status,
-			a.trigger_config, h.alert_nickname, h.target_id, h.target_name
+			a.trigger_config, h.alert_nickname, h.target_id, h.target_name,
+			h.error_message
 		FROM alert_history h
 		LEFT JOIN alerts a ON h.alert_id = a.alert_id
 		%s
@@ -559,13 +565,14 @@ func (s *Store) AlertHistoryListPaginated(ctx context.Context, userID string, pa
 		var resolvedAt sql.NullTime
 		var triggerJSON sql.NullString
 		var targetID, targetName sql.NullString
+		var errorMsg sql.NullString
 
 		err := rows.Scan(
 			&h.HistoryID, &h.AlertID, &h.AgentID,
 			&h.AgentNickname,
 			&h.TriggeredAt, &resolvedAt, &h.TriggerValue, &h.NotifiedStatus,
 			&triggerJSON, &h.AlertNickname,
-			&targetID, &targetName,
+			&targetID, &targetName, &errorMsg,
 		)
 		if err != nil {
 			return nil, 0, err
@@ -581,6 +588,9 @@ func (s *Store) AlertHistoryListPaginated(ctx context.Context, userID string, pa
 		if targetName.Valid {
 			h.TargetName = targetName.String
 		}
+		if errorMsg.Valid {
+			h.ErrorMessage = errorMsg.String
+		}
 
 		if triggerJSON.Valid && triggerJSON.String != "" {
 			if err := json.Unmarshal([]byte(triggerJSON.String), &h.Trigger); err != nil {
@@ -592,4 +602,126 @@ func (s *Store) AlertHistoryListPaginated(ctx context.Context, userID string, pa
 	}
 
 	return out, total, rows.Err()
+}
+
+func (s *Store) AlertHistoryGetByID(ctx context.Context, historyID string, userID string) (*alert.AlertHistory, error) {
+	var h alert.AlertHistory
+	var resolvedAt sql.NullTime
+	var triggerJSON sql.NullString
+	var targetID, targetName sql.NullString
+	var errorMsg sql.NullString
+
+	err := s.db.QueryRowContext(ctx, `
+		SELECT 
+			h.history_id, h.alert_id, h.agent_id, 
+			COALESCE(NULLIF(h.agent_nickname, ''), h.agent_id),
+			h.triggered_at, h.resolved_at, h.trigger_value, h.notified_status,
+			a.trigger_config, h.alert_nickname, h.target_id, h.target_name,
+			h.error_message
+		FROM alert_history h
+		LEFT JOIN alerts a ON h.alert_id = a.alert_id
+		WHERE h.history_id = ? AND h.user_id = ?
+	`, historyID, userID).Scan(
+		&h.HistoryID, &h.AlertID, &h.AgentID,
+		&h.AgentNickname,
+		&h.TriggeredAt, &resolvedAt, &h.TriggerValue, &h.NotifiedStatus,
+		&triggerJSON, &h.AlertNickname,
+		&targetID, &targetName, &errorMsg,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	if resolvedAt.Valid {
+		h.ResolvedAt = &resolvedAt.Time
+	}
+	if targetID.Valid {
+		h.TargetID = targetID.String
+	}
+	if targetName.Valid {
+		h.TargetName = targetName.String
+	}
+	if triggerJSON.Valid && triggerJSON.String != "" {
+		_ = json.Unmarshal([]byte(triggerJSON.String), &h.Trigger)
+	}
+	if errorMsg.Valid {
+		h.ErrorMessage = errorMsg.String
+	}
+
+	return &h, nil
+}
+
+func (s *Store) AlertHistoryUpdateStatus(ctx context.Context, historyID string, status string, errMsg string) error {
+	_, err := s.db.ExecContext(ctx, `
+		UPDATE alert_history
+		SET notified_status = ?, error_message = ?
+		WHERE history_id = ?
+	`, status, errMsg, historyID)
+	return err
+}
+
+func (s *Store) AlertAgentUpdateStatus(ctx context.Context, alertID string, agentID string, status string, errMsg string) error {
+	_, err := s.db.ExecContext(ctx, `
+		UPDATE alert_agents
+		SET status = ?, error_message = ?
+		WHERE alert_id = ? AND agent_id = ?
+	`, status, errMsg, alertID, agentID)
+	return err
+}
+
+func (s *Store) AlertHistoryGetFailed(ctx context.Context) ([]*alert.AlertHistory, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT 
+			h.history_id, h.alert_id, h.agent_id, h.user_id,
+			COALESCE(NULLIF(h.agent_nickname, ''), h.agent_id),
+			h.triggered_at, h.resolved_at, h.trigger_value, h.notified_status,
+			a.trigger_config, h.alert_nickname, h.target_id, h.target_name,
+			h.error_message
+		FROM alert_history h
+		LEFT JOIN alerts a ON h.alert_id = a.alert_id
+		WHERE h.notified_status = 'failed' AND h.triggered_at > ?
+	`, time.Now().Add(-24*time.Hour))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []*alert.AlertHistory
+	for rows.Next() {
+		var h alert.AlertHistory
+		var resolvedAt sql.NullTime
+		var triggerJSON sql.NullString
+		var targetID, targetName sql.NullString
+		var errorMsg sql.NullString
+
+		err := rows.Scan(
+			&h.HistoryID, &h.AlertID, &h.AgentID, &h.UserID,
+			&h.AgentNickname,
+			&h.TriggeredAt, &resolvedAt, &h.TriggerValue, &h.NotifiedStatus,
+			&triggerJSON, &h.AlertNickname,
+			&targetID, &targetName, &errorMsg,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		if resolvedAt.Valid {
+			h.ResolvedAt = &resolvedAt.Time
+		}
+		if targetID.Valid {
+			h.TargetID = targetID.String
+		}
+		if targetName.Valid {
+			h.TargetName = targetName.String
+		}
+		if triggerJSON.Valid && triggerJSON.String != "" {
+			_ = json.Unmarshal([]byte(triggerJSON.String), &h.Trigger)
+		}
+		if errorMsg.Valid {
+			h.ErrorMessage = errorMsg.String
+		}
+		out = append(out, &h)
+	}
+
+	return out, rows.Err()
 }

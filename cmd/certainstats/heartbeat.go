@@ -1,13 +1,14 @@
 package main
 
 import (
+	"certainstats/internal/metrics"
 	"certainstats/internal/store"
 	"context"
 	log "certainstats/internal/logger"
 	"time"
 )
 
-func startHeartbeatSweeper(agents store.AgentStore) {
+func startHeartbeatSweeper(agents store.AgentStore, cache *metrics.RealtimeCache) {
 	const (
 		sweepInterval = 1 * time.Minute
 		offlineAfter  = 3 * time.Minute
@@ -16,13 +17,16 @@ func startHeartbeatSweeper(agents store.AgentStore) {
 	for {
 		time.Sleep(sweepInterval)
 
-		n, err := agents.AgentMarkOffline(context.Background(), offlineAfter)
+		offlineIDs, err := agents.AgentMarkOffline(context.Background(), offlineAfter)
 		if err != nil {
 			log.Printf("heartbeat sweeper: %v", err)
 			continue
 		}
-		if n > 0 {
-			log.Debugf("sweeper: marked %d agent(s) offline", n)
+		if len(offlineIDs) > 0 {
+			log.Debugf("sweeper: marked %d agent(s) offline", len(offlineIDs))
+			for _, id := range offlineIDs {
+				cache.Delete(id)
+			}
 		}
 	}
 }

@@ -211,19 +211,49 @@ func (s *Store) AgentGetByID(ctx context.Context, agentID, userID string) (*stor
 	return &a, nil
 }
 
-func (s *Store) AgentMarkOffline(ctx context.Context, olderThan time.Duration) (int64, error) {
+func (s *Store) AgentMarkOffline(ctx context.Context, olderThan time.Duration) ([]string, error) {
 	threshold := time.Now().Add(-olderThan)
-	res, err := s.db.ExecContext(ctx, `
-		UPDATE agents
-		SET    is_online = 0
-		WHERE  is_online = 1 AND last_seen < ?`,
-		threshold,
-	)
+
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
-	n, _ := res.RowsAffected()
-	return n, nil
+	defer tx.Rollback()
+
+	// 1. Find the agents that are currently marked online but are past the threshold
+	rows, err := tx.QueryContext(ctx, `
+		SELECT agent_id FROM agents
+		WHERE is_online = 1 AND last_seen < ?`, threshold)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+
+	// 2. Mark them offline
+	if len(ids) > 0 {
+		_, err = tx.ExecContext(ctx, `
+			UPDATE agents
+			SET    is_online = 0
+			WHERE  is_online = 1 AND last_seen < ?`, threshold)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+
+	return ids, nil
 }
 func (s *Store) AgentResetToken(ctx context.Context, agentID, userID, newToken string) error {
 	// 1. Evict any old tokens for this agent from the cache

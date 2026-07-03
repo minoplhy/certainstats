@@ -9,13 +9,14 @@ import (
 
 	a "certainstats/internal/base/agent"
 	ctx "certainstats/internal/context"
+	"certainstats/internal/metrics"
 	"certainstats/internal/store"
 
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/tsdb"
 )
 
-func RevokeAgentHandler(agent store.AgentStore, tdb *tsdb.DB) http.HandlerFunc {
+func RevokeAgentHandler(agent store.AgentStore, tdb *tsdb.DB, cache *metrics.RealtimeCache) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 
 		userID := r.Context().Value(ctx.UserIDKey).(string)
@@ -34,6 +35,11 @@ func RevokeAgentHandler(agent store.AgentStore, tdb *tsdb.DB) http.HandlerFunc {
 		if err == sql.ErrNoRows {
 			api_response.Error(w, http.StatusNotFound, "Agent not found or unauthorized")
 			return
+		}
+
+		// 0. Evict from in-memory telemetry cache
+		if cache != nil {
+			cache.Delete(agentID)
 		}
 
 		// 1. Evict from in-memory token cache so new submits are rejected immediately.

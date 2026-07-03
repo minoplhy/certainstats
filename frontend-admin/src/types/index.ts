@@ -160,6 +160,7 @@ export interface AlertTarget {
 export interface AgentState {
   agent_id: string;
   status:   string;
+  error_message?: string;
 }
 
 export interface Alert {
@@ -184,6 +185,7 @@ export interface AlertHistory {
   trigger: AlertTrigger;
   target_id?: string;
   target_name?: string;
+  error_message?: string;
 }
 export interface AgentSnapshot {
   Timestamp: string;

@@ -84,6 +84,29 @@ export default function AlertsPanel({ onSelectNode }: { onSelectNode?: (id: stri
   const [error, setError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [deleteConfirmAlertId, setDeleteConfirmAlertId] = useState<string | null>(null);
+  const [retryingIds, setRetryingIds] = useState<Record<string, boolean>>({});
+
+  const handleRetry = async (historyId: string) => {
+    setRetryingIds(prev => ({ ...prev, [historyId]: true }));
+    try {
+      const res = await fetchAPI<{ status: string; message: string; error_message?: string }>(
+        `/api/alerts/history/retry/${historyId}`,
+        { method: "POST" }
+      );
+      if (res.status === "success") {
+        fetchHistory(page, limit, historySearch, historyStatus);
+        const alertsData = await fetchAPI<Alert[]>("/api/alerts");
+        setAlerts(alertsData || []);
+      } else {
+        alert(res.error_message || res.message || "Retry failed");
+        fetchHistory(page, limit, historySearch, historyStatus);
+      }
+    } catch (err) {
+      alert("Failed to retry notification");
+    } finally {
+      setRetryingIds(prev => ({ ...prev, [historyId]: false }));
+    }
+  };
 
   // Search & Filter State
   const [searchInputValue, setSearchInputValue] = useState("");
@@ -385,7 +408,11 @@ export default function AlertsPanel({ onSelectNode }: { onSelectNode?: (id: stri
                                   {getAlertConditionString(f.alert.trigger)}
                                 </>
                               )}
-                              {f.status === 'failed' && <span style={{ color: 'var(--status-offline)', marginLeft: '8px' }}>• Notification Failed</span>}
+                              {f.status === 'failed' && (
+                                <span style={{ color: 'var(--status-offline)', marginLeft: '8px' }}>
+                                  • Notification Failed {f.error_message && `(${f.error_message})`}
+                                </span>
+                              )}
                             </div>
                           </div>
                         </div>
@@ -683,9 +710,27 @@ export default function AlertsPanel({ onSelectNode }: { onSelectNode?: (id: stri
                                     </span>
                                   )}
                                   {h.notified_status === 'failed' && (
-                                    <span style={{ fontSize: '10px', color: 'var(--status-offline)', display: 'flex', alignItems: 'center', gap: '2px' }}>
-                                      <span className="material-symbols-outlined" style={{ fontSize: '12px' }}>error</span> Delivery Failed
-                                    </span>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                      <span style={{ fontSize: '10px', color: 'var(--status-offline)', display: 'flex', alignItems: 'center', gap: '2px' }}>
+                                        <span className="material-symbols-outlined" style={{ fontSize: '12px' }}>error</span> Delivery Failed
+                                      </span>
+                                      {h.error_message && (
+                                        <span style={{ fontSize: '10px', color: 'var(--text-muted)', maxWidth: '200px', whiteSpace: 'normal', wordBreak: 'break-word', fontStyle: 'italic' }}>
+                                          Reason: {h.error_message}
+                                        </span>
+                                      )}
+                                      <button
+                                        onClick={() => handleRetry(h.history_id)}
+                                        disabled={retryingIds[h.history_id]}
+                                        className="btn-secondary"
+                                        style={{ padding: '2px 8px', fontSize: '10px', display: 'inline-flex', alignItems: 'center', gap: '4px', alignSelf: 'flex-start', marginTop: '2px', height: '24px', cursor: 'pointer' }}
+                                      >
+                                        <span className="material-symbols-outlined" style={{ fontSize: '12px', animation: retryingIds[h.history_id] ? 'spin 1s linear infinite' : 'none' }}>
+                                          {retryingIds[h.history_id] ? 'sync' : 'refresh'}
+                                        </span>
+                                        {retryingIds[h.history_id] ? 'Retrying...' : 'Retry'}
+                                      </button>
+                                    </div>
                                   )}
                                 </div>
                               </td>

@@ -92,9 +92,15 @@ func (e *Routine) Start(ctx context.Context) {
 			// Task A: Alert Evaluation (Every Tick)
 			e.EvaluateAll(ctx)
 
+			// Task A2: Retry Failed Alerts (Every Tick)
+			e.RetryFailedAlerts(ctx)
+
 			// Task B: Agent Health Check (Every Tick)
-			if n, err := e.Store.AgentMarkOffline(ctx, interval*2); err == nil && n > 0 {
-				log.Debugf("[Timer] Marked %d agents as offline", n)
+			if offlineIDs, err := e.Store.AgentMarkOffline(ctx, interval*2); err == nil && len(offlineIDs) > 0 {
+				log.Debugf("[Timer] Marked %d agents as offline", len(offlineIDs))
+				for _, id := range offlineIDs {
+					e.Cache.Delete(id)
+				}
 			}
 
 			// Task C: Maintenance & Cleanup (Every Hour)
@@ -202,8 +208,8 @@ func (e *Routine) EvaluateAll(ctx context.Context) {
 			}
 
 			// 4. Handle State Transitions
-			if isViolating && (agentState.Status == "ok" || agentState.Status == "failed") {
-				// STATE CHANGE: OK/FAILED -> FIRING
+			if isViolating && agentState.Status == "ok" {
+				// STATE CHANGE: OK -> FIRING
 				e.TriggerAlert(ctx, alert, agentState, info, valToEvaluate)
 
 			} else if !isViolating && (agentState.Status == "firing" || agentState.Status == "failed") {
@@ -234,8 +240,8 @@ func (e *Routine) PulseSync(ctx context.Context) {
 
 	// 1. Get all snapshots once
 	allSnaps := e.Cache.GetAll()
-	if len(allSnaps) == 0 {
-		return
+	if allSnaps == nil {
+		allSnaps = make(map[string]*metrics.AgentSnapshot)
 	}
 
 	// 2. Pulse Admins
@@ -267,7 +273,7 @@ func (e *Routine) PulseSync(ctx context.Context) {
 			}
 		}
 
-		if len(filteredData) > 0 {
+		if len(agents) > 0 {
 			e.Broadcaster.BroadcastToDash(dashID, ws.UIUpdate{
 				Type: "agent_update",
 				Data: filteredData,

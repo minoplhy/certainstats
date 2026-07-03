@@ -218,7 +218,7 @@ func main() {
 				authApi.Get("/agent/install/{id}", requireAuth(db, agent.InstallAgentHandler(db)))
 				authApi.Get("/agent/uninstall/{id}", requireAuth(db, agent.UninstallAgentHandler(db)))
 				authApi.Put("/agent", requireAuth(db, agent.RenameAgentHandler(db)))
-				authApi.Delete("/agent", requireAuth(db, agent.RevokeAgentHandler(db, tdb)))
+				authApi.Delete("/agent", requireAuth(db, agent.RevokeAgentHandler(db, tdb, metricsCache)))
 				authApi.Post("/agent/reset/ssh/{id}", requireAuth(db, agent.ResetAgentSSHKeyHandler(db, wsManager)))
 				authApi.Post("/agent/reset/token/{id}", requireAuth(db, agent.ResetAgentTokenHandler(db, wsManager)))
 				authApi.Get("/agent/ssh-key/{id}", requireAuth(db, agent.GetAgentSSHKeyHandler(db)))
@@ -245,6 +245,7 @@ func main() {
 			api.Route("/alerts", func(alertApi chi.Router) {
 				alertApi.Get("/", requireAuth(db, alert.ListAlertsHandler(db)))
 				alertApi.Get("/history", requireAuth(db, alert.HistoryAlertHandler(db)))
+				alertApi.Post("/history/retry/{id}", requireAuth(db, alert.RetryAlertHandler(db)))
 				alertApi.Post("/", requireAuth(db, alert.CreateAlertHandler(db)))
 				alertApi.Post("/test", requireAuth(db, alert.TestAlertHandler(db)))
 
@@ -377,7 +378,7 @@ func main() {
 		}
 	}
 
-	go startHeartbeatSweeper(db)
+	go startHeartbeatSweeper(db, metricsCache)
 	go startSessionSweeper(db)
 
 	log.Printf("CertainStats starting...")

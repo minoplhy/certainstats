@@ -331,6 +331,19 @@ function MetricChart({
   type ChartPoint = { time: number } & Record<string, number | null>;
   const [data, setData] = useState<ChartPoint[]>([]);
   const [loading, setLoading] = useState(true);
+  const [queryEndTime, setQueryEndTime] = useState(Date.now());
+
+  useEffect(() => {
+    if (loading) return;
+    if (customRange) {
+      setQueryEndTime(customRange.end);
+      return;
+    }
+    const timer = setInterval(() => {
+      setQueryEndTime(Date.now());
+    }, 15000);
+    return () => clearInterval(timer);
+  }, [loading, customRange]);
   const lastProcessedTs = useRef<string | null>(null);
   const cfg = TABS[tab];
 
@@ -381,6 +394,7 @@ function MetricChart({
       });
 
       setData(Array.from(map.values()).sort((a, b) => a.time - b.time));
+      setQueryEndTime(customRange ? customRange.end : Date.now());
       setLoading(false);
     });
   }, [agentId, tab, hours, TABS, cfg.series, customRange]);
@@ -492,6 +506,7 @@ function MetricChart({
             setRefAreaLeft={setRefAreaLeft}
             setRefAreaRight={setRefAreaRight}
             onZoom={onZoom}
+            queryEndTime={queryEndTime}
           />
         )}
       </div>
