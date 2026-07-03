@@ -361,7 +361,7 @@ function DashboardContent() {
           <div className="animate-fade-in mobile-px-4" style={{ padding: '32px', maxWidth: '1200px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '32px' }}>
             {/* Redesigned Header Row */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', marginBottom: '16px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '20px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap', gap: '20px', minHeight: '46px' }}>
                 <div className="flex items-center gap-4">
                   <h2 className="font-display mobile-text-lg" style={{ fontSize: '32px', fontWeight: '800', letterSpacing: '-0.02em', color: 'var(--text-primary)' }}>Agent Hub</h2>
                   <div style={{ background: 'var(--accent-glow)', color: 'var(--accent-primary)', padding: '4px 12px', borderRadius: '20px', fontSize: '14px', fontWeight: '800', marginTop: '4px' }}>
@@ -379,7 +379,7 @@ function DashboardContent() {
                 padding: '8px',
                 borderRadius: '16px',
                 border: '1px solid var(--border-color)',
-                boxShadow: 'var(--card-shadow)'
+                boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
               }}>
                 <div className="mobile-full" style={{ position: 'relative', flex: '1' }}>
                   <span className="material-symbols-outlined" style={{ position: 'absolute', left: '16px', top: '50%', transform: 'translateY(-50%)', fontSize: '20px', color: 'var(--text-muted)', pointerEvents: 'none' }}>search</span>

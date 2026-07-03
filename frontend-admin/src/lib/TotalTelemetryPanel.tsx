@@ -60,6 +60,25 @@ export const TotalTelemetryPanel: FC<TotalTelemetryPanelProps> = ({
     totalDiskReadBytes: 0, totalDiskWriteBytes: 0
   });
 
+  const renderVal = (valStr: string) => {
+    const parts = valStr.split(' ');
+    if (parts.length >= 2) {
+      const unit = parts[parts.length - 1];
+      const num = parts.slice(0, parts.length - 1).join(' ');
+      return (
+        <div style={{ fontSize: '15px', fontWeight: '800', color: 'var(--text-primary)', fontFamily: 'var(--font-mono)', whiteSpace: 'nowrap', display: 'flex', alignItems: 'baseline', gap: '2px', minWidth: 0, overflow: 'hidden' }}>
+          <span style={{ textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>{num}</span>
+          <span style={{ fontSize: '10px', fontWeight: '600', color: 'var(--text-secondary)', opacity: 0.6, fontFamily: 'var(--font-sans)', textTransform: 'uppercase', flexShrink: 0 }}>{unit}</span>
+        </div>
+      );
+    }
+    return (
+      <div style={{ fontSize: '15px', fontWeight: '800', color: 'var(--text-primary)', fontFamily: 'var(--font-mono)', whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>
+        {valStr}
+      </div>
+    );
+  };
+
   return (
     <div style={{
       display: 'grid',
@@ -75,7 +94,7 @@ export const TotalTelemetryPanel: FC<TotalTelemetryPanelProps> = ({
           display: 'flex',
           flexDirection: 'column',
           gap: '12px',
-          padding: '16px 20px',
+          padding: '16px 16px',
           borderRadius: '16px',
           background: 'var(--bg-secondary)',
           border: '1px solid var(--border-color)',
@@ -84,14 +103,14 @@ export const TotalTelemetryPanel: FC<TotalTelemetryPanelProps> = ({
           overflow: 'hidden'
         }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', fontWeight: '700' }}>TOTAL BANDWIDTH</span>
+            <span style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-secondary)', fontWeight: '700' }}>TOTAL BANDWIDTH</span>
             <span className="material-symbols-outlined" style={{ fontSize: '18px', color: 'var(--accent-primary)', opacity: 0.8 }}>swap_vertical_circle</span>
           </div>
-          <div style={{ display: 'flex', gap: '16px', alignItems: 'center', flexWrap: 'nowrap' }}>
+          <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'nowrap' }}>
             {showRx && (
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '2px', whiteSpace: 'nowrap' }}>Download</div>
-                <div style={{ fontSize: '16px', fontWeight: '800', color: 'var(--text-primary)', fontFamily: 'var(--font-mono)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>↓ {fmtBps(clusterStats.liveRxBps)}</div>
+                <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '2px', whiteSpace: 'nowrap' }}>Download</div>
+                {renderVal("↓ " + fmtBps(clusterStats.liveRxBps))}
               </div>
             )}
             {showRx && showTx && (
@@ -99,8 +118,8 @@ export const TotalTelemetryPanel: FC<TotalTelemetryPanelProps> = ({
             )}
             {showTx && (
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '2px', whiteSpace: 'nowrap' }}>Upload</div>
-                <div style={{ fontSize: '16px', fontWeight: '800', color: 'var(--text-primary)', fontFamily: 'var(--font-mono)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>↑ {fmtBps(clusterStats.liveTxBps)}</div>
+                <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '2px', whiteSpace: 'nowrap' }}>Upload</div>
+                {renderVal("↑ " + fmtBps(clusterStats.liveTxBps))}
               </div>
             )}
           </div>
@@ -114,7 +133,7 @@ export const TotalTelemetryPanel: FC<TotalTelemetryPanelProps> = ({
           display: 'flex',
           flexDirection: 'column',
           gap: '12px',
-          padding: '16px 20px',
+          padding: '16px 16px',
           borderRadius: '16px',
           background: 'var(--bg-secondary)',
           border: '1px solid var(--border-color)',
@@ -123,14 +142,14 @@ export const TotalTelemetryPanel: FC<TotalTelemetryPanelProps> = ({
           overflow: 'hidden'
         }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', fontWeight: '700' }}>TOTAL DISK I/O</span>
+            <span style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-secondary)', fontWeight: '700' }}>TOTAL DISK I/O</span>
             <span className="material-symbols-outlined" style={{ fontSize: '18px', color: '#fb923c', opacity: 0.8 }}>storage</span>
           </div>
-          <div style={{ display: 'flex', gap: '16px', alignItems: 'center', flexWrap: 'nowrap' }}>
+          <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'nowrap' }}>
             {showDiskRead && (
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '2px', whiteSpace: 'nowrap' }}>Read</div>
-                <div style={{ fontSize: '16px', fontWeight: '800', color: 'var(--text-primary)', fontFamily: 'var(--font-mono)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{fmtBps(clusterStats.liveDiskReadBps)}</div>
+                <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '2px', whiteSpace: 'nowrap' }}>Read</div>
+                {renderVal(fmtBps(clusterStats.liveDiskReadBps))}
               </div>
             )}
             {showDiskRead && showDiskWrite && (
@@ -138,8 +157,8 @@ export const TotalTelemetryPanel: FC<TotalTelemetryPanelProps> = ({
             )}
             {showDiskWrite && (
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '2px', whiteSpace: 'nowrap' }}>Write</div>
-                <div style={{ fontSize: '16px', fontWeight: '800', color: 'var(--text-primary)', fontFamily: 'var(--font-mono)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{fmtBps(clusterStats.liveDiskWriteBps)}</div>
+                <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '2px', whiteSpace: 'nowrap' }}>Write</div>
+                {renderVal(fmtBps(clusterStats.liveDiskWriteBps))}
               </div>
             )}
           </div>
@@ -153,7 +172,7 @@ export const TotalTelemetryPanel: FC<TotalTelemetryPanelProps> = ({
           display: 'flex',
           flexDirection: 'column',
           gap: '12px',
-          padding: '16px 20px',
+          padding: '16px 16px',
           borderRadius: '16px',
           background: 'var(--bg-secondary)',
           border: '1px solid var(--border-color)',
@@ -162,14 +181,14 @@ export const TotalTelemetryPanel: FC<TotalTelemetryPanelProps> = ({
           overflow: 'hidden'
         }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', fontWeight: '700' }}>Total Traffic</span>
+            <span style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-secondary)', fontWeight: '700' }}>TOTAL TRAFFIC</span>
             <span className="material-symbols-outlined" style={{ fontSize: '18px', color: '#14b8a6', opacity: 0.8 }}>cloud_sync</span>
           </div>
-          <div style={{ display: 'flex', gap: '16px', alignItems: 'center', flexWrap: 'nowrap' }}>
+          <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'nowrap' }}>
             {showRx && (
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '2px', whiteSpace: 'nowrap' }}>Received</div>
-                <div style={{ fontSize: '16px', fontWeight: '800', color: 'var(--text-primary)', fontFamily: 'var(--font-mono)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>↓ {fmtBytes(clusterStats.totalRxBytes)}</div>
+                <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '2px', whiteSpace: 'nowrap' }}>Received</div>
+                {renderVal("↓ " + fmtBytes(clusterStats.totalRxBytes))}
               </div>
             )}
             {showRx && showTx && (
@@ -177,8 +196,8 @@ export const TotalTelemetryPanel: FC<TotalTelemetryPanelProps> = ({
             )}
             {showTx && (
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '2px', whiteSpace: 'nowrap' }}>Sent</div>
-                <div style={{ fontSize: '16px', fontWeight: '800', color: 'var(--text-primary)', fontFamily: 'var(--font-mono)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>↑ {fmtBytes(clusterStats.totalTxBytes)}</div>
+                <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '2px', whiteSpace: 'nowrap' }}>Sent</div>
+                {renderVal("↑ " + fmtBytes(clusterStats.totalTxBytes))}
               </div>
             )}
           </div>
@@ -192,7 +211,7 @@ export const TotalTelemetryPanel: FC<TotalTelemetryPanelProps> = ({
           display: 'flex',
           flexDirection: 'column',
           gap: '12px',
-          padding: '16px 20px',
+          padding: '16px 16px',
           borderRadius: '16px',
           background: 'var(--bg-secondary)',
           border: '1px solid var(--border-color)',
@@ -201,14 +220,14 @@ export const TotalTelemetryPanel: FC<TotalTelemetryPanelProps> = ({
           overflow: 'hidden'
         }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', fontWeight: '700' }}>Total Disk Read/Write</span>
+            <span style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-secondary)', fontWeight: '700' }}>TOTAL DISK READ/WRITE</span>
             <span className="material-symbols-outlined" style={{ fontSize: '18px', color: '#ef4444', opacity: 0.8 }}>database</span>
           </div>
-          <div style={{ display: 'flex', gap: '16px', alignItems: 'center', flexWrap: 'nowrap' }}>
+          <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'nowrap' }}>
             {showDiskRead && (
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '2px', whiteSpace: 'nowrap' }}>Read Vol</div>
-                <div style={{ fontSize: '16px', fontWeight: '800', color: 'var(--text-primary)', fontFamily: 'var(--font-mono)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{fmtBytes(clusterStats.totalDiskReadBytes)}</div>
+                <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '2px', whiteSpace: 'nowrap' }}>Read Vol</div>
+                {renderVal(fmtBytes(clusterStats.totalDiskReadBytes))}
               </div>
             )}
             {showDiskRead && showDiskWrite && (
@@ -216,8 +235,8 @@ export const TotalTelemetryPanel: FC<TotalTelemetryPanelProps> = ({
             )}
             {showDiskWrite && (
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '2px', whiteSpace: 'nowrap' }}>Write Vol</div>
-                <div style={{ fontSize: '16px', fontWeight: '800', color: 'var(--text-primary)', fontFamily: 'var(--font-mono)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{fmtBytes(clusterStats.totalDiskWriteBytes)}</div>
+                <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '2px', whiteSpace: 'nowrap' }}>Write Vol</div>
+                {renderVal(fmtBytes(clusterStats.totalDiskWriteBytes))}
               </div>
             )}
           </div>
