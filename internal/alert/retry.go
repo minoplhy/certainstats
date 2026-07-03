@@ -38,6 +38,12 @@ func RetryAlertHandler(db store.AlertsStore) http.HandlerFunc {
 			return
 		}
 
+		// 1.5. Reject retry if the notification has already succeeded
+		if history.NotifiedStatus == "success" {
+			apiresponse.Error(w, http.StatusBadRequest, "Notification has already been successfully delivered")
+			return
+		}
+
 		// 2. Fetch the corresponding alert details
 		alertVal, err := db.AlertGetInfo(r.Context(), history.AlertID, userID)
 		if err != nil {

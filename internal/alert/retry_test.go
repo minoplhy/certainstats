@@ -323,4 +323,34 @@ func TestRetryAlertHandler(t *testing.T) {
 			t.Errorf("unexpected agent status update: id=%s agent=%s status=%s err=%s", updatedAlertID, updatedAgentID, updatedAgentStatus, updatedAgentErrMsg)
 		}
 	})
+
+	t.Run("rejected retry if already passed", func(t *testing.T) {
+		mockStore := &mockAlertsStore{
+			GetHistoryByIDFunc: func(ctx context.Context, historyID string, userID string) (*basealert.AlertHistory, error) {
+				return &basealert.AlertHistory{
+					HistoryID:      "history-789",
+					AlertID:        "alert-789",
+					AgentID:        "agent-789",
+					NotifiedStatus: "success",
+				}, nil
+			},
+		}
+
+		handler := RetryAlertHandler(mockStore)
+
+		req := httptest.NewRequest("POST", "/api/alerts/history/retry/history-789", nil)
+		ctxVal := context.WithValue(req.Context(), CSContext.UserIDKey, "user-123")
+		
+		rctx := chi.NewRouteContext()
+		rctx.URLParams.Add("id", "history-789")
+		ctxVal = context.WithValue(ctxVal, chi.RouteCtxKey, rctx)
+		req = req.WithContext(ctxVal)
+
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("expected status 400, got %d. Body: %s", rec.Code, rec.Body.String())
+		}
+	})
 }
