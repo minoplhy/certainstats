@@ -43,6 +43,8 @@ const PULSE_CSS = `
 
 // ── Dashboard Layout ───────────────────────────────────────────────
 
+const globalPublicScrollPositions: Record<string, number> = {};
+
 function DashboardContent() {
   const [searchParams] = useSearchParams();
   const { slug: pathSlug, agentId: pathAgentId } = useParams();
@@ -60,6 +62,9 @@ function DashboardContent() {
   }, [agents]);
 
   const selectedId = pathAgentId || null;
+  const selectedIdRef = useRef(selectedId);
+  selectedIdRef.current = selectedId;
+
   const [allowedMetrics, setAllowedMetrics] = useState<string[]>([]);
   const [maxDays, setMaxDays] = useState<number>(30);
 
@@ -99,22 +104,32 @@ function DashboardContent() {
 
   // Scroll Restoration
   const scrollPosRef = useRef(0);
+  const isRestoringRef = useRef(false);
+
+  // Initialize from cache if slug is present
+  if (slug && !selectedId && scrollPosRef.current === 0) {
+    scrollPosRef.current = globalPublicScrollPositions[slug] || 0;
+  }
 
   useEffect(() => {
     const handleScroll = () => {
-      if (!selectedId) {
+      if (!selectedIdRef.current && !isRestoringRef.current) {
         scrollPosRef.current = window.scrollY;
+        if (slug) {
+          globalPublicScrollPositions[slug] = window.scrollY;
+        }
       }
     };
 
     window.addEventListener('scroll', handleScroll, { passive: true });
     return () => window.removeEventListener('scroll', handleScroll);
-  }, [selectedId]);
+  }, []);
 
   useEffect(() => {
     if (selectedId) {
       window.scrollTo({ top: 0, behavior: 'instant' });
     } else {
+      isRestoringRef.current = true;
       // Multi-stage scroll restoration to handle asynchronous rendering/reflow (especially for lists/tables)
       window.scrollTo({ top: scrollPosRef.current, behavior: 'instant' });
       requestAnimationFrame(() => {
@@ -123,6 +138,10 @@ function DashboardContent() {
           if (window.scrollY !== scrollPosRef.current) {
             window.scrollTo({ top: scrollPosRef.current, behavior: 'instant' });
           }
+          // Prevent scroll listener from recording browser-induced scroll event on layout collapse/navigation
+          setTimeout(() => {
+            isRestoringRef.current = false;
+          }, 100);
         }, 30);
       });
     }

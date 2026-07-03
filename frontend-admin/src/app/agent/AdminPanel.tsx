@@ -83,6 +83,8 @@ const TABS: Record<TabKey, { label: string; series: SeriesCfg[]; fmt: (v: number
 
 // ── Main component ─────────────────────────────────────────────────────────
 
+let globalAdminScrollPos = 0;
+
 export default function AdminPanel() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -108,6 +110,8 @@ export default function AdminPanel() {
   if (path.includes("/dashboards")) section = "dashboards";
   else if (path.includes("/alerts")) section = "alerts";
   const selectedId = id || null;
+  const selectedIdRef = useRef(selectedId);
+  selectedIdRef.current = selectedId;
 
   const [viewMode, setViewMode] = useState<"grid" | "list">(() => {
     const saved = localStorage.getItem("certainstats_agent_view_mode");
@@ -140,26 +144,29 @@ export default function AdminPanel() {
   }, [gridDensity]);
 
   // Scroll Restoration
-  const scrollPosRef = useRef(0);
+  const scrollPosRef = useRef(globalAdminScrollPos);
+  const isRestoringRef = useRef(false);
 
   useEffect(() => {
     const mainPanel = document.querySelector('.main-panel');
     if (!mainPanel) return;
 
     const handleScroll = () => {
-      if (!selectedId) {
+      if (!selectedIdRef.current && !isRestoringRef.current) {
         scrollPosRef.current = mainPanel.scrollTop;
+        globalAdminScrollPos = mainPanel.scrollTop;
       }
     };
 
     mainPanel.addEventListener('scroll', handleScroll);
     return () => mainPanel.removeEventListener('scroll', handleScroll);
-  }, [selectedId]);
+  }, []);
 
   useEffect(() => {
     if (!selectedId) {
       const mainPanel = document.querySelector('.main-panel');
       if (mainPanel) {
+        isRestoringRef.current = true;
         // Multi-stage scroll restoration to handle asynchronous rendering/reflow (especially for lists/tables)
         mainPanel.scrollTop = scrollPosRef.current;
         requestAnimationFrame(() => {
@@ -168,6 +175,10 @@ export default function AdminPanel() {
             if (mainPanel.scrollTop !== scrollPosRef.current) {
               mainPanel.scrollTop = scrollPosRef.current;
             }
+            // Prevent scroll listener from recording container-induced scroll event on layout collapse/navigation
+            setTimeout(() => {
+              isRestoringRef.current = false;
+            }, 100);
           }, 30);
         });
       }
