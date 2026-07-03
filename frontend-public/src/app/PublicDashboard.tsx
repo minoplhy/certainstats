@@ -282,7 +282,7 @@ function DashboardContent() {
       <style>{PULSE_CSS}</style>
       <header className="mobile-px-4" style={{
         flexShrink: 0,
-        minHeight: '80px',
+        minHeight: '64px',
         background: 'var(--glass-bg)',
         backdropFilter: 'blur(16px)',
         borderBottom: '1px solid var(--border-color)',
@@ -311,20 +311,20 @@ function DashboardContent() {
             }}
           >
             <div style={{
-              width: '40px',
-              height: '40px',
+              width: '32px',
+              height: '32px',
               background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
-              borderRadius: '10px',
+              borderRadius: '8px',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              boxShadow: '0 4px 14px rgba(99, 102, 241, 0.45)',
+              boxShadow: '0 4px 12px rgba(99, 102, 241, 0.3)',
               flexShrink: 0
             }}>
-              <span className="material-symbols-outlined" style={{ fontSize: '22px', color: '#fff' }}>hub</span>
+              <span className="material-symbols-outlined" style={{ fontSize: '20px', color: '#fff' }}>hub</span>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', minWidth: 0 }}>
-              <h1 className="font-display" style={{ fontSize: 'clamp(16px, 4vw, 22px)', fontWeight: '800', color: 'var(--text-primary)', letterSpacing: '-0.02em', maxWidth: '300px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              <h1 className="font-display" style={{ fontSize: 'clamp(14px, 3vw, 18px)', fontWeight: '800', color: 'var(--text-primary)', letterSpacing: '-0.02em', maxWidth: '300px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {title}
               </h1>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -358,12 +358,12 @@ function DashboardContent() {
       {/* ── Main Layout (Overview / Detail) ── */}
       <div style={{ flex: 1, background: 'var(--bg-primary)' }}>
         {!active ? (
-          <div className="animate-fade-in mobile-px-4" style={{ padding: '40px 32px', maxWidth: '1200px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '32px' }}>
+          <div className="animate-fade-in mobile-px-4" style={{ padding: '32px', maxWidth: '1200px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '32px' }}>
             {/* Redesigned Header Row */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', marginBottom: '32px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', marginBottom: '16px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '20px' }}>
                 <div className="flex items-center gap-4">
-                  <h2 className="font-display mobile-text-lg" style={{ fontSize: '36px', fontWeight: '900', letterSpacing: '-0.04em', color: 'var(--text-primary)' }}>Agent Hub</h2>
+                  <h2 className="font-display mobile-text-lg" style={{ fontSize: '32px', fontWeight: '800', letterSpacing: '-0.02em', color: 'var(--text-primary)' }}>Agent Hub</h2>
                   <div style={{ background: 'var(--accent-glow)', color: 'var(--accent-primary)', padding: '4px 12px', borderRadius: '20px', fontSize: '14px', fontWeight: '800', marginTop: '4px' }}>
                     {filteredAgents.length} Nodes
                   </div>

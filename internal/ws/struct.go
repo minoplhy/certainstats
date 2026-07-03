@@ -1,8 +1,8 @@
 package ws
 
 import (
-	"errors"
 	log "certainstats/internal/logger"
+	"errors"
 	"sync"
 	"time"
 

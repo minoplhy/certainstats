@@ -7,8 +7,6 @@ import (
 	"database/sql"
 	"errors"
 	"net/http"
-	"os"
-	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"golang.org/x/net/websocket"
@@ -43,23 +41,11 @@ func PublicWebSocketHandler(dashboard store.DashboardStore, broadcaster *AgentBr
 		server := websocket.Server{
 			Handshake: func(config *websocket.Config, req *http.Request) error {
 				origin := req.Header.Get("Origin")
-				allowed := os.Getenv("ALLOWED_ORIGINS")
-
-				// If no allowed origins specified, allow all
-				if allowed == "" {
-					return nil
+				if err := checkOrigin(origin); err != nil {
+					log.Printf("[Public-WS] Rejected connection from unauthorized origin: %s", origin)
+					return err
 				}
-
-				// Check if origin matches any of the allowed patterns
-				origins := strings.Split(allowed, ",")
-				for _, o := range origins {
-					if strings.TrimSpace(o) == origin {
-						return nil
-					}
-				}
-
-				log.Printf("[Public-WS] Rejected connection from unauthorized origin: %s", origin)
-				return errors.New("unauthorized origin")
+				return nil
 			},
 			Handler: func(conn *websocket.Conn) {
 				defer conn.Close()

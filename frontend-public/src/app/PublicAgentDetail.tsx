@@ -361,7 +361,7 @@ export function PublicAgentDetail({
   }, [timePickerOpen]);
 
   return (
-    <div className="animate-fade-in mobile-px-4" style={{ padding: '32px 8px', maxWidth: '1200px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '24px', width: '100%' }}>
+    <div className="animate-fade-in mobile-px-4" style={{ padding: '32px', maxWidth: '1200px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '24px', width: '100%' }}>
 
       {/* ── HEADER NAVIGATION ────────────────────────────────── */}
       <Link
