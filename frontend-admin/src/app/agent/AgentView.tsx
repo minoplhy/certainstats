@@ -235,7 +235,7 @@ export const AgentView: FC<AgentViewProps> = ({
   const navigate = useNavigate();
   const base = getPanelPath().replace(/\/$/, "");
   return (
-    <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '0 32px' }}>
+    <div style={{ maxWidth: '1200px', margin: '0 auto', width: '100%' }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>
         <div style={{
           display: 'flex',
@@ -246,7 +246,7 @@ export const AgentView: FC<AgentViewProps> = ({
           {/* Main Title Row */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap', gap: '20px' }}>
             <div className="flex items-center gap-4">
-              <h1 className="font-display" style={{ fontSize: '40px', fontWeight: '900', letterSpacing: '-0.04em', color: 'var(--text-primary)' }}>Agent Hub</h1>
+              <h1 className="font-display page-title">Agent Hub</h1>
               <div style={{
                 background: 'var(--accent-glow)',
                 color: 'var(--accent-primary)',
@@ -285,17 +285,7 @@ export const AgentView: FC<AgentViewProps> = ({
           </div>
 
           {/* Unified Toolbar Row */}
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '12px',
-            flexWrap: 'wrap',
-            background: 'var(--bg-secondary)',
-            padding: '8px',
-            borderRadius: '16px',
-            border: '1px solid var(--border-color)',
-            boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
-          }}>
+          <div className="search-bar-container">
             <div style={{ position: 'relative', flex: '1', minWidth: '240px' }}>
               <span className="material-symbols-outlined" style={{ position: 'absolute', left: '16px', top: '50%', transform: 'translateY(-50%)', fontSize: '20px', color: 'var(--text-muted)', pointerEvents: 'none' }}>search</span>
               <input

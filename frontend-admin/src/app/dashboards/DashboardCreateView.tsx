@@ -57,7 +57,7 @@ export default function DashboardCreateView() {
   if (!isClient) return null;
 
   return (
-    <div className="mobile-p-sm" style={{ padding: '40px 24px' }}>
+    <div className="panel-content">
 
         <div className="animate-fade-in mobile-gap-sm" style={{ maxWidth: '800px', margin: '0 auto' }}>
 

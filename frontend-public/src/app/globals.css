@@ -8,8 +8,8 @@
   --border-hover: rgba(255, 255, 255, 0.15);
 
   --text-primary: #ffffff;
-  --text-secondary: #9496a1;
-  --text-muted: #5e606a;
+  --text-secondary: #cbd5e1;
+  --text-muted: #8e909a;
 
   --accent-primary: #6366f1;
   --accent-secondary: #8b5cf6;
@@ -967,5 +967,12 @@ select.input-field {
   .odometer-values {
     align-self: flex-end;
     font-size: 11px;
+  }
+}
+
+/* Stacking hardware specification tile grids on mobile screens to prevent squashed columns */
+@media (max-width: 600px) {
+  .spec-tile-grid {
+    grid-template-columns: 1fr !important;
   }
 }

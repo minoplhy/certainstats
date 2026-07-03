@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { fetchAPI } from "../../lib/api";
+import { useApp } from "../../context/AppContext";
 
 interface PanelNavProps {
   section?: string;
@@ -104,6 +105,10 @@ export default function PanelNav({
     </div>
   );
 
+  const { isSidebarExpanded, setIsSidebarExpanded } = useApp();
+  const hiddenSidebarRoutes = ["/dashboards/create", "/dashboards/edit", "/alerts/create", "/alerts/edit", "/settings/target/create", "/settings/target/edit"];
+  const showSidebar = !hiddenSidebarRoutes.some(r => path.startsWith(r));
+
   return (
     <>
       <nav style={{
@@ -122,6 +127,27 @@ export default function PanelNav({
       }}>
         <div style={{ maxWidth: '1200px', width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px', height: '100%' }}>
+            {showSidebar && (
+              <button
+                onClick={(e) => { e.stopPropagation(); setIsSidebarExpanded(!isSidebarExpanded); }}
+                className="mobile-only"
+                style={{
+                  color: 'var(--text-secondary)',
+                  marginRight: '8px',
+                  display: 'none',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer'
+                }}
+                title="Toggle Sidebar"
+              >
+                <span className="material-symbols-outlined" style={{ fontSize: '24px' }}>
+                  {isSidebarExpanded ? 'menu_open' : 'menu'}
+                </span>
+              </button>
+            )}
             <Link to="/" style={{ display: 'flex', alignItems: 'center', gap: '12px', textDecoration: 'none', flexShrink: 0 }}>
               <div style={{
                 width: '32px',

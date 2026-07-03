@@ -106,7 +106,7 @@ export default function SettingsView() {
   };
 
   return (
-    <div style={{ padding: "40px 24px", maxWidth: "960px", margin: "0 auto", width: '100%' }} className="animate-fade-in mobile-p-sm">
+    <div style={{ maxWidth: "960px", margin: "0 auto", width: '100%' }} className="panel-content animate-fade-in">
       <header style={{ marginBottom: "24px" }}>
         <h1 className="font-display font-bold text-2xl text-primary mobile-text-lg" style={{ letterSpacing: "-0.02em" }}>
           User Settings

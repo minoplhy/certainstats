@@ -716,11 +716,11 @@ export function AgentDetail({
 
         {/* Title row */}
         <div className="flex items-center justify-between mobile-flex-col gap-6 w-full">
-          <div className="flex items-center gap-4 flex-wrap">
+          <div className="flex items-center gap-4 flex-wrap mobile-flex-col">
             <NicknameEditor agent={agent} onSaved={(nick) => {
               setAgents(prev => prev.map(a => a.agent_id === agent.agent_id ? { ...a, nickname: nick } : a));
             }} />
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <span className={`status-pill ${agent.is_online ? 'online' : 'offline'}`}>
                 <span className="status-dot-pulse" />
                 {agent.is_online ? "online" : "offline"}

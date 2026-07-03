@@ -393,7 +393,7 @@ export function PublicAgentDetail({
 
         {/* Title row */}
         <div className="flex items-center justify-between mobile-flex-col gap-6 w-full">
-          <div className="flex items-center gap-4 flex-wrap">
+          <div className="flex items-center gap-4 flex-wrap mobile-flex-col">
             <h2 className="font-display mobile-text-lg" style={{ fontSize: '32px', fontWeight: '800', color: 'var(--text-primary)', lineHeight: '1.2' }}>
               {active.display_name}
             </h2>

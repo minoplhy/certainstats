@@ -140,7 +140,7 @@ function EditDashboardForm() {
   if (loading) return <div style={{ height: '50vh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}><span className="material-symbols-outlined" style={{ fontSize: '32px', animation: 'spin 1s linear infinite' }}>sync</span></div>;
 
   return (
-    <div className="mobile-p-sm" style={{ padding: '40px 24px' }}>
+    <div className="panel-content">
 
         <div className="animate-fade-in mobile-gap-sm" style={{ maxWidth: '800px', margin: '0 auto' }}>
 

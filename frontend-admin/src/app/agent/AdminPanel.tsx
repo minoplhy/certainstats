@@ -139,6 +139,41 @@ export default function AdminPanel() {
     localStorage.setItem("certainstats_grid_density", gridDensity);
   }, [gridDensity]);
 
+  // Scroll Restoration
+  const scrollPosRef = useRef(0);
+
+  useEffect(() => {
+    const mainPanel = document.querySelector('.main-panel');
+    if (!mainPanel) return;
+
+    const handleScroll = () => {
+      if (!selectedId) {
+        scrollPosRef.current = mainPanel.scrollTop;
+      }
+    };
+
+    mainPanel.addEventListener('scroll', handleScroll);
+    return () => mainPanel.removeEventListener('scroll', handleScroll);
+  }, [selectedId]);
+
+  useEffect(() => {
+    if (!selectedId) {
+      const mainPanel = document.querySelector('.main-panel');
+      if (mainPanel) {
+        // Multi-stage scroll restoration to handle asynchronous rendering/reflow (especially for lists/tables)
+        mainPanel.scrollTop = scrollPosRef.current;
+        requestAnimationFrame(() => {
+          mainPanel.scrollTop = scrollPosRef.current;
+          setTimeout(() => {
+            if (mainPanel.scrollTop !== scrollPosRef.current) {
+              mainPanel.scrollTop = scrollPosRef.current;
+            }
+          }, 30);
+        });
+      }
+    }
+  }, [selectedId, viewMode]);
+
   // Local Modals
   const [provisionResult, setProvisionResult] = useState<ProvisionResponse | null>(null);
   const [revokeTarget, setRevokeTarget] = useState<Agent | null>(null);
@@ -196,7 +231,7 @@ export default function AdminPanel() {
   const selectedAgent = agents.find(a => a.agent_id === selectedId);
 
   return (
-    <div style={{ padding: '32px' }}>
+    <div className="panel-content">
       {section === "agent" ? (
         !selectedAgent ? (
           <AgentView

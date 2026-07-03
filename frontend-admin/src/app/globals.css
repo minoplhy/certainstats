@@ -9,8 +9,8 @@
   --border-hover: rgba(255, 255, 255, 0.15);
   
   --text-primary: #ffffff;
-  --text-secondary: #9496a1;
-  --text-muted: #5e606a;
+  --text-secondary: #cbd5e1;
+  --text-muted: #8e909a;
   
   --accent-primary: #6366f1;
   --accent-secondary: #8b5cf6;
@@ -58,8 +58,8 @@
   --border-hover: rgba(0, 0, 0, 0.15);
   
   --text-primary: #1a1a1e;
-  --text-secondary: #5e606a;
-  --text-muted: #8d8f9a;
+  --text-secondary: #475569;
+  --text-muted: #64748b;
   
   --accent-primary: #4f46e5;
   --accent-secondary: #7c3aed;
@@ -899,6 +899,76 @@ input, select {
   .odometer-values {
     align-self: flex-end;
     font-size: 11px;
+  }
+}
+
+/* Responsive Panel padding wrapper to avoid double-padding and squeeze */
+.panel-content {
+  padding: 32px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+@media (max-width: 768px) {
+  .panel-content {
+    padding: 12px !important;
+  }
+  /* Hide the left collapsed floating side double-arrow toggler on mobile since we use the top header hamburger menu */
+  .sidebar-toggle-btn {
+    display: none !important;
+  }
+  /* Shorten page titles on small screens to prevent wrapping and squashing */
+  .page-title {
+    font-size: 24px !important;
+  }
+  /* Retouch cards on mobile: make padding tighter for better fit */
+  .card {
+    padding: 16px !important;
+  }
+  .mobile-grid-1 {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+/* Responsive search & layout control container for mobile */
+.search-bar-container {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 12px;
+  background: var(--bg-secondary);
+  padding: 8px;
+  border-radius: 16px;
+  border: 1px solid var(--border-color);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+
+@media (max-width: 768px) {
+  .search-bar-container {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 8px !important;
+    padding: 6px !important;
+    border-radius: 12px !important;
+  }
+  .search-bar-container > div {
+    width: 100% !important;
+    justify-content: space-between !important;
+  }
+}
+
+/* Stacking hardware specification tile grids on mobile screens to prevent squashed columns */
+@media (max-width: 600px) {
+  .spec-tile-grid,
+  .odometer-grid {
+    grid-template-columns: 1fr !important;
+  }
+  .spec-tile {
+    padding: 12px 14px !important;
+    gap: 10px !important;
+  }
+  .odometer-tile {
+    padding: 10px 14px !important;
   }
 }
 

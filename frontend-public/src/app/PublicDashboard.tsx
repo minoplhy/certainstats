@@ -97,10 +97,36 @@ function DashboardContent() {
 
   const toggleTheme = () => setTheme(prev => prev === "dark" ? "light" : "dark");
 
-  // Scroll to top on view change
+  // Scroll Restoration
+  const scrollPosRef = useRef(0);
+
   useEffect(() => {
-    window.scrollTo({ top: 0, behavior: 'instant' });
+    const handleScroll = () => {
+      if (!selectedId) {
+        scrollPosRef.current = window.scrollY;
+      }
+    };
+
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
   }, [selectedId]);
+
+  useEffect(() => {
+    if (selectedId) {
+      window.scrollTo({ top: 0, behavior: 'instant' });
+    } else {
+      // Multi-stage scroll restoration to handle asynchronous rendering/reflow (especially for lists/tables)
+      window.scrollTo({ top: scrollPosRef.current, behavior: 'instant' });
+      requestAnimationFrame(() => {
+        window.scrollTo({ top: scrollPosRef.current, behavior: 'instant' });
+        setTimeout(() => {
+          if (window.scrollY !== scrollPosRef.current) {
+            window.scrollTo({ top: scrollPosRef.current, behavior: 'instant' });
+          }
+        }, 30);
+      });
+    }
+  }, [selectedId, viewMode]);
 
   useEffect(() => {
     if (!slug) { setError("No dashboard slug provided."); setLoading(false); return; }

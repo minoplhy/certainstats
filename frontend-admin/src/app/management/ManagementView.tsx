@@ -113,7 +113,7 @@ export default function ManagementView() {
   }, [agents, filter]);
 
   return (
-    <div style={{ padding: '32px', maxWidth: '1400px', margin: '0 auto', width: '100%' }}>
+    <div style={{ maxWidth: '1400px', margin: '0 auto', width: '100%' }} className="panel-content">
       <div className="animate-fade-in">
             <div className="flex justify-between items-center" style={{ marginBottom: '32px' }}>
               <div>

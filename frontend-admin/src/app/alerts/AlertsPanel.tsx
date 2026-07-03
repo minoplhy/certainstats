@@ -222,7 +222,7 @@ export default function AlertsPanel({ onSelectNode }: { onSelectNode?: (id: stri
   };
 
   return (
-    <div className="mobile-p-sm" style={{ padding: '32px' }}>
+    <div style={{ width: '100%' }}>
       <div className="animate-fade-in mobile-gap-sm" style={{ maxWidth: '1000px', margin: '0 auto' }}>
 
         <div className="mobile-stack" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px', gap: '16px', flexWrap: 'wrap' }}>

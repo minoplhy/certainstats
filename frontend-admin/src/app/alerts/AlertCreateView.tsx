@@ -123,7 +123,7 @@ export default function AlertCreateView() {
   }
 
   return (
-    <div className="mobile-p-sm" style={{ padding: '40px 24px' }}>
+    <div className="panel-content">
       <div className="animate-fade-in mobile-gap-sm" style={{ maxWidth: '800px', margin: '0 auto' }}>
         <div className="mobile-stack" style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '32px' }}>
           <button 
