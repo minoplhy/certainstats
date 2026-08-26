@@ -402,7 +402,7 @@ func (s *Store) AlertResolve(ctx context.Context, d store.Alert, agentID string)
 func (s *Store) GetActiveAlertsWithState(ctx context.Context) ([]store.Alert, map[string]store.AgentInfo, error) {
 	query := `
 		SELECT 
-			a.alert_id, a.trigger_config, a.action_config, 
+			a.alert_id, a.user_id, a.nickname, a.trigger_config, a.action_config, 
 			aa.agent_id, aa.status, aa.last_fired_at, aa.error_message,
 			ag.is_online, COALESCE(ag.nickname, ag.agent_id),
 			ag.ram_size, ag.swap_size, ag.disk_size
@@ -423,13 +423,13 @@ func (s *Store) GetActiveAlertsWithState(ctx context.Context) ([]store.Alert, ma
 	agentInfoMap := make(map[string]store.AgentInfo)
 
 	for rows.Next() {
-		var alertID, triggerJSON, actionJSON, agentID, status, nickname string
+		var alertID, userID, alertNickname, triggerJSON, actionJSON, agentID, status, nickname string
 		var isOnline bool
 		var ramSize, swapSize, diskSize uint64
 		var lastFiredAt sql.NullTime
 		var errorMsg sql.NullString
 
-		err := rows.Scan(&alertID, &triggerJSON, &actionJSON, &agentID, &status, &lastFiredAt, &errorMsg, &isOnline, &nickname, &ramSize, &swapSize, &diskSize)
+		err := rows.Scan(&alertID, &userID, &alertNickname, &triggerJSON, &actionJSON, &agentID, &status, &lastFiredAt, &errorMsg, &isOnline, &nickname, &ramSize, &swapSize, &diskSize)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -453,10 +453,13 @@ func (s *Store) GetActiveAlertsWithState(ctx context.Context) ([]store.Alert, ma
 			_ = json.Unmarshal([]byte(actionJSON), &action)
 
 			alertMap[alertID] = &store.Alert{
-				AlertID: alertID,
-				Trigger: trigger,
-				Action:  action,
-				Agents:  []alert.AgentState{},
+				AlertID:  alertID,
+				UserID:   userID,
+				Nickname: alertNickname,
+				Enabled:  true,
+				Trigger:  trigger,
+				Action:   action,
+				Agents:   []alert.AgentState{},
 			}
 		}
 

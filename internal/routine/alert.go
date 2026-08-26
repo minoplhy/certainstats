@@ -134,6 +134,12 @@ func (e *Routine) RetryFailedAlerts(ctx context.Context) {
 	log.Printf("ALERT RETRY WORKER: Found %d failed alert notifications to retry", len(failedHistory))
 
 	for _, history := range failedHistory {
+		if history.ResolvedAt != nil {
+			// Incident has already resolved, skip sending stale FIRING notification
+			_ = e.Store.AlertHistoryUpdateStatus(ctx, history.HistoryID, "skipped", "Alert already resolved before retry")
+			continue
+		}
+
 		// 1. Fetch corresponding alert details
 		alertVal, err := e.Store.AlertGetInfo(ctx, history.AlertID, history.UserID)
 		if err != nil {

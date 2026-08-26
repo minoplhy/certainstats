@@ -89,19 +89,19 @@ func (e *Routine) Start(ctx context.Context) {
 				e.PulseSync(ctx)
 			}
 		case <-ticker.C:
-			// Task A: Alert Evaluation (Every Tick)
-			e.EvaluateAll(ctx)
-
-			// Task A2: Retry Failed Alerts (Every Tick)
-			e.RetryFailedAlerts(ctx)
-
-			// Task B: Agent Health Check (Every Tick)
+			// Task 1: Agent Health Check (Mark offline agents before evaluation)
 			if offlineIDs, err := e.Store.AgentMarkOffline(ctx, interval*2); err == nil && len(offlineIDs) > 0 {
 				log.Debugf("[Timer] Marked %d agents as offline", len(offlineIDs))
 				for _, id := range offlineIDs {
 					e.Cache.Delete(id)
 				}
 			}
+
+			// Task 2: Alert Evaluation (Every Tick)
+			e.EvaluateAll(ctx)
+
+			// Task 3: Retry Failed Alerts (Every Tick)
+			e.RetryFailedAlerts(ctx)
 
 			// Task C: Maintenance & Cleanup (Every Hour)
 			if time.Since(lastCleanup) > 1*time.Hour {
@@ -145,46 +145,52 @@ func (e *Routine) EvaluateAll(ctx context.Context) {
 		}
 
 		for _, agentState := range alert.Agents {
-			// 2. Map trigger type to actual TSDB metric name
-			metricToQuery := string(alert.Trigger.Type)
-			switch alert.Trigger.Type {
-			case a.TriggerTypeRAM:
-				metricToQuery = "agent_ram_used"
-			case a.TriggerTypeDisk:
-				metricToQuery = "agent_disk_used"
-			case a.TriggerTypeCPU:
-				metricToQuery = "agent_cpu_usage"
-			case a.TriggerTypeCPUIOWait:
-				metricToQuery = "agent_cpu_iowait"
-			case a.TriggerTypeCPUSteal:
-				metricToQuery = "agent_cpu_steal"
-			case a.TriggerTypeSwap:
-				metricToQuery = "agent_swap_used"
-			case a.TriggerTypeNetRx:
-				metricToQuery = "agent_rx_bytes"
-			case a.TriggerTypeNetTx:
-				metricToQuery = "agent_tx_bytes"
-			case a.TriggerTypeDiskRead:
-				metricToQuery = "agent_disk_read_bytes"
-			case a.TriggerTypeDiskWrite:
-				metricToQuery = "agent_disk_write_bytes"
-			}
-
-			// Fetch the aggregate metric for this agent over the duration
-			avgValue, err := metrics.GetAverageMetric(ctx, e.TSDB, agentState.AgentID, metricToQuery, duration)
-			if err != nil {
-				log.Println("Alert Engine Error:", err)
-				continue
-			}
-
 			isViolating := false
 			info := agentInfoMap[agentState.AgentID]
-			valToEvaluate := avgValue
+			var valToEvaluate float64
 
 			if alert.Trigger.Type == a.TriggerTypeDown {
 				isViolating = !info.IsOnline // Agent is down if IsOnline is false
 				valToEvaluate = 0
 			} else {
+				if e.TSDB == nil {
+					continue
+				}
+
+				// 2. Map trigger type to actual TSDB metric name
+				metricToQuery := string(alert.Trigger.Type)
+				switch alert.Trigger.Type {
+				case a.TriggerTypeRAM:
+					metricToQuery = "agent_ram_used"
+				case a.TriggerTypeDisk:
+					metricToQuery = "agent_disk_used"
+				case a.TriggerTypeCPU:
+					metricToQuery = "agent_cpu_usage"
+				case a.TriggerTypeCPUIOWait:
+					metricToQuery = "agent_cpu_iowait"
+				case a.TriggerTypeCPUSteal:
+					metricToQuery = "agent_cpu_steal"
+				case a.TriggerTypeSwap:
+					metricToQuery = "agent_swap_used"
+				case a.TriggerTypeNetRx:
+					metricToQuery = "agent_rx_bytes"
+				case a.TriggerTypeNetTx:
+					metricToQuery = "agent_tx_bytes"
+				case a.TriggerTypeDiskRead:
+					metricToQuery = "agent_disk_read_bytes"
+				case a.TriggerTypeDiskWrite:
+					metricToQuery = "agent_disk_write_bytes"
+				}
+
+				// Fetch the aggregate metric for this agent over the duration
+				avgValue, err := metrics.GetAverageMetric(ctx, e.TSDB, agentState.AgentID, metricToQuery, duration)
+				if err != nil {
+					log.Println("Alert Engine Error:", err)
+					continue
+				}
+
+				valToEvaluate = avgValue
+
 				// Convert unit representation based on trigger type
 				switch alert.Trigger.Type {
 				case a.TriggerTypeRAM:
