@@ -148,10 +148,16 @@ export function TelemetryChart({
   height,
   queryEndTime
 }: TelemetryChartProps) {
+  // Ensure data points are sorted chronologically (oldest first, newest last)
+  const sortedData = React.useMemo(() => {
+    if (!data || data.length === 0) return [];
+    return [...data].sort((a, b) => a.time - b.time);
+  }, [data]);
+
   // ── Dynamic Peak & yMax Calculations ─────────────────────────────────────
   const computedMaxVal = React.useMemo(() => {
     let max = 0;
-    data.forEach(pt => {
+    sortedData.forEach(pt => {
       series.forEach(s => {
         const val = pt[s.label];
         if (typeof val === 'number' && val > max) {
@@ -160,57 +166,49 @@ export function TelemetryChart({
       });
     });
     return max;
-  }, [data, series]);
+  }, [sortedData, series]);
 
   const yMax = React.useMemo(() => {
     if (maxValue !== undefined) {
       return Math.max(maxValue, computedMaxVal);
     }
-    return computedMaxVal || 100;
+    return Math.min(100, Math.max(1, Math.ceil(computedMaxVal + 1)));
   }, [maxValue, computedMaxVal]);
 
   // ── Reactive Downtime Gap Detection & Insertion ──────────────────────────
   const downtimes = React.useMemo(() => {
-    return calculateDowntimes(data, queryEndTime);
-  }, [data, queryEndTime]);
+    return calculateDowntimes(sortedData, queryEndTime);
+  }, [sortedData, queryEndTime]);
 
   const chartData = React.useMemo(() => {
-    return buildChartData(data, series, queryEndTime);
-  }, [data, series, queryEndTime]);
+    return buildChartData(sortedData, series, queryEndTime);
+  }, [sortedData, series, queryEndTime]);
 
   // ── Formatter ────────────────────────────────────────────────────────────
   const timeRange = React.useMemo(() => {
-    if (data.length < 2) return 0;
+    if (sortedData.length < 2) return 0;
     let min = Infinity;
     let max = -Infinity;
-    for (let i = 0; i < data.length; i++) {
-      const t = data[i].time;
+    for (let i = 0; i < sortedData.length; i++) {
+      const t = sortedData[i].time;
       if (typeof t === 'number' && !isNaN(t)) {
         if (t < min) min = t;
         if (t > max) max = t;
       }
     }
     return min === Infinity || max === -Infinity ? 0 : max - min;
-  }, [data]);
+  }, [sortedData]);
 
   const tickFmt = React.useCallback((ms: number) => {
     const date = new Date(ms);
-    // Less than 24 hours (86,400,000 ms)
-    if (timeRange < 86400000) {
-      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+    const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+    // Over 12 hours or custom range: include Date + Time so timestamps are unambiguous
+    if (timeRange > 12 * 3600 * 1000) {
+      const day = date.getDate();
+      const month = date.toLocaleDateString([], { month: 'short' });
+      return `${month} ${day} ${timeStr}`;
     }
-    
-    const day = date.getDate();
-    const month = date.toLocaleDateString([], { month: 'short' });
-    
-    // Less than 1 year (approx 31,536,000,000 ms)
-    if (timeRange < 31536000000) {
-      return `${day} ${month}`;
-    }
-    
-    // More than 1 year
-    const year = date.getFullYear();
-    return `${day} ${month} ${year}`;
+    return timeStr;
   }, [timeRange]);
 
   const hasAreaFill = series.some((s) => s.fill);

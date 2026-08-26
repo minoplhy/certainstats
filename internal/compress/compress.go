@@ -113,6 +113,10 @@ func (w *compressionResponseWriter) Write(b []byte) (int, error) {
 func (w *compressionResponseWriter) startCompression() {
 	w.wroteHeader = true
 
+	// Delete any uncompressed Content-Length header set by upstream handlers
+	// to prevent browser NS_ERROR_PARTIAL_TRANSFER errors.
+	w.Header().Del("Content-Length")
+
 	// Check if we can acquire a compression slot to prevent CPU saturation under attack
 	select {
 	case activeCompressors <- struct{}{}:

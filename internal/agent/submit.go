@@ -120,29 +120,26 @@ func SubmitHandler(agents store.AgentStore, tdb *tsdb.DB, parserRegistry *regist
 			return
 		}
 
-		// 4. Force root-only disks for consistent telemetry
+		// 4. Calculate total disk size across partitions while preserving all disk mount points
 		if parsedData.AgentInfo != nil {
+			var totalDiskSize uint64
 			var rootDiskSize uint64
 			foundRoot := false
 
-			for i := range parsedData.Metrics {
-				var filteredDisks []agentparser.DiskTelemetry
-				for _, d := range parsedData.Metrics[i].Disks {
-					// We only care about the root disk
+			if len(parsedData.Metrics) > 0 {
+				for _, d := range parsedData.Metrics[0].Disks {
+					totalDiskSize += d.TotalBytes
 					if d.Path == "/" {
-						filteredDisks = append(filteredDisks, d)
-						if !foundRoot {
-							rootDiskSize = d.TotalBytes
-							foundRoot = true
-						}
+						rootDiskSize = d.TotalBytes
+						foundRoot = true
 					}
 				}
-				parsedData.Metrics[i].Disks = filteredDisks
 			}
 
-			// Override the global disk size with the root disk size if found
-			if foundRoot {
+			if foundRoot && rootDiskSize > 0 {
 				parsedData.AgentInfo.DiskSize = rootDiskSize
+			} else if totalDiskSize > 0 {
+				parsedData.AgentInfo.DiskSize = totalDiskSize
 			}
 		}
 
@@ -184,11 +181,15 @@ func SubmitHandler(agents store.AgentStore, tdb *tsdb.DB, parserRegistry *regist
 						continue
 					}
 					if existing, ok := diskDeltas[d.Path]; ok {
+						if d.TotalBytes > 0 {
+							existing.TotalBytes = d.TotalBytes
+						}
 						existing.ReadBytes += d.ReadBytes
 						existing.WriteBytes += d.WriteBytes
 					} else {
 						diskDeltas[d.Path] = &store.DiskDelta{
 							Path:       d.Path,
+							TotalBytes: d.TotalBytes,
 							ReadBytes:  d.ReadBytes,
 							WriteBytes: d.WriteBytes,
 						}
@@ -215,7 +216,7 @@ func SubmitHandler(agents store.AgentStore, tdb *tsdb.DB, parserRegistry *regist
 
 		// 7. Update Realtime Cache
 		if cache != nil {
-			cache.Update(identity.AgentID, parsedData)
+			cache.Update(identity.UserID, identity.AgentID, parsedData)
 		}
 
 		w.WriteHeader(http.StatusOK)

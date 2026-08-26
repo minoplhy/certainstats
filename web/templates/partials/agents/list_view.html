@@ -1,0 +1,52 @@
+{{define "agents_list_view"}}
+<!-- List View Container -->
+<div id="agents-list-container" class="table-responsive" style="display: none;">
+  <table class="table">
+    <thead>
+      <tr>
+        <th>Status</th>
+        <th>Agent Nickname</th>
+        <th>Load / Telemetry</th>
+        <th>CPU Architecture</th>
+        <th>RAM Capacity</th>
+        <th>Disk Capacity</th>
+        <th>Driver</th>
+        <th>Uptime</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {{range .Agents}}
+      <tr class="agent-row-item" data-agent-id="{{.AgentID}}" data-agent-name="{{.Nickname}}" data-cpu-model="{{.CpuModel}}" onclick="handleAgentItemClick(event, '{{.AgentID}}');" style="cursor: pointer;">
+        <td><span class="status-dot {{if .IsOnline}}online{{else}}offline{{end}}" id="td-dot-{{.AgentID}}"></span></td>
+        <td>
+          <a href="{{$.PanelPath}}/{{.AgentID}}" class="agent-name" onclick="handleAgentItemClick(event, '{{.AgentID}}');">
+            <strong>{{.Nickname}}</strong>
+          </a>
+        </td>
+        <td style="min-width: 180px;">
+          <div class="usage-bar-track compact" id="td-track-cpu-{{.AgentID}}" data-tooltip-header="CPU Utilization" data-tooltip-rows='[{"label":"Used","val":"0.0%","color":"#3b82f6"}]'>
+            <div class="usage-segment seg-cpu-usr" id="td-seg-cpu-{{.AgentID}}" style="width: 0%;"></div>
+          </div>
+          <div class="usage-bar-track compact" id="td-track-ram-{{.AgentID}}" data-tooltip-header="RAM Usage" data-tooltip-rows='[{"label":"RAM Used","val":"0 B","color":"#14b8a6"}]'>
+            <div class="usage-segment seg-ram-used" id="td-seg-ram-{{.AgentID}}" style="width: 0%;"></div>
+          </div>
+          <div class="usage-bar-track compact" id="td-track-net-{{.AgentID}}" data-tooltip-header="Network Rate" data-tooltip-rows='[{"label":"Download (RX)","val":"0 B/s","color":"#1e40af"},{"label":"Upload (TX)","val":"0 B/s","color":"#7e22ce"}]'>
+            <div class="usage-segment seg-net-rx" id="td-seg-net-rx-{{.AgentID}}" style="width: 0%;"></div>
+            <div class="usage-segment seg-net-tx" id="td-seg-net-tx-{{.AgentID}}" style="width: 0%;"></div>
+          </div>
+        </td>
+        <td>{{if .CpuModel}}{{.CpuModel}} ({{.CpuCores}} C){{else}}-{{end}}</td>
+        <td>{{formatBytes .RamSize}}</td>
+        <td>{{formatBytes .DiskSize}}</td>
+        <td class="mono">{{.AgentType}}</td>
+        <td id="td-uptime-{{.AgentID}}">{{formatUptime .Uptime}}</td>
+        <td>
+          <button type="button" class="btn btn-secondary btn-sm" onclick="event.stopPropagation(); navigateToAgent('{{.AgentID}}');">Telemetry ↗</button>
+        </td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+</div>
+{{end}}

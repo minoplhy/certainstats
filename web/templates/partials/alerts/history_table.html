@@ -1,0 +1,37 @@
+{{define "alerts_history_table"}}
+<!-- Alert Incident History Section -->
+<div id="history-section" style="margin-bottom: 32px;">
+  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 12px;">
+    <h3 style="font-family: var(--font-display); font-size: 16px; margin: 0;">Alert Incident History</h3>
+    
+    <div style="display: flex; gap: 10px; align-items: center;">
+      <input type="text" id="history-search" class="form-input" placeholder="Search incidents..." style="font-size: 11px; padding: 4px 8px; width: 180px;">
+      <div style="display: flex; gap: 4px;">
+        <button type="button" class="btn btn-secondary btn-sm history-filter-btn active" data-status="all">All</button>
+        <button type="button" class="btn btn-secondary btn-sm history-filter-btn" data-status="firing">Firing</button>
+        <button type="button" class="btn btn-secondary btn-sm history-filter-btn" data-status="resolved">Resolved</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="table-responsive">
+    <table class="table" id="history-table">
+      <thead>
+        <tr>
+          <th>Trigger Time</th>
+          <th>Alert Rule</th>
+          <th>Breach Details</th>
+          <th>Duration</th>
+          <th>Status</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody id="history-tbody">
+        <tr>
+          <td colspan="6" style="text-align: center; color: var(--text-muted); padding: 24px;">Loading incident history...</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+{{end}}

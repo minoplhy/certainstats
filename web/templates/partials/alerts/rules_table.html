@@ -1,0 +1,106 @@
+{{define "alerts_rules_table"}}
+<!-- Alert Rules Table -->
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+  <h3 style="font-family: var(--font-display); font-size: 16px; margin: 0; display: flex; align-items: center; gap: 8px;">
+    Configured Alert Rules
+  </h3>
+</div>
+
+{{if not .Alerts}}
+<div class="card" style="text-align: center; padding: 36px 20px; margin-bottom: 32px; background: var(--bg-secondary);">
+  <p style="color: var(--text-muted); margin: 0 0 12px 0;">No alert rules configured yet. Create automated rules to monitor node health and telemetry thresholds.</p>
+  <button type="button" class="btn btn-primary btn-sm" onclick="document.getElementById('new-alert-modal').style.display='block'">
+    + Create Alert Rule
+  </button>
+</div>
+{{else}}
+<div class="table-responsive" style="margin-bottom: 32px;">
+  <table class="table">
+    <thead>
+      <tr>
+        <th>Rule Name</th>
+        <th>Trigger Condition</th>
+        <th>Duration</th>
+        <th>Target / Channel</th>
+        <th>Nodes</th>
+        <th>Status</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {{range $a := .Alerts}}
+      <tr>
+        <td>
+          <strong style="color: var(--text-primary);">{{$a.Nickname}}</strong>
+        </td>
+        <td>
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <span class="badge badge-indigo" style="font-size: 11px;">{{$a.Trigger.Type}}</span>
+            {{if ne (printf "%s" $a.Trigger.Type) "agent_down"}}
+            <span class="mono" style="font-size: 12px; font-weight: 600;">{{$a.Trigger.Operator}} {{$a.Trigger.Threshold}}</span>
+            {{end}}
+          </div>
+        </td>
+        <td class="mono" style="font-size: 12px;">{{if $a.Trigger.Duration}}{{$a.Trigger.Duration}}{{else}}5m{{end}}</td>
+        <td>
+          {{if eq (printf "%s" $a.Action.Type) "preset"}}
+            <span style="font-size: 12px; color: var(--text-secondary); display: flex; align-items: center; gap: 4px;">
+              {{$matched := false}}
+              {{range $.Targets}}
+                {{if eq .TargetID $a.Action.TargetID}}
+                  <strong>{{.Name}}</strong> ({{.Type}})
+                  {{$matched = true}}
+                {{end}}
+              {{end}}
+              {{if not $matched}}<span style="color: var(--text-muted);">Preset: {{$a.Action.TargetID}}</span>{{end}}
+            </span>
+          {{else if eq (printf "%s" $a.Action.Type) "discord"}}
+            <span style="font-size: 12px; color: var(--accent-primary);">Discord Webhook</span>
+          {{else}}
+            <span style="font-size: 12px; color: var(--text-secondary);">Custom Webhook</span>
+          {{end}}
+        </td>
+        <td>
+          <span class="badge" style="background: rgba(255,255,255,0.05); color: var(--text-secondary); font-size: 11px;">
+            {{if not $a.Agents}}All Nodes{{else}}{{len $a.Agents}} Node{{if ne (len $a.Agents) 1}}s{{end}}{{end}}
+          </span>
+        </td>
+        <td>
+          <span class="badge {{if $a.Enabled}}badge-online{{else}}badge-offline{{end}}">
+            {{if $a.Enabled}}Active{{else}}Disabled{{end}}
+          </span>
+        </td>
+        <td>
+          <div style="display: flex; gap: 6px; align-items: center;">
+            <button type="button" class="btn btn-secondary btn-sm test-alert-btn" data-id="{{$a.AlertID}}" style="font-size: 11px; padding: 3px 8px;">
+              Test
+            </button>
+            <button type="button" class="btn btn-secondary btn-sm edit-alert-btn" 
+              data-id="{{$a.AlertID}}"
+              data-nickname="{{$a.Nickname}}"
+              data-enabled="{{$a.Enabled}}"
+              data-trigger-type="{{$a.Trigger.Type}}"
+              data-operator="{{$a.Trigger.Operator}}"
+              data-threshold="{{$a.Trigger.Threshold}}"
+              data-duration="{{$a.Trigger.Duration}}"
+              data-dest-type="{{$a.Action.Type}}"
+              data-target-id="{{$a.Action.TargetID}}"
+              data-destination="{{$a.Action.Destination}}"
+              data-payload="{{$a.Action.Payload}}"
+              data-agents="{{range $i, $ag := $a.Agents}}{{if $i}},{{end}}{{$ag.AgentID}}{{end}}"
+              style="font-size: 11px; padding: 3px 8px;">
+              Edit
+            </button>
+            <form action="{{$.PanelPath}}/alerts/delete" method="POST" onsubmit="return confirm('Are you sure you want to delete alert rule \'{{$a.Nickname}}\'?')" style="margin: 0;">
+              <input type="hidden" name="id" value="{{$a.AlertID}}">
+              <button type="submit" class="btn btn-danger btn-sm" style="font-size: 11px; padding: 3px 8px;">Delete</button>
+            </form>
+          </div>
+        </td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+</div>
+{{end}}
+{{end}}

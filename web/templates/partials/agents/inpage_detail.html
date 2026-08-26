@@ -1,0 +1,226 @@
+{{define "agents_inpage_detail"}}
+<!-- Full In-Place Agent Detail View (Switched by #/{AGENT_ID}) -->
+<div id="agents-detail-view" style="display: none;">
+  <!-- Line 1: Back to Overview Button -->
+  <div style="margin-bottom: 16px;">
+    <button type="button" class="btn btn-secondary btn-sm" onclick="closeAgentDetail()" style="display: inline-flex; align-items: center; gap: 6px; border-radius: 20px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; padding: 6px 14px;">
+      &larr; Back to Overview
+    </button>
+  </div>
+
+  <!-- Line 2: Monitor Name & Actions Row -->
+  <div class="page-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px; margin-bottom: 24px;">
+    <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+      <h1 class="page-title" style="margin: 0; display: flex; align-items: center; gap: 8px;">
+        <span class="status-dot offline" id="detail-active-dot"></span>
+        <span id="detail-active-name">Node Telemetry</span>
+      </h1>
+      <span class="badge badge-offline" id="detail-active-badge">Offline</span>
+      <span class="badge badge-indigo" id="detail-active-type">beszel</span>
+
+      <!-- Inpage Header Inline Notes Widget -->
+      <div id="inpage-header-inline-notes" style="display: inline-flex; align-items: center; gap: 6px; font-size: 13px; margin-left: 4px;">
+        <div style="width: 1px; height: 14px; background: rgba(255,255,255,0.15); margin-right: 4px;"></div>
+        <div id="inpage-header-notes-read" style="display: inline-flex; align-items: center; gap: 6px;">
+          <span id="inpage-header-notes-text" onclick="handleInpageHeaderNoteClick()" style="color: var(--text-primary); border-bottom: 1px dashed rgba(255,255,255,0.4); cursor: pointer; max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; transition: color 0.2s;" title="Click to edit notes">No notes</span>
+          <span style="color: var(--text-muted); font-size: 12px;">notes</span>
+        </div>
+        <div id="inpage-header-notes-edit" style="display: none; align-items: center; gap: 6px;">
+          <input type="text" id="inpage-header-notes-input" class="input font-mono" style="padding: 2px 8px; font-size: 12px; height: 26px; width: 180px;" placeholder="Notes...">
+          <button type="button" class="btn btn-primary btn-sm" style="padding: 2px 8px; font-size: 11px; height: 26px;" onclick="saveInpageHeaderInlineNote()">Save</button>
+          <button type="button" class="btn btn-secondary btn-sm" style="padding: 2px 6px; font-size: 11px; height: 26px;" onclick="cancelInpageHeaderNoteEdit()">✕</button>
+        </div>
+      </div>
+    </div>
+
+    <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+      <button type="button" class="btn btn-secondary btn-sm" onclick="showInpageReinstallModal()" title="Show Installation Instructions">
+        Reinstall
+      </button>
+      <button type="button" class="btn btn-secondary btn-sm" onclick="showInpageUninstallModal()" title="Show Uninstall Instructions">
+        Uninstall
+      </button>
+
+      <form id="inpage-delete-form" action="{{.PanelPath}}/agent/delete" method="POST" onsubmit="return confirm('Revoke and delete this agent? All TSDB metrics will be permanently purged.')" style="margin: 0;">
+        <input type="hidden" name="agent_id" id="inpage-delete-id" value="">
+        <input type="hidden" name="redirect_to" value="{{.PanelPath}}">
+        <button type="submit" class="btn btn-danger btn-sm" title="Revoke Agent">
+          Delete
+        </button>
+      </form>
+
+    </div>
+  </div>
+
+  <!-- Dedicated History Time Window Selector Bar -->
+  <div class="history-time-bar">
+    <div class="history-time-title">History Time Window:</div>
+    <div id="inpage-detail-time-picker-container"></div>
+  </div>
+
+  <!-- 4 Hardware Cards -->
+  <div class="hw-card-grid">
+    <div class="hw-card">
+      <div class="hw-card-header"><span>CPU Cores</span><span>CPU</span></div>
+      <div class="hw-card-val-row"><span class="hw-card-val" id="inpage-hw-cpu">-</span><span class="hw-card-unit">vCPU</span></div>
+      <div class="hw-card-progress-track"><div class="hw-card-progress-fill seg-cpu-usr" id="inpage-hw-cpu-bar" style="width: 0%;"></div></div>
+    </div>
+    <div class="hw-card">
+      <div class="hw-card-header"><span>Total RAM</span><span>RAM</span></div>
+      <div class="hw-card-val-row"><span class="hw-card-val" id="inpage-hw-ram">-</span></div>
+      <div class="hw-card-progress-track"><div class="hw-card-progress-fill seg-ram-used" id="inpage-hw-ram-bar" style="width: 0%;"></div></div>
+    </div>
+    <div class="hw-card">
+      <div class="hw-card-header"><span>Root Disk</span><span>DISK</span></div>
+      <div class="hw-card-val-row"><span class="hw-card-val" id="inpage-hw-disk">-</span></div>
+      <div class="hw-card-progress-track"><div class="hw-card-progress-fill seg-disk" id="inpage-hw-disk-bar" style="width: 0%;"></div></div>
+    </div>
+    <div class="hw-card">
+      <div class="hw-card-header"><span>Swap Size</span><span>SWAP</span></div>
+      <div class="hw-card-val-row"><span class="hw-card-val" id="inpage-hw-swap">-</span></div>
+      <div class="hw-card-progress-track"><div class="hw-card-progress-fill seg-ram-swap" id="inpage-hw-swap-bar" style="width: 0%;"></div></div>
+    </div>
+  </div>
+
+  <!-- Specifications Tiles Grid -->
+  <div class="spec-grid">
+    <div class="spec-tile">
+      <div class="spec-label">Node ID</div>
+      <div class="spec-value mono">
+        <span class="spec-id-badge" id="inpage-spec-id" title="Click to copy ID" onclick="window.CertainStatsTelemetry.copyText(this.getAttribute('data-full-id') || this.textContent, 'Agent ID')">-</span>
+      </div>
+    </div>
+    <div class="spec-tile">
+      <div class="spec-label">System Uptime</div>
+      <div class="spec-value" id="inpage-spec-uptime">-</div>
+    </div>
+    <div class="spec-tile">
+      <div class="spec-label">OS Kernel</div>
+      <div class="spec-value mono" id="inpage-spec-kernel">-</div>
+    </div>
+    <div class="spec-tile">
+      <div class="spec-label">CPU Architecture</div>
+      <div class="spec-value mono" id="inpage-spec-cpu">-</div>
+    </div>
+  </div>
+
+  <!-- Odometers Grid -->
+  <div class="odometer-grid" id="inpage-odometer-grid">
+    <div class="odometer-tile">
+      <div class="odometer-label-group"><span>☁ Network Traffic</span></div>
+      <div class="odometer-values" id="inpage-odo-net"><span>↓ 0 B</span> / <span>↑ 0 B</span></div>
+    </div>
+    <div class="odometer-tile">
+      <div class="odometer-label-group"><span>⛁ Disk R/W</span></div>
+      <div class="odometer-values" id="inpage-odo-disk"><span>R: 0 B</span> / <span>W: 0 B</span></div>
+    </div>
+  </div>
+
+  <!-- Expanded Notes Section (Active when notes are long) -->
+  <div id="inpage-agent-notes-section" style="display: none; margin-bottom: 24px;">
+    <div class="card" style="padding: 16px;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+        <div style="font-size: 11px; font-weight: 800; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.05em; display: flex; align-items: center; gap: 6px;">
+          Notes
+        </div>
+        <button type="button" id="inpage-btn-edit-expanded-notes" class="btn btn-secondary btn-sm" style="padding: 3px 10px; font-size: 11px;" onclick="startInpageExpandedNotesEdit()">
+          Edit
+        </button>
+      </div>
+
+      <!-- Inpage Expanded Read / Preview State -->
+      <div id="inpage-expanded-notes-read" onclick="startInpageExpandedNotesEdit()" style="cursor: pointer; padding: 12px 14px; background: rgba(0,0,0,0.15); border: 1px solid var(--border-color); border-radius: var(--radius);">
+        <p id="inpage-expanded-notes-text" style="margin: 0; font-size: 13px; color: var(--text-secondary); white-space: pre-wrap; font-family: var(--font-mono); line-height: 1.6;"></p>
+      </div>
+
+      <!-- Inpage Expanded Edit State -->
+      <div id="inpage-expanded-notes-edit" style="display: none; flex-direction: column; gap: 10px;">
+        <textarea id="inpage-expanded-notes-textarea" class="input font-mono" style="min-height: 120px; width: 100%; resize: vertical; padding: 12px; font-size: 13px; line-height: 1.5; background: var(--bg-primary); border: 1px solid var(--accent-primary); border-radius: var(--radius); color: var(--text-primary);" placeholder="Write private notes..."></textarea>
+        <div style="display: flex; justify-content: flex-end; gap: 8px;">
+          <button type="button" class="btn btn-secondary btn-sm" onclick="cancelInpageExpandedNotesEdit()">Cancel</button>
+          <button type="button" class="btn btn-primary btn-sm" id="inpage-btn-save-expanded-notes" onclick="saveInpageExpandedNotes()">Save Note</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Storage Partitions Section -->
+  <div style="margin-bottom: 24px;" id="inpage-disks-section">
+    <div style="font-size: 11px; font-weight: 800; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.05em; margin-bottom: 12px; display: flex; align-items: center; gap: 6px;">
+      <span>⛁</span> Storage Partitions & Disks
+    </div>
+    <div class="hw-card-grid" id="inpage-disks-grid">
+    </div>
+  </div>
+
+  <!-- Telemetry Charts Section -->
+  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 20px; margin-bottom: 24px;">
+    <!-- CPU Usage Chart -->
+    <div class="card">
+      <div class="chart-header-row">
+        <h3 class="chart-header-title">CPU Utilization (%)</h3>
+        <div class="chart-legend-pills">
+          <span class="chart-legend-item"><span class="chart-legend-dot" style="background-color: #6366f1;"></span>Usr: <span class="chart-legend-val" id="inpage-live-cpu-usr">0.0%</span></span>
+          <span class="chart-legend-item"><span class="chart-legend-dot" style="background-color: #94a3b8;"></span>IO: <span class="chart-legend-val" id="inpage-live-cpu-io">0.0%</span></span>
+          <span class="chart-legend-item"><span class="chart-legend-dot" style="background-color: #ef4444;"></span>Stl: <span class="chart-legend-val" id="inpage-live-cpu-stl">0.0%</span></span>
+        </div>
+      </div>
+      <div class="chart-container" style="height: 220px;"><canvas id="inpage-chart-cpu" class="chart-canvas"></canvas></div>
+    </div>
+
+    <!-- RAM & Swap Usage Chart -->
+    <div class="card">
+      <div class="chart-header-row">
+        <h3 class="chart-header-title">Memory & Swap Consumption</h3>
+        <div class="chart-legend-pills">
+          <span class="chart-legend-item"><span class="chart-legend-dot" style="background-color: #14b8a6;"></span>RAM: <span class="chart-legend-val" id="inpage-live-ram-used">0 B</span></span>
+          <span class="chart-legend-item"><span class="chart-legend-dot" style="background-color: #94a3b8;"></span>Swap: <span class="chart-legend-val" id="inpage-live-ram-swap">0 B</span></span>
+        </div>
+      </div>
+      <div class="chart-container" style="height: 220px;"><canvas id="inpage-chart-ram" class="chart-canvas"></canvas></div>
+    </div>
+
+    <!-- Network IO Rate Chart -->
+    <div class="card">
+      <div class="chart-header-row">
+        <h3 class="chart-header-title">Network I/O Rate (B/s)</h3>
+        <div class="chart-legend-pills">
+          <span class="chart-legend-item"><span class="chart-legend-dot" style="background-color: #3b82f6;"></span>RX: <span class="chart-legend-val" id="inpage-live-net-rx">↓ 0 B/s</span></span>
+          <span class="chart-legend-item"><span class="chart-legend-dot" style="background-color: #a855f7;"></span>TX: <span class="chart-legend-val" id="inpage-live-net-tx">↑ 0 B/s</span></span>
+        </div>
+      </div>
+      <div class="chart-container" style="height: 220px;"><canvas id="inpage-chart-net" class="chart-canvas"></canvas></div>
+    </div>
+  </div>
+
+  <!-- Dedicated Disks & Storage Telemetry Section -->
+  <div class="section-header" style="margin-top: 20px; margin-bottom: 12px;">
+    <h2 style="font-size: 16px; font-weight: 600; display: flex; align-items: center; gap: 8px;">
+      <span class="material-icons" style="font-size: 20px; color: var(--primary-color);">⛁</span>
+      Disks & Storage
+    </h2>
+  </div>
+  <div id="inpage-disk-charts-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 20px; margin-bottom: 24px;">
+    <div class="card" id="inpage-disk-card-usage-root">
+      <div class="chart-header-row">
+        <h3 class="chart-header-title">Disk Usage (/)</h3>
+        <div class="chart-legend-pills">
+          <span class="chart-legend-item"><span class="chart-legend-dot" style="background-color: #8b5cf6;"></span>Used: <span class="chart-legend-val" id="inpage-live-disk-used-root">0 B</span></span>
+        </div>
+      </div>
+      <div class="chart-container" style="height: 220px;"><canvas id="inpage-chart-disk-root" class="chart-canvas"></canvas></div>
+    </div>
+
+    <div class="card" id="inpage-disk-card-io-root">
+      <div class="chart-header-row">
+        <h3 class="chart-header-title">Disk I/O Rate (/)</h3>
+        <div class="chart-legend-pills">
+          <span class="chart-legend-item"><span class="chart-legend-dot" style="background-color: #fb923c;"></span>Read: <span class="chart-legend-val" id="inpage-live-disk-read-root">0 B/s</span></span>
+          <span class="chart-legend-item"><span class="chart-legend-dot" style="background-color: #ef4444;"></span>Write: <span class="chart-legend-val" id="inpage-live-disk-write-root">0 B/s</span></span>
+        </div>
+      </div>
+      <div class="chart-container" style="height: 220px;"><canvas id="inpage-chart-disk-io-root" class="chart-canvas"></canvas></div>
+    </div>
+  </div>
+</div>
+{{end}}

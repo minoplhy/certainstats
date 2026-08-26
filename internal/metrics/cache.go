@@ -12,31 +12,33 @@ const windowTTL = 24 * time.Hour
 
 // AgentSnapshot holds the most recent data for an agent.
 type AgentSnapshot struct {
-	AgentID   string
-	Timestamp time.Time
+	AgentID   string    `json:"agent_id"`
+	Timestamp time.Time `json:"timestamp"`
 
 	// Latest Telemetry
-	CPUUsagePercent  float64
-	CPUIOWaitPercent float64
-	CPUStealPercent  float64
-	RAMUsedBytes     uint64
-	RAMSwapUsedBytes uint64
-	DiskUsedBytes    uint64
-	DiskTotalBytes   uint64
-	Disks            []agentparser.DiskTelemetry
+	CPUUsagePercent  float64                     `json:"cpu_usage_percent"`
+	CPUIOWaitPercent float64                     `json:"cpu_iowait_percent"`
+	CPUStealPercent  float64                     `json:"cpu_steal_percent"`
+	RAMUsedBytes     uint64                      `json:"ram_used_bytes"`
+	RAMSwapUsedBytes uint64                      `json:"ram_swap_used_bytes"`
+	DiskUsedBytes    uint64                      `json:"disk_used_bytes"`
+	DiskTotalBytes   uint64                      `json:"disk_total_bytes"`
+	Disks            []agentparser.DiskTelemetry `json:"disks"`
+	LoadAvg          [3]float64                  `json:"load_avg"`
+	Temperatures     map[string]float64          `json:"temperatures,omitempty"`
 
 	// Networking (current throughput, bytes/s)
-	RXBytes float64
-	TXBytes float64
-	RXBps   float64
-	TXBps   float64
+	RXBytes float64 `json:"rx_bytes"`
+	TXBytes float64 `json:"tx_bytes"`
+	RXBps   float64 `json:"rx_bps"`
+	TXBps   float64 `json:"tx_bps"`
 
 	// Disk Activity (current throughput, bytes/s)
-	DiskReadBps  float64
-	DiskWriteBps float64
+	DiskReadBps  float64 `json:"disk_read_bps"`
+	DiskWriteBps float64 `json:"disk_write_bps"`
 
 	// Hardware/Metadata snapshot
-	Metadata *agentparser.ParsedMetadata
+	Metadata *agentparser.ParsedMetadata `json:"metadata,omitempty"`
 }
 
 // TimeseriesPoint is a single (timestamp, value) sample stored in the
@@ -77,7 +79,7 @@ func (c *RealtimeCache) EvictExpiredWindows() {
 
 	c.windows.Range(func(key, value any) bool {
 		window := value.(*TimeseriesWindow)
-		
+
 		window.mu.Lock()
 		// 1. Evict any points that expired since the last append.
 		i := 0
@@ -94,14 +96,14 @@ func (c *RealtimeCache) EvictExpiredWindows() {
 				window.Points = remaining
 			}
 		}
-		
+
 		// 2. Mark for deletion if empty.
 		isEmpty := len(window.Points) == 0
 		window.mu.Unlock()
 
 		// 3. Delete from sync.Map.
 		// Note: A minuscule TOCTOU race exists here where a new point could be appended
-		// between Unlock and Delete, resulting in the loss of that single point. 
+		// between Unlock and Delete, resulting in the loss of that single point.
 		// For 24-hour telemetry on previously idle metrics, this is an acceptable tradeoff
 		// to avoid complex lock-free data structures.
 		if isEmpty {
@@ -111,13 +113,13 @@ func (c *RealtimeCache) EvictExpiredWindows() {
 	})
 }
 
-// windowKey constructs a collision-free lookup key.
+// windowKey constructs a collision-free lookup key partitioned by owner (userID).
 // We use a tab separator (0x09) which cannot appear in metric names or paths.
-func windowKey(agentID, metricName, path string) string {
+func windowKey(userID, agentID, metricName, path string) string {
 	if path == "" {
-		return agentID + "\t" + metricName
+		return userID + "\t" + agentID + "\t" + metricName
 	}
-	return agentID + "\t" + metricName + "\t" + path
+	return userID + "\t" + agentID + "\t" + metricName + "\t" + path
 }
 
 // appendPoint appends a single sample to the named window and evicts samples
@@ -155,15 +157,15 @@ func (c *RealtimeCache) appendPoint(key string, tMs int64, val float64) {
 	}
 }
 
-// GetTimeseries returns the cached samples for (agentID, metricName, path)
+// GetTimeseries returns the cached samples for (userID, agentID, metricName, path)
 // within [startMs, endMs].
 //
 // Returns (nil, false) on a cache miss, meaning the caller must fall back to
 // the TSDB.  A miss occurs when:
 //   - no window exists yet (agent has not submitted since restart)
 //   - startMs predates the oldest cached sample (range older than windowTTL)
-func (c *RealtimeCache) GetTimeseries(agentID, metricName, path string, startMs, endMs int64) ([]TimeseriesPoint, bool) {
-	v, ok := c.windows.Load(windowKey(agentID, metricName, path))
+func (c *RealtimeCache) GetTimeseries(userID, agentID, metricName, path string, startMs, endMs int64) ([]TimeseriesPoint, bool) {
+	v, ok := c.windows.Load(windowKey(userID, agentID, metricName, path))
 	if !ok {
 		return nil, false
 	}
@@ -187,8 +189,8 @@ func (c *RealtimeCache) GetTimeseries(agentID, metricName, path string, startMs,
 }
 
 // Update refreshes the live snapshot for an agent and appends all metrics from
-// the submitted batch to the sliding-window cache.
-func (c *RealtimeCache) Update(agentID string, data *agentparser.ParsedData) {
+// the submitted batch to the sliding-window cache partitioned by owner (userID).
+func (c *RealtimeCache) Update(userID, agentID string, data *agentparser.ParsedData) {
 	if data == nil || len(data.Metrics) == 0 {
 		return
 	}
@@ -213,8 +215,13 @@ func (c *RealtimeCache) Update(agentID string, data *agentparser.ParsedData) {
 			snapshot.TXBps = txRate
 
 			if len(latest.Disks) > 0 {
-				snapshot.DiskReadBps = max0(float64(latest.Disks[0].ReadBytes) / dt)
-				snapshot.DiskWriteBps = max0(float64(latest.Disks[0].WriteBytes) / dt)
+				var totalRead, totalWrite float64
+				for _, d := range latest.Disks {
+					totalRead += float64(d.ReadBytes)
+					totalWrite += float64(d.WriteBytes)
+				}
+				snapshot.DiskReadBps = max0(totalRead / dt)
+				snapshot.DiskWriteBps = max0(totalWrite / dt)
 			}
 		}
 	}
@@ -228,9 +235,16 @@ func (c *RealtimeCache) Update(agentID string, data *agentparser.ParsedData) {
 	snapshot.RXBytes = latest.RXBytes
 	snapshot.TXBytes = latest.TXBytes
 	snapshot.Disks = latest.Disks
+	snapshot.LoadAvg = latest.LoadAvg
+	snapshot.Temperatures = latest.Temperatures
 	if len(latest.Disks) > 0 {
-		snapshot.DiskUsedBytes = latest.Disks[0].UsedBytes
-		snapshot.DiskTotalBytes = latest.Disks[0].TotalBytes
+		var totalUsed, totalTotal uint64
+		for _, d := range latest.Disks {
+			totalUsed += d.UsedBytes
+			totalTotal += d.TotalBytes
+		}
+		snapshot.DiskUsedBytes = totalUsed
+		snapshot.DiskTotalBytes = totalTotal
 	}
 	if data.AgentInfo != nil {
 		snapshot.Metadata = data.AgentInfo
@@ -244,24 +258,24 @@ func (c *RealtimeCache) Update(agentID string, data *agentparser.ParsedData) {
 		ago := len(data.Metrics) - 1 - i
 		tMs := now.Add(time.Duration(-ago*agentdata.TIME_DIFF) * time.Second).UnixMilli()
 
-		c.appendPoint(windowKey(agentID, "agent_cpu_usage", ""), tMs, s.CPUUsagePercent)
-		c.appendPoint(windowKey(agentID, "agent_cpu_iowait", ""), tMs, s.CPUIOWaitPercent)
-		c.appendPoint(windowKey(agentID, "agent_cpu_steal", ""), tMs, s.CPUStealPercent)
-		c.appendPoint(windowKey(agentID, "agent_ram_used", ""), tMs, float64(s.RAMUsedBytes))
-		c.appendPoint(windowKey(agentID, "agent_swap_used", ""), tMs, float64(s.RAMSwapUsedBytes))
-		c.appendPoint(windowKey(agentID, "agent_rx_bytes", ""), tMs, s.RXBytes)
-		c.appendPoint(windowKey(agentID, "agent_tx_bytes", ""), tMs, s.TXBytes)
+		c.appendPoint(windowKey(userID, agentID, "agent_cpu_usage", ""), tMs, s.CPUUsagePercent)
+		c.appendPoint(windowKey(userID, agentID, "agent_cpu_iowait", ""), tMs, s.CPUIOWaitPercent)
+		c.appendPoint(windowKey(userID, agentID, "agent_cpu_steal", ""), tMs, s.CPUStealPercent)
+		c.appendPoint(windowKey(userID, agentID, "agent_ram_used", ""), tMs, float64(s.RAMUsedBytes))
+		c.appendPoint(windowKey(userID, agentID, "agent_swap_used", ""), tMs, float64(s.RAMSwapUsedBytes))
+		c.appendPoint(windowKey(userID, agentID, "agent_rx_bytes", ""), tMs, s.RXBytes)
+		c.appendPoint(windowKey(userID, agentID, "agent_tx_bytes", ""), tMs, s.TXBytes)
 
 		for _, disk := range s.Disks {
-			c.appendPoint(windowKey(agentID, "agent_disk_used", disk.Path), tMs, float64(disk.UsedBytes))
-			c.appendPoint(windowKey(agentID, "agent_disk_read_bytes", disk.Path), tMs, float64(disk.ReadBytes))
-			c.appendPoint(windowKey(agentID, "agent_disk_write_bytes", disk.Path), tMs, float64(disk.WriteBytes))
+			c.appendPoint(windowKey(userID, agentID, "agent_disk_used", disk.Path), tMs, float64(disk.UsedBytes))
+			c.appendPoint(windowKey(userID, agentID, "agent_disk_read_bytes", disk.Path), tMs, float64(disk.ReadBytes))
+			c.appendPoint(windowKey(userID, agentID, "agent_disk_write_bytes", disk.Path), tMs, float64(disk.WriteBytes))
 
 			usagePct := 0.0
 			if disk.TotalBytes > 0 {
 				usagePct = float64(disk.UsedBytes) / float64(disk.TotalBytes) * 100.0
 			}
-			c.appendPoint(windowKey(agentID, "agent_disk_usage", disk.Path), tMs, usagePct)
+			c.appendPoint(windowKey(userID, agentID, "agent_disk_usage", disk.Path), tMs, usagePct)
 		}
 	}
 }

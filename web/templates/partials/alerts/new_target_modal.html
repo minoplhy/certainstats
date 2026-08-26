@@ -1,0 +1,47 @@
+{{define "alerts_new_target_modal"}}
+<!-- New Target Modal -->
+<div id="new-target-modal" class="modal-overlay" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); z-index: 2000; backdrop-filter: blur(4px); overflow-y: auto; padding: 20px 10px;">
+  <div style="max-width: 540px; margin: 60px auto; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: var(--radius); padding: 28px; box-shadow: var(--shadow-lg);">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; border-bottom: 1px solid var(--border-color); padding-bottom: 12px;">
+      <div>
+        <h3 style="margin: 0; font-family: var(--font-display); font-size: 18px;">Add Notification Target</h3>
+        <p style="margin: 4px 0 0 0; font-size: 12px; color: var(--text-muted);">Save a reusable webhook destination for alerts.</p>
+      </div>
+      <button type="button" class="btn btn-secondary btn-sm" onclick="document.getElementById('new-target-modal').style.display='none'">✕</button>
+    </div>
+
+    <form action="{{.PanelPath}}/alerts/targets/create" method="POST">
+      <div class="form-group">
+        <label class="form-label" for="create-tgt-name">Target Preset Name</label>
+        <input type="text" id="create-tgt-name" name="name" class="form-input" required placeholder="e.g. Discord Ops Channel, Slack Alerts">
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="create-tgt-type">Channel Type</label>
+        <select id="create-tgt-type" name="type" class="form-select">
+          <option value="discord">Discord Webhook</option>
+          <option value="webhook">Generic HTTP POST Webhook</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="create-tgt-destination">Destination Webhook URL</label>
+        <input type="url" id="create-tgt-destination" name="destination" class="form-input" required placeholder="https://discord.com/api/webhooks/...">
+      </div>
+
+      <div class="form-group">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+          <label class="form-label" for="create-tgt-payload" style="margin-bottom: 0;">Default Payload Template (Optional JSON)</label>
+          <button type="button" class="btn btn-secondary btn-sm" onclick="document.getElementById('template-guide-modal').style.display='block'" style="font-size: 10px; padding: 2px 6px;">Variables Guide</button>
+        </div>
+        <textarea id="create-tgt-payload" name="payload" class="form-input mono" style="min-height: 80px; font-size: 12px;" placeholder='Enter custom JSON payload template...'></textarea>
+      </div>
+
+      <div style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 24px;">
+        <button type="button" class="btn btn-secondary" onclick="document.getElementById('new-target-modal').style.display='none'">Cancel</button>
+        <button type="submit" class="btn btn-primary">Save Target</button>
+      </div>
+    </form>
+  </div>
+</div>
+{{end}}

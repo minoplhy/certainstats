@@ -27,6 +27,7 @@ type Agent struct {
 
 type DiskOdometer struct {
 	Path       string
+	TotalBytes uint64
 	ReadBytes  uint64
 	WriteBytes uint64
 }

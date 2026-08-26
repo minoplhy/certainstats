@@ -62,7 +62,7 @@ func (s *Store) AgentUpdateHeartbeat(ctx context.Context, agentID, userID string
 func (s *Store) AgentList(ctx context.Context, userID string) ([]store.Agent, error) {
 	// 1. Fetch all per-disk odometers first
 	diskRows, err := s.db.QueryContext(ctx, `
-		SELECT ado.agent_id, ado.path, ado.read_bytes, ado.write_bytes
+		SELECT ado.agent_id, ado.path, ado.total_bytes, ado.read_bytes, ado.write_bytes
 		FROM   agent_disk_odometers ado
 		JOIN   agents a ON ado.agent_id = a.agent_id
 		WHERE  a.user_id = ?`,
@@ -73,7 +73,7 @@ func (s *Store) AgentList(ctx context.Context, userID string) ([]store.Agent, er
 		for diskRows.Next() {
 			var agentID string
 			var d b.DiskOdometer
-			if err := diskRows.Scan(&agentID, &d.Path, &d.ReadBytes, &d.WriteBytes); err == nil {
+			if err := diskRows.Scan(&agentID, &d.Path, &d.TotalBytes, &d.ReadBytes, &d.WriteBytes); err == nil {
 				disksMap[agentID] = append(disksMap[agentID], d)
 			}
 		}
@@ -208,6 +208,23 @@ func (s *Store) AgentGetByID(ctx context.Context, agentID, userID string) (*stor
 	if lastSeen.Valid {
 		a.LastSeen = &lastSeen.Time
 	}
+
+	diskRows, err := s.db.QueryContext(ctx, `
+		SELECT path, total_bytes, read_bytes, write_bytes
+		FROM   agent_disk_odometers
+		WHERE  agent_id = ?`,
+		agentID,
+	)
+	if err == nil {
+		for diskRows.Next() {
+			var d b.DiskOdometer
+			if err := diskRows.Scan(&d.Path, &d.TotalBytes, &d.ReadBytes, &d.WriteBytes); err == nil {
+				a.Disks = append(a.Disks, d)
+			}
+		}
+		diskRows.Close()
+	}
+
 	return &a, nil
 }
 
@@ -329,12 +346,17 @@ func (s *Store) AgentIncrementTraffic(ctx context.Context, agentID, userID strin
 	// Update disk odometers
 	for _, d := range disks {
 		_, err = txConn.ExecContext(ctx, `
-			INSERT INTO agent_disk_odometers (agent_id, path, read_bytes, write_bytes)
-			VALUES (?, ?, ?, ?)
+			INSERT INTO agent_disk_odometers (agent_id, path, total_bytes, read_bytes, write_bytes)
+			VALUES (?, ?, ?, ?, ?)
 			ON CONFLICT(agent_id, path) DO UPDATE SET
-				read_bytes  = read_bytes + excluded.read_bytes,
-				write_bytes = write_bytes + excluded.write_bytes`,
-			agentID, d.Path, d.ReadBytes, d.WriteBytes,
+				total_bytes = CASE 
+					WHEN excluded.total_bytes > 0 AND excluded.total_bytes != agent_disk_odometers.total_bytes 
+					THEN excluded.total_bytes 
+					ELSE agent_disk_odometers.total_bytes 
+				END,
+				read_bytes  = agent_disk_odometers.read_bytes + excluded.read_bytes,
+				write_bytes = agent_disk_odometers.write_bytes + excluded.write_bytes`,
+			agentID, d.Path, d.TotalBytes, d.ReadBytes, d.WriteBytes,
 		)
 		if err != nil {
 			return err

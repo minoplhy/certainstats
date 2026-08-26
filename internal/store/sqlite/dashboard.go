@@ -244,7 +244,7 @@ func (s *Store) DashboardGetPublicAgents(
 	disksMap := make(map[string][]baseresponse.DiskOdometer)
 	if allowDiskQuery {
 		diskRows, err := s.db.QueryContext(ctx, `
-			SELECT ado.agent_id, ado.path, ado.read_bytes, ado.write_bytes
+			SELECT ado.agent_id, ado.path, ado.total_bytes, ado.read_bytes, ado.write_bytes
 			FROM   agent_disk_odometers ado
 			JOIN   dashboard_agents da ON ado.agent_id = da.agent_id
 			JOIN   dashboards d ON da.dashboard_id = d.dashboard_id
@@ -255,10 +255,11 @@ func (s *Store) DashboardGetPublicAgents(
 			for diskRows.Next() {
 				var agentID string
 				var path string
-				var rVal, wVal uint64
-				if err := diskRows.Scan(&agentID, &path, &rVal, &wVal); err == nil {
+				var tVal, rVal, wVal uint64
+				if err := diskRows.Scan(&agentID, &path, &tVal, &rVal, &wVal); err == nil {
 					disksMap[agentID] = append(disksMap[agentID], baseresponse.DiskOdometer{
 						Path:       path,
+						TotalBytes: &tVal,
 						ReadBytes:  &rVal,
 						WriteBytes: &wVal,
 					})
@@ -387,7 +388,8 @@ func (s *Store) DashboardGetPublicAgents(
 				pa.Disks = make([]baseresponse.DiskOdometer, len(rawDisks))
 				for idx, d := range rawDisks {
 					pa.Disks[idx] = baseresponse.DiskOdometer{
-						Path: d.Path,
+						Path:       d.Path,
+						TotalBytes: d.TotalBytes,
 					}
 					if allowRead && d.ReadBytes != nil {
 						val := *d.ReadBytes

@@ -71,15 +71,7 @@ func LoginHandler(users store.UserStore, sessions store.SessionStore) http.Handl
 			return
 		}
 
-		http.SetCookie(w, &http.Cookie{
-			Name:     "session_token",
-			Value:    token,
-			Path:     "/",
-			Expires:  expiresAt,
-			HttpOnly: true,
-			SameSite: http.SameSiteLaxMode,
-			// Secure: true, // enable in production (HTTPS)
-		})
+		SetSessionCookie(w, r, token, expiresAt)
 
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte(`{"status":"success"}`))

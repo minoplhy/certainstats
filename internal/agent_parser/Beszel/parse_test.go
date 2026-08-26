@@ -209,4 +209,50 @@ func TestParse(t *testing.T) {
 			t.Errorf("expected RXBytes 300 (fallback bandwidth), got %f", metrics.RXBytes)
 		}
 	})
+
+	t.Run("valid cbor multi-disk extra fs", func(t *testing.T) {
+		combined := CombinedData{
+			Info: Info{Uptime: 5000},
+			Stats: Stats{
+				Cpu:       15.0,
+				DiskTotal: 100.0,
+				DiskUsed:  30.0,
+				DiskIO:    [2]uint64{500, 600},
+				ExtraFs: map[string]*FsStats{
+					"/home":     {Total: 80.0, Used: 20.0},
+					"/mnt/data": {Total: 500.0, Used: 150.0},
+				},
+			},
+		}
+
+		data, err := cbor.Marshal(combined)
+		if err != nil {
+			t.Fatalf("failed to marshal cbor: %v", err)
+		}
+
+		parsed, err := parser.Parse(data)
+		if err != nil {
+			t.Fatalf("Parse failed: %v", err)
+		}
+
+		disks := parsed.Metrics[0].Disks
+		if len(disks) != 3 {
+			t.Fatalf("expected 3 disks (/, /home, /mnt/data), got %d", len(disks))
+		}
+
+		paths := make(map[string]agentparser.DiskTelemetry)
+		for _, d := range disks {
+			paths[d.Path] = d
+		}
+
+		if _, ok := paths["/"]; !ok {
+			t.Errorf("expected root disk '/' to be present")
+		}
+		if homeDisk, ok := paths["/home"]; !ok || homeDisk.TotalBytes != uint64(80.0*1024*1024*1024) {
+			t.Errorf("expected /home disk telemetry, got %+v", homeDisk)
+		}
+		if dataDisk, ok := paths["/mnt/data"]; !ok || dataDisk.UsedBytes != uint64(150.0*1024*1024*1024) {
+			t.Errorf("expected /mnt/data disk telemetry, got %+v", dataDisk)
+		}
+	})
 }

@@ -59,6 +59,38 @@ export interface PublicAgent {
   disks?:         DiskOdometer[];
 }
 
+export interface AgentSnapshot {
+  Timestamp?: string;
+  CPUUsagePercent?: number;
+  CPUIOWaitPercent?: number;
+  CPUStealPercent?: number;
+  RAMUsagePercent?: number;
+  RAMUsedBytes?: number;
+  RAMSwapUsagePercent?: number;
+  RAMSwapUsedBytes?: number;
+  DiskUsagePercent?: number;
+  DiskUsedBytes?: number;
+  DiskTotalBytes?: number;
+  DiskReadBps?: number;
+  DiskWriteBps?: number;
+  RXBps?: number;
+  TXBps?: number;
+  disks?: {
+    path: string;
+    used_bytes: number;
+    total_bytes: number;
+    read_bytes?: number;
+    write_bytes?: number;
+  }[];
+  Disks?: {
+    path: string;
+    used_bytes: number;
+    total_bytes: number;
+    read_bytes?: number;
+    write_bytes?: number;
+  }[];
+}
+
 export interface Dashboard {
   dashboard_id:   string;
   slug:           string;

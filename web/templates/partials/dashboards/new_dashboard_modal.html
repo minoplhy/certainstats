@@ -1,0 +1,71 @@
+{{define "dashboards_new_modal"}}
+<!-- New Dashboard Modal with Granular ACLs -->
+<div id="new-dashboard-modal" class="modal-overlay" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); z-index: 2000; backdrop-filter: blur(4px);">
+  <div style="max-width: 680px; margin: 40px auto; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: var(--radius); padding: 24px; box-shadow: var(--shadow-lg); max-height: 85vh; overflow-y: auto;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+      <h3 style="margin: 0; font-family: var(--font-display);">Create Public Dashboard</h3>
+      <button type="button" class="btn btn-secondary btn-sm" onclick="document.getElementById('new-dashboard-modal').style.display='none'">✕</button>
+    </div>
+
+    <form action="{{.PanelPath}}/dashboards/create" method="POST">
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
+        <div class="form-group" style="margin: 0;">
+          <label class="form-label" for="title">Dashboard Title</label>
+          <input type="text" id="title" name="title" class="form-input" required placeholder="Production Fleet Status">
+        </div>
+
+        <div class="form-group" style="margin: 0;">
+          <label class="form-label" for="slug">URL Slug</label>
+          <input type="text" id="slug" name="slug" class="form-input" required placeholder="status-prod">
+        </div>
+      </div>
+
+      <div class="form-group" style="margin-bottom: 16px;">
+        <label class="form-label" for="max_days">Max Retention History Window (Days)</label>
+        <input type="number" id="max_days" name="max_days" class="form-input" value="7" min="1" max="365">
+      </div>
+
+      <!-- 8 System Info ACL Checkboxes -->
+      <div style="margin-bottom: 16px; background: rgba(0,0,0,0.15); padding: 12px; border-radius: var(--radius); border: 1px solid var(--border-color);">
+        <div style="font-size: 11px; font-weight: 800; text-transform: uppercase; color: var(--text-muted); margin-bottom: 8px;">
+          Exposed System Specifications (8 Fields)
+        </div>
+        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; font-size: 11px;">
+          <label><input type="checkbox" name="features" value="is_online" checked> Online Status</label>
+          <label><input type="checkbox" name="features" value="uptime" checked> Uptime</label>
+          <label><input type="checkbox" name="features" value="linux_version" checked> OS Kernel</label>
+          <label><input type="checkbox" name="features" value="cpu_model" checked> CPU Model</label>
+          <label><input type="checkbox" name="features" value="cpu_cores" checked> CPU Cores</label>
+          <label><input type="checkbox" name="features" value="ram_size" checked> RAM Size</label>
+          <label><input type="checkbox" name="features" value="swap_size" checked> Swap Size</label>
+          <label><input type="checkbox" name="features" value="disk_size" checked> Disk Size</label>
+        </div>
+      </div>
+
+      <!-- 10 Metric ACL Checkboxes -->
+      <div style="margin-bottom: 20px; background: rgba(0,0,0,0.15); padding: 12px; border-radius: var(--radius); border: 1px solid var(--border-color);">
+        <div style="font-size: 11px; font-weight: 800; text-transform: uppercase; color: var(--text-muted); margin-bottom: 8px;">
+          Exposed Telemetry Metrics (10 Series)
+        </div>
+        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; font-size: 11px;">
+          <label><input type="checkbox" name="metrics" value="agent_cpu_usage" checked> CPU User %</label>
+          <label><input type="checkbox" name="metrics" value="agent_cpu_iowait" checked> CPU IO Wait %</label>
+          <label><input type="checkbox" name="metrics" value="agent_cpu_steal" checked> CPU Steal %</label>
+          <label><input type="checkbox" name="metrics" value="agent_ram_used" checked> RAM Used</label>
+          <label><input type="checkbox" name="metrics" value="agent_swap_used" checked> Swap Used</label>
+          <label><input type="checkbox" name="metrics" value="agent_disk_used" checked> Root Disk Used</label>
+          <label><input type="checkbox" name="metrics" value="agent_disk_read_bytes" checked> Disk Read B/s</label>
+          <label><input type="checkbox" name="metrics" value="agent_disk_write_bytes" checked> Disk Write B/s</label>
+          <label><input type="checkbox" name="metrics" value="agent_rx_bytes" checked> Network RX B/s</label>
+          <label><input type="checkbox" name="metrics" value="agent_tx_bytes" checked> Network TX B/s</label>
+        </div>
+      </div>
+
+      <div style="display: flex; justify-content: flex-end; gap: 10px;">
+        <button type="button" class="btn btn-secondary" onclick="document.getElementById('new-dashboard-modal').style.display='none'">Cancel</button>
+        <button type="submit" class="btn btn-primary">Create Dashboard</button>
+      </div>
+    </form>
+  </div>
+</div>
+{{end}}

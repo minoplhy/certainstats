@@ -510,6 +510,15 @@ function MetricChart({
           />
         )}
       </div>
+      {/* Legend Footer */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '16px', justifyContent: 'center', alignItems: 'center', marginTop: '12px', paddingTop: '12px', borderTop: '1px solid var(--border-color)' }}>
+        {cfg.series.map((s: any) => (
+          <div key={s.label} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', fontFamily: 'var(--font-sans)', color: 'var(--text-muted)' }}>
+            <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: s.color, display: 'inline-block' }} />
+            <span style={{ fontWeight: '500', color: 'var(--text-secondary)' }}>{s.label}</span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

@@ -1,0 +1,23 @@
+{{define "agents_notes_modal"}}
+<!-- Private Notes Editor Modal -->
+<div id="notes-modal" class="modal-overlay" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); z-index: 2000; backdrop-filter: blur(4px);">
+  <div style="max-width: 520px; margin: 60px auto; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: var(--radius); padding: 24px; box-shadow: var(--shadow-lg);">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+      <h3 style="margin: 0; font-family: var(--font-display);">Edit Private Notes</h3>
+      <button type="button" class="btn btn-secondary btn-sm" onclick="document.getElementById('notes-modal').style.display='none'">✕</button>
+    </div>
+
+    <form id="notes-form" onsubmit="event.preventDefault(); document.getElementById('save-notes-btn').click();">
+      <div class="form-group">
+        <label class="form-label" for="notes-textarea">Private Notes / Documentation</label>
+        <textarea id="notes-textarea" class="form-input mono" style="min-height: 140px; resize: vertical;" placeholder="Add private operational notes, provider, IP, or credential reminders...">{{if .Agent}}{{.Agent.Note}}{{end}}</textarea>
+      </div>
+
+      <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px;">
+        <button type="button" class="btn btn-secondary" onclick="document.getElementById('notes-modal').style.display='none'">Cancel</button>
+        <button type="button" id="save-notes-btn" class="btn btn-primary">Save Notes</button>
+      </div>
+    </form>
+  </div>
+</div>
+{{end}}

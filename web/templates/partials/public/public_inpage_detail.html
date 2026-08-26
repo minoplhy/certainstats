@@ -1,0 +1,215 @@
+{{define "public_inpage_detail"}}
+<!-- Full In-Place Public Detail View (Switched by #/{PUBLIC_ID}) -->
+<div id="public-detail-view" style="display: none;" data-max-days="{{.AccessRules.MaxDays}}">
+  <!-- Line 1: Back to Overview Button -->
+  <div style="margin-bottom: 16px;">
+    <button type="button" class="btn btn-secondary btn-sm" onclick="closePublicDetail()" style="display: inline-flex; align-items: center; gap: 6px; border-radius: 20px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; padding: 6px 14px;">
+      &larr; Back to Overview
+    </button>
+  </div>
+
+  <!-- Line 2: Monitor Name & Time Selector Row -->
+  <div class="page-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px; margin-bottom: 24px;">
+    <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+      <h1 class="page-title" style="margin: 0; display: flex; align-items: center; gap: 8px;">
+        <span class="status-dot offline" id="pub-inpage-dot"></span>
+        <span id="pub-inpage-name">Monitor Telemetry</span>
+      </h1>
+      <span class="badge badge-offline" id="pub-inpage-badge">Offline</span>
+    </div>
+
+  </div>
+
+  <!-- Dedicated History Time Window Selector Bar -->
+  <div class="history-time-bar">
+    <div class="history-time-title">History Time Window:</div>
+    <div class="time-controls-wrapper">
+      <div id="pub-inpage-time-range-bar" class="time-range-bar"></div>
+    </div>
+  </div>
+
+  <!-- Hardware Cards -->
+  <div class="hw-card-grid">
+    {{if hasFeature .AccessRules "cpu_cores"}}
+    <div class="hw-card">
+      <div class="hw-card-header"><span>CPU Cores</span><span>CPU</span></div>
+      <div class="hw-card-val-row"><span class="hw-card-val" id="pub-inpage-hw-cpu">-</span><span class="hw-card-unit">vCPU</span></div>
+      <div class="hw-card-progress-track"><div class="hw-card-progress-fill seg-cpu-usr" id="pub-inpage-hw-cpu-bar" style="width: 0%;"></div></div>
+    </div>
+    {{end}}
+    {{if hasFeature .AccessRules "ram_size"}}
+    <div class="hw-card">
+      <div class="hw-card-header"><span>Total RAM</span><span>RAM</span></div>
+      <div class="hw-card-val-row"><span class="hw-card-val" id="pub-inpage-hw-ram">-</span></div>
+      <div class="hw-card-progress-track"><div class="hw-card-progress-fill seg-ram-used" id="pub-inpage-hw-ram-bar" style="width: 0%;"></div></div>
+    </div>
+    {{end}}
+    {{if hasFeature .AccessRules "disk_size"}}
+    <div class="hw-card">
+      <div class="hw-card-header"><span>Root Disk</span><span>DISK</span></div>
+      <div class="hw-card-val-row"><span class="hw-card-val" id="pub-inpage-hw-disk">-</span></div>
+      <div class="hw-card-progress-track"><div class="hw-card-progress-fill seg-disk" id="pub-inpage-hw-disk-bar" style="width: 0%;"></div></div>
+    </div>
+    {{end}}
+    {{if hasFeature .AccessRules "swap_size"}}
+    <div class="hw-card">
+      <div class="hw-card-header"><span>Swap Size</span><span>SWAP</span></div>
+      <div class="hw-card-val-row"><span class="hw-card-val" id="pub-inpage-hw-swap">-</span></div>
+      <div class="hw-card-progress-track"><div class="hw-card-progress-fill seg-ram-swap" id="pub-inpage-hw-swap-bar" style="width: 0%;"></div></div>
+    </div>
+    {{end}}
+  </div>
+
+  <!-- Specifications Tiles Grid -->
+  <div class="spec-grid">
+    <div class="spec-tile">
+      <div class="spec-label">Public ID</div>
+      <div class="spec-value mono">
+        <span class="spec-id-badge" id="pub-inpage-spec-id" title="Click to copy Public ID" onclick="window.CertainStatsTelemetry.copyText(this.getAttribute('data-full-id') || this.textContent, 'Public ID')">-</span>
+      </div>
+    </div>
+    {{if hasFeature .AccessRules "uptime"}}
+    <div class="spec-tile">
+      <div class="spec-label">System Uptime</div>
+      <div class="spec-value" id="pub-inpage-spec-uptime">-</div>
+    </div>
+    {{end}}
+    {{if hasFeature .AccessRules "linux_version"}}
+    <div class="spec-tile">
+      <div class="spec-label">OS Kernel</div>
+      <div class="spec-value mono" id="pub-inpage-spec-kernel">-</div>
+    </div>
+    {{end}}
+    {{if hasFeature .AccessRules "cpu_model"}}
+    <div class="spec-tile">
+      <div class="spec-label">CPU Architecture</div>
+      <div class="spec-value mono" id="pub-inpage-spec-cpu">-</div>
+    </div>
+    {{end}}
+  </div>
+
+  <!-- Odometers Grid (Agent Specific Total Traffic) -->
+  <div class="odometer-grid" id="pub-inpage-odometer-grid">
+    {{if or (hasMetric .AccessRules "agent_rx_bytes") (hasMetric .AccessRules "agent_tx_bytes")}}
+    <div class="odometer-tile">
+      <div class="odometer-label-group"><span>☁ Network Traffic</span></div>
+      <div class="odometer-values" id="pub-inpage-odo-net"><span>↓ 0 B</span> / <span>↑ 0 B</span></div>
+    </div>
+    {{end}}
+    {{if or (hasMetric .AccessRules "agent_disk_read_bytes") (hasMetric .AccessRules "agent_disk_write_bytes") (hasMetric .AccessRules "agent_disk_used")}}
+    <div class="odometer-tile">
+      <div class="odometer-label-group"><span>⛁ Disk R/W</span></div>
+      <div class="odometer-values" id="pub-inpage-odo-disk"><span>R: 0 B</span> / <span>W: 0 B</span></div>
+    </div>
+    {{end}}
+  </div>
+
+  <!-- Storage Partitions Section -->
+  {{if hasMetric .AccessRules "agent_disk_used"}}
+  <div style="margin-bottom: 24px;" id="pub-inpage-disks-section">
+    <div style="font-size: 11px; font-weight: 800; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.05em; margin-bottom: 12px; display: flex; align-items: center; gap: 6px;">
+      <span>⛁</span> Storage Partitions & Disks
+    </div>
+    <div class="hw-card-grid" id="pub-inpage-disks-grid">
+    </div>
+  </div>
+  {{end}}
+
+  <!-- Telemetry Charts Section -->
+  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 20px; margin-bottom: 24px;">
+    {{if or (hasMetric .AccessRules "agent_cpu_usage") (hasMetric .AccessRules "agent_cpu_steal") (hasMetric .AccessRules "agent_cpu_iowait")}}
+    <div class="card">
+      <div class="chart-header-row">
+        <h3 class="chart-header-title">CPU Utilization (%)</h3>
+        <div class="chart-legend-pills">
+          {{if hasMetric .AccessRules "agent_cpu_usage"}}
+          <span class="chart-legend-item"><span class="chart-legend-dot" style="background-color: #6366f1;"></span>Usr: <span class="chart-legend-val" id="pub-inpage-live-cpu-usr">0.0%</span></span>
+          {{end}}
+          {{if hasMetric .AccessRules "agent_cpu_iowait"}}
+          <span class="chart-legend-item"><span class="chart-legend-dot" style="background-color: #94a3b8;"></span>IO: <span class="chart-legend-val" id="pub-inpage-live-cpu-io">0.0%</span></span>
+          {{end}}
+          {{if hasMetric .AccessRules "agent_cpu_steal"}}
+          <span class="chart-legend-item"><span class="chart-legend-dot" style="background-color: #ef4444;"></span>Stl: <span class="chart-legend-val" id="pub-inpage-live-cpu-stl">0.0%</span></span>
+          {{end}}
+        </div>
+      </div>
+      <div class="chart-container" style="height: 220px;"><canvas id="pub-inpage-chart-cpu" class="chart-canvas"></canvas></div>
+    </div>
+    {{end}}
+
+    {{if or (hasMetric .AccessRules "agent_ram_used") (hasMetric .AccessRules "agent_swap_used") }}
+    <div class="card">
+      <div class="chart-header-row">
+        <h3 class="chart-header-title">Memory & Swap Consumption</h3>
+        <div class="chart-legend-pills">
+          {{if hasMetric .AccessRules "agent_ram_used"}}
+          <span class="chart-legend-item"><span class="chart-legend-dot" style="background-color: #14b8a6;"></span>RAM: <span class="chart-legend-val" id="pub-inpage-live-ram-used">0 B</span></span>
+          {{end}}
+          {{if hasMetric .AccessRules "agent_swap_used"}}
+          <span class="chart-legend-item"><span class="chart-legend-dot" style="background-color: #94a3b8;"></span>Swap: <span class="chart-legend-val" id="pub-inpage-live-ram-swap">0 B</span></span>
+          {{end}}
+        </div>
+      </div>
+      <div class="chart-container" style="height: 220px;"><canvas id="pub-inpage-chart-ram" class="chart-canvas"></canvas></div>
+    </div>
+    {{end}}
+
+    {{if or (hasMetric .AccessRules "agent_rx_bytes") (hasMetric .AccessRules "agent_tx_bytes")}}
+    <div class="card">
+      <div class="chart-header-row">
+        <h3 class="chart-header-title">Network I/O Rate (B/s)</h3>
+        <div class="chart-legend-pills">
+          {{if hasMetric .AccessRules "agent_rx_bytes"}}
+          <span class="chart-legend-item"><span class="chart-legend-dot" style="background-color: #3b82f6;"></span>RX: <span class="chart-legend-val" id="pub-inpage-live-net-rx">↓ 0 B/s</span></span>
+          {{end}}
+          {{if hasMetric .AccessRules "agent_tx_bytes"}}
+          <span class="chart-legend-item"><span class="chart-legend-dot" style="background-color: #a855f7;"></span>TX: <span class="chart-legend-val" id="pub-inpage-live-net-tx">↑ 0 B/s</span></span>
+          {{end}}
+        </div>
+      </div>
+      <div class="chart-container" style="height: 220px;"><canvas id="pub-inpage-chart-net" class="chart-canvas"></canvas></div>
+    </div>
+    {{end}}
+  </div>
+
+  <!-- Dedicated Disks & Storage Telemetry Section -->
+  {{if or (hasMetric .AccessRules "agent_disk_used") (hasMetric .AccessRules "agent_disk_read_bytes") (hasMetric .AccessRules "agent_disk_write_bytes")}}
+  <div class="section-header" style="margin-top: 20px; margin-bottom: 12px;">
+    <h2 style="font-size: 16px; font-weight: 600; display: flex; align-items: center; gap: 8px;">
+      <span class="material-icons" style="font-size: 20px; color: var(--primary-color);">⛁</span>
+      Disks & Storage
+    </h2>
+  </div>
+  <div id="pub-inpage-disk-charts-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 20px; margin-bottom: 24px;">
+    {{if hasMetric .AccessRules "agent_disk_used"}}
+    <div class="card" id="pub-inpage-disk-card-usage-root">
+      <div class="chart-header-row">
+        <h3 class="chart-header-title">Disk Usage (/)</h3>
+        <div class="chart-legend-pills">
+          <span class="chart-legend-item"><span class="chart-legend-dot" style="background-color: #8b5cf6;"></span>Used: <span class="chart-legend-val" id="pub-inpage-live-disk-used-root">0 B</span></span>
+        </div>
+      </div>
+      <div class="chart-container" style="height: 220px;"><canvas id="pub-inpage-chart-disk-root" class="chart-canvas"></canvas></div>
+    </div>
+    {{end}}
+
+    {{if or (hasMetric .AccessRules "agent_disk_read_bytes") (hasMetric .AccessRules "agent_disk_write_bytes")}}
+    <div class="card" id="pub-inpage-disk-card-io-root">
+      <div class="chart-header-row">
+        <h3 class="chart-header-title">Disk I/O Rate (/)</h3>
+        <div class="chart-legend-pills">
+          {{if hasMetric .AccessRules "agent_disk_read_bytes"}}
+          <span class="chart-legend-item"><span class="chart-legend-dot" style="background-color: #fb923c;"></span>Read: <span class="chart-legend-val" id="pub-inpage-live-disk-read-root">0 B/s</span></span>
+          {{end}}
+          {{if hasMetric .AccessRules "agent_disk_write_bytes"}}
+          <span class="chart-legend-item"><span class="chart-legend-dot" style="background-color: #ef4444;"></span>Write: <span class="chart-legend-val" id="pub-inpage-live-disk-write-root">0 B/s</span></span>
+          {{end}}
+        </div>
+      </div>
+      <div class="chart-container" style="height: 220px;"><canvas id="pub-inpage-chart-disk-io-root" class="chart-canvas"></canvas></div>
+    </div>
+    {{end}}
+  </div>
+  {{end}}
+</div>
+{{end}}

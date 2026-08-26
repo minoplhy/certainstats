@@ -96,11 +96,12 @@ func (l *LTstats) Parse(data []byte) (*agentparser.ParsedData, error) {
 		swapPct := MergeDecimal(s.SwapUsageBeforeDec, s.SwapUsageAfterDec)
 		diskPct := MergeDecimal(s.DiskUsageBeforeDec, s.DiskUsageAfterDec)
 
-		var ramUsed, swapUsed, diskUsed uint64
+		var ramUsed, swapUsed, diskUsed, totalDisk uint64
 		if details != nil {
 			ramUsed = uint64((float64(details.RamSize) * ramPct) / 100.0)
 			swapUsed = uint64((float64(details.SwapSize) * swapPct) / 100.0)
 			diskUsed = uint64((float64(details.DiskSize) * diskPct) / 100.0)
+			totalDisk = details.DiskSize
 		}
 
 		stats = append(stats, agentparser.Telemetry{
@@ -116,7 +117,7 @@ func (l *LTstats) Parse(data []byte) (*agentparser.ParsedData, error) {
 				{
 					Path:       "/",
 					UsedBytes:  diskUsed,
-					TotalBytes: details.DiskSize,
+					TotalBytes: totalDisk,
 					ReadBytes:  s.ReadSectors * 512,
 					WriteBytes: s.WrittenSectors * 512,
 				},

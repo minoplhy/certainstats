@@ -1,0 +1,17 @@
+{{define "alerts_incidents_banner"}}
+<!-- Active Incidents Summary Banner -->
+<div id="active-incidents-banner" class="card" style="display: none; margin-bottom: 24px; border-left: 4px solid var(--status-offline); background: rgba(239, 68, 68, 0.08); padding: 16px;">
+  <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+    <div style="display: flex; align-items: center; gap: 10px;">
+      <span class="status-dot offline" style="width: 12px; height: 12px; animation: pulse 1.5s infinite;"></span>
+      <div>
+        <strong style="color: var(--status-offline); font-size: 14px;" id="incidents-count-label">Active Firing Incidents</strong>
+        <p style="font-size: 12px; color: var(--text-secondary); margin: 0;">One or more nodes have breached threshold limits or lost connectivity.</p>
+      </div>
+    </div>
+    <button type="button" class="btn btn-secondary btn-sm" onclick="document.getElementById('history-section').scrollIntoView({ behavior: 'smooth' });">
+      View Incident Log &darr;
+    </button>
+  </div>
+</div>
+{{end}}

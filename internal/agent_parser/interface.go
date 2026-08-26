@@ -22,17 +22,27 @@ type DiskTelemetry struct {
 	WriteBytes uint64 `json:"write_bytes"`
 }
 
-// Telemetry holds the fast-changing metrics for the TSDB
+type GPUTelemetry struct {
+	Name            string  `json:"name"`
+	UsagePercent    float64 `json:"usage_percent"`
+	MemoryUsedBytes uint64  `json:"memory_used_bytes"`
+	Temperature     float64 `json:"temperature"`
+}
+
+// Telemetry holds the fast-changing metrics for the TSDB and cache
 type Telemetry struct {
 	Timestamp           time.Time
 	CPUUsagePercent     float64
 	CPUIOWaitPercent    float64
 	CPUStealPercent     float64
-	RAMUsedBytes     uint64
-	RAMSwapUsedBytes uint64
+	RAMUsedBytes        uint64
+	RAMSwapUsedBytes    uint64
 	TXBytes             float64
 	RXBytes             float64
 	Disks               []DiskTelemetry
+	LoadAvg             [3]float64
+	Temperatures        map[string]float64
+	GPUs                map[string]GPUTelemetry
 
 	// IO semantics — parsers set these to declare what RX/TX/Disk byte values represent.
 	// Default zero value (IODelta) means "bytes in this interval", which requires no conversion.

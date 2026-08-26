@@ -1,0 +1,89 @@
+{{define "public_grid_view"}}
+<!-- Grid Cards -->
+<div id="public-grid-container" class="grid-cards" style="margin-bottom: 24px;">
+  {{range .Agents}}
+  <div class="card public-monitor-item" data-pub-id="{{.PublicID}}" data-name="{{.Name}}" onclick="handlePubItemClick(event, '{{.PublicID}}');" style="cursor: pointer;">
+    <div class="agent-card-header">
+      <a href="{{if $.Dashboard.Slug}}{{if and $.PublicPath (ne $.PublicPath "/")}}{{$.PublicPath}}/{{$.Dashboard.Slug}}{{else}}/dashboard/{{$.Dashboard.Slug}}{{end}}/{{.PublicID}}{{else}}/{{.PublicID}}{{end}}" class="agent-name" onclick="handlePubItemClick(event, '{{.PublicID}}');">
+        {{if hasFeature $.AccessRules "is_online"}}<span class="status-dot {{if isOnline .IsOnline}}online{{else}}offline{{end}}" id="pub-dot-{{.PublicID}}"></span>{{end}}
+        <span>{{.Name}}</span>
+      </a>
+      {{if hasFeature $.AccessRules "is_online"}}
+      <span class="badge {{if isOnline .IsOnline}}badge-online{{else}}badge-offline{{end}}" id="pub-badge-{{.PublicID}}">
+        {{if isOnline .IsOnline}}Online{{else}}Offline{{end}}
+      </span>
+      {{end}}
+    </div>
+
+    <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 12px;" class="detail-only-field">
+      {{if and (hasFeature $.AccessRules "cpu_model") .CpuModel}}{{.CpuModel}}{{else}}Public ID: <span class="mono">{{.PublicID}}</span>{{end}}
+    </div>
+
+    <!-- CPU Stacked Bar (Usr, IO, Steal) -->
+    {{if or (hasMetric $.AccessRules "agent_cpu_usage") (hasMetric $.AccessRules "agent_cpu_iowait") (hasMetric $.AccessRules "agent_cpu_steal")}}
+    <div class="usage-bar-group">
+      <div class="usage-bar-label">
+        <span class="title">CPU</span>
+        <span class="value" id="pub-val-cpu-{{.PublicID}}">0.0%</span>
+      </div>
+      <div class="usage-bar-track" id="pub-track-cpu-{{.PublicID}}" data-tooltip-header="CPU Utilization" data-tooltip-rows='[{{if hasMetric $.AccessRules "agent_cpu_usage"}}{"label":"Used","val":"0.0%","color":"#3b82f6"}{{end}}{{if and (hasMetric $.AccessRules "agent_cpu_usage") (or (hasMetric $.AccessRules "agent_cpu_iowait") (hasMetric $.AccessRules "agent_cpu_steal"))}},{{end}}{{if hasMetric $.AccessRules "agent_cpu_iowait"}}{"label":"IO Wait","val":"0.0%","color":"#fb923c"}{{end}}{{if and (hasMetric $.AccessRules "agent_cpu_iowait") (hasMetric $.AccessRules "agent_cpu_steal")}},{{end}}{{if hasMetric $.AccessRules "agent_cpu_steal"}}{"label":"Steal","val":"0.0%","color":"#ef4444"}{{end}}]'>
+        {{if hasMetric $.AccessRules "agent_cpu_usage"}}<div class="usage-segment seg-cpu-usr" id="pub-seg-cpu-usr-{{.PublicID}}" style="width: 0%;"></div>{{end}}
+        {{if hasMetric $.AccessRules "agent_cpu_iowait"}}<div class="usage-segment seg-cpu-io" id="pub-seg-cpu-io-{{.PublicID}}" style="width: 0%;"></div>{{end}}
+        {{if hasMetric $.AccessRules "agent_cpu_steal"}}<div class="usage-segment seg-cpu-stl" id="pub-seg-cpu-stl-{{.PublicID}}" style="width: 0%;"></div>{{end}}
+      </div>
+    </div>
+    {{end}}
+
+    <!-- RAM Stacked Bar (Used, Swap) -->
+    {{if or (hasMetric $.AccessRules "agent_ram_used") (hasMetric $.AccessRules "agent_swap_used")}}
+    <div class="usage-bar-group">
+      <div class="usage-bar-label">
+        <span class="title">RAM</span>
+        <span class="value" id="pub-val-ram-{{.PublicID}}">0 B{{if and (hasFeature $.AccessRules "ram_size") .RamSize}} / {{formatBytes .RamSize}}{{end}}</span>
+      </div>
+      <div class="usage-bar-track" id="pub-track-ram-{{.PublicID}}" data-tooltip-header="Memory Usage" data-tooltip-rows='[{{if hasMetric $.AccessRules "agent_ram_used"}}{"label":"RAM Used","val":"0 B","color":"#14b8a6"}{{end}}{{if and (hasMetric $.AccessRules "agent_ram_used") (hasMetric $.AccessRules "agent_swap_used")}},{{end}}{{if hasMetric $.AccessRules "agent_swap_used"}}{"label":"Swap Used","val":"0 B","color":"#4b5563"}{{end}}]'>
+        {{if hasMetric $.AccessRules "agent_ram_used"}}<div class="usage-segment seg-ram-used" id="pub-seg-ram-used-{{.PublicID}}" style="width: 0%;"></div>{{end}}
+        {{if hasMetric $.AccessRules "agent_swap_used"}}<div class="usage-segment seg-ram-swap" id="pub-seg-ram-swap-{{.PublicID}}" style="width: 0%;"></div>{{end}}
+      </div>
+    </div>
+    {{end}}
+
+    <!-- Disk Bars (Dynamic Multi-Disk) -->
+    {{if hasMetric $.AccessRules "agent_disk_used"}}
+    <div id="pub-disk-bars-group-{{.PublicID}}">
+      <div class="usage-bar-group">
+        <div class="usage-bar-label">
+          <span class="title">DISK</span>
+          <span class="value" id="pub-val-disk-{{.PublicID}}">0 B{{if and (hasFeature $.AccessRules "disk_size") .DiskSize}} / {{formatBytes .DiskSize}}{{end}}</span>
+        </div>
+        <div class="usage-bar-track" id="pub-track-disk-{{.PublicID}}">
+          <div class="usage-segment seg-disk" id="pub-seg-disk-{{.PublicID}}" style="width: 0%;"></div>
+        </div>
+      </div>
+    </div>
+    {{end}}
+
+    <!-- Network Bar (RX / TX) -->
+    {{if or (hasMetric $.AccessRules "agent_rx_bytes") (hasMetric $.AccessRules "agent_tx_bytes")}}
+    <div class="usage-bar-group detail-only-field">
+      <div class="usage-bar-label">
+        <span class="title">NETWORK</span>
+        <span class="value" id="pub-val-net-{{.PublicID}}">↓ 0 B/s / ↑ 0 B/s</span>
+      </div>
+      <div class="usage-bar-track" id="pub-track-net-{{.PublicID}}" data-tooltip-header="Network Rate" data-tooltip-rows='[{{if hasMetric $.AccessRules "agent_rx_bytes"}}{"label":"Download (RX)","val":"0 B/s","color":"#1e40af"}{{end}}{{if and (hasMetric $.AccessRules "agent_rx_bytes") (hasMetric $.AccessRules "agent_tx_bytes")}},{{end}}{{if hasMetric $.AccessRules "agent_tx_bytes"}}{"label":"Upload (TX)","val":"0 B/s","color":"#7e22ce"}{{end}}]'>
+        {{if hasMetric $.AccessRules "agent_rx_bytes"}}<div class="usage-segment seg-net-rx" id="pub-seg-net-rx-{{.PublicID}}" style="width: 0%;"></div>{{end}}
+        {{if hasMetric $.AccessRules "agent_tx_bytes"}}<div class="usage-segment seg-net-tx" id="pub-seg-net-tx-{{.PublicID}}" style="width: 0%;"></div>{{end}}
+      </div>
+    </div>
+    {{end}}
+
+    <div style="display: flex; justify-content: space-between; font-size: 11px; color: var(--text-muted); margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--border-color);">
+      <span style="color: var(--accent-primary); font-weight: 600;">View Telemetry ↗</span>
+      {{if hasFeature $.AccessRules "uptime"}}
+      <span id="pub-uptime-{{.PublicID}}">Uptime: <strong class="mono" style="color: var(--text-secondary);">{{formatUptime .Uptime}}</strong></span>
+      {{end}}
+    </div>
+  </div>
+  {{end}}
+</div>
+{{end}}

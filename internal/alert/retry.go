@@ -6,6 +6,7 @@ import (
 	"certainstats/internal/notifications"
 	apiresponse "certainstats/internal/response"
 	"certainstats/internal/store"
+	"context"
 	"database/sql"
 	"net/http"
 
@@ -44,66 +45,61 @@ func RetryAlertHandler(db store.AlertsStore) http.HandlerFunc {
 			return
 		}
 
-		// 2. Fetch the corresponding alert details
-		alertVal, err := db.AlertGetInfo(r.Context(), history.AlertID, userID)
-		if err != nil {
-			apiresponse.Error(w, http.StatusInternalServerError, "Database error reading alert info")
-			return
-		}
+		// 2. Mark status as pending immediately so UI reflects in-progress state
+		_ = db.AlertHistoryUpdateStatus(r.Context(), historyID, "pending", "")
 
-		// 3. Construct Notification Context
-		nctx := notifications.NotificationContext{
-			AgentID:       history.AgentID,
-			Nickname:      history.AgentNickname,
-			TriggerType:   string(alertVal.Trigger.Type),
-			Status:        "FIRING", // We are retrying a firing event
-			Value:         history.TriggerValue,
-			Operator:      string(alertVal.Trigger.Operator),
-			Threshold:     alertVal.Trigger.Threshold,
-			WentOfflineAt: &history.TriggeredAt,
-		}
+		// 3. Queue notification dispatch to background without blocking HTTP response
+		go func(hID, aID, uID string, hist basealert.AlertHistory) {
+			bgCtx := context.Background()
 
-		// 4. Resolve destination / targets
-		actionToDispatch := alertVal.Action
-		var notifErr error
-		if alertVal.Action.Type == basealert.DestPreset && alertVal.Action.TargetID != "" {
-			target, err := db.TargetGetByID(r.Context(), alertVal.Action.TargetID, userID)
-			if err == nil {
-				actionToDispatch.Type = target.Type
-				actionToDispatch.Destination = target.Destination
-				if actionToDispatch.Payload == "" {
-					actionToDispatch.Payload = target.Payload
-				}
-			} else {
-				notifErr = err
+			alertVal, err := db.AlertGetInfo(bgCtx, hist.AlertID, uID)
+			if err != nil {
+				_ = db.AlertHistoryUpdateStatus(bgCtx, hID, "failed", "Database error reading alert info: "+err.Error())
+				return
 			}
-		}
 
-		// 5. Dispatch notification
-		if notifErr == nil {
-			notifErr = notifications.DispatchNotification(actionToDispatch, nctx)
-		}
+			nctx := notifications.NotificationContext{
+				AgentID:       hist.AgentID,
+				Nickname:      hist.AgentNickname,
+				TriggerType:   string(alertVal.Trigger.Type),
+				Status:        "FIRING",
+				Value:         hist.TriggerValue,
+				Operator:      string(alertVal.Trigger.Operator),
+				Threshold:     alertVal.Trigger.Threshold,
+				WentOfflineAt: &hist.TriggeredAt,
+			}
 
-		if notifErr != nil {
-			// Update status to failed and store the error message
-			_ = db.AlertHistoryUpdateStatus(r.Context(), historyID, "failed", notifErr.Error())
-			_ = db.AlertAgentUpdateStatus(r.Context(), alertVal.AlertID, history.AgentID, "failed", notifErr.Error())
+			actionToDispatch := alertVal.Action
+			var notifErr error
+			if alertVal.Action.Type == basealert.DestPreset && alertVal.Action.TargetID != "" {
+				target, err := db.TargetGetByID(bgCtx, alertVal.Action.TargetID, uID)
+				if err == nil {
+					actionToDispatch.Type = target.Type
+					actionToDispatch.Destination = target.Destination
+					if actionToDispatch.Payload == "" {
+						actionToDispatch.Payload = target.Payload
+					}
+				} else {
+					notifErr = err
+				}
+			}
 
-			apiresponse.JSON(w, http.StatusOK, map[string]string{
-				"status":        "failed",
-				"message":       "Notification dispatch failed",
-				"error_message": notifErr.Error(),
-			})
-			return
-		}
+			if notifErr == nil {
+				notifErr = notifications.DispatchNotification(actionToDispatch, nctx)
+			}
 
-		// On success, update statuses in DB
-		_ = db.AlertHistoryUpdateStatus(r.Context(), historyID, "success", "")
-		_ = db.AlertAgentUpdateStatus(r.Context(), alertVal.AlertID, history.AgentID, "firing", "")
+			if notifErr != nil {
+				_ = db.AlertHistoryUpdateStatus(bgCtx, hID, "failed", notifErr.Error())
+				_ = db.AlertAgentUpdateStatus(bgCtx, alertVal.AlertID, hist.AgentID, "failed", notifErr.Error())
+			} else {
+				_ = db.AlertHistoryUpdateStatus(bgCtx, hID, "success", "")
+				_ = db.AlertAgentUpdateStatus(bgCtx, alertVal.AlertID, hist.AgentID, "firing", "")
+			}
+		}(historyID, history.AlertID, userID, *history)
 
 		apiresponse.JSON(w, http.StatusOK, map[string]string{
-			"status":  "success",
-			"message": "Notification retried successfully",
+			"status":  "queued",
+			"message": "Notification retry queued in background",
 		})
 	}
 }

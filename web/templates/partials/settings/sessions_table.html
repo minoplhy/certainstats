@@ -1,0 +1,58 @@
+{{define "settings_sessions_table"}}
+<!-- Sessions List -->
+<div class="card">
+  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 10px;">
+    <div>
+      <h3 style="font-family: var(--font-display); font-size: 16px; margin: 0;">Active Web Sessions</h3>
+      <p style="font-size: 12px; color: var(--text-muted); margin: 0;">Authorized browsers currently holding authenticated session tokens.</p>
+    </div>
+    {{if gt (len .Sessions) 1}}
+    <form action="{{.PanelPath}}/settings/sessions/eject-other" method="POST" onsubmit="return confirm('Revoke all other active sessions?')">
+      <button type="submit" class="btn btn-danger btn-sm">Eject Other Sessions</button>
+    </form>
+    {{end}}
+  </div>
+
+  <div class="table-responsive">
+    <table class="table" style="min-width: 520px;">
+      <thead>
+        <tr>
+          <th style="width: 45%;">Device & Browser</th>
+          <th style="width: 22%;">IP Address</th>
+          <th style="width: 20%;">Last Active</th>
+          <th style="width: 13%; text-align: right;">Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{$curToken := .CurrentToken}}
+        {{$panelPath := .PanelPath}}
+        {{range .Sessions}}
+        <tr class="session-row" data-ua="{{.UserAgent}}">
+          <td>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <div style="min-width: 0; overflow: hidden;">
+                <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+                  <strong class="session-ua-label" style="font-size: 13px; word-break: break-word;">Browser Session</strong>
+                  {{if and $curToken (eq .Token $curToken)}}
+                  <span class="badge badge-online" style="font-size: 9px; padding: 1px 6px; flex-shrink: 0;">This Device</span>
+                  {{end}}
+                </div>
+                <div class="mono" style="font-size: 11px; color: var(--text-muted); text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">{{.TokenPrefix}}...</div>
+              </div>
+            </div>
+          </td>
+          <td class="mono" style="font-size: 12px; word-break: break-all;">{{if .IPAddress}}{{.IPAddress}}{{else}}-{{end}}</td>
+          <td style="font-size: 12px; white-space: nowrap;">{{.LastConnected}}</td>
+          <td style="text-align: right;">
+            <form action="{{$panelPath}}/settings/sessions/eject" method="POST" onsubmit="return confirm('{{if and $curToken (eq .Token $curToken)}}This is your current session. Ejecting it will log you out immediately. Continue?{{else}}Revoke this active session?{{end}}')" style="margin: 0; display: inline;">
+              <input type="hidden" name="token_prefix" value="{{.TokenPrefix}}">
+              <button type="submit" class="btn btn-danger btn-sm">Eject</button>
+            </form>
+          </td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+</div>
+{{end}}

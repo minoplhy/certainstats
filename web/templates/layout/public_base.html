@@ -1,0 +1,52 @@
+{{define "public_base"}}
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{.Title}} — CertainStats Status</title>
+  <script>(function(){try{var t=localStorage.getItem('certainstats_theme')||'dark';document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
+  <link rel="stylesheet" href="{{.StaticPath}}/{{asset "css/styles.css"}}" integrity="{{integrity "css/styles.css"}}">
+  <script src="{{.StaticPath}}/{{asset "js/chart.js"}}" integrity="{{integrity "js/chart.js"}}"></script>
+  <script src="{{.StaticPath}}/{{asset "js/telemetry.js"}}" integrity="{{integrity "js/telemetry.js"}}"></script>
+</head>
+<body data-public-path="{{.PublicPath}}" data-static-path="{{.StaticPath}}">
+  <header class="navbar public-navbar">
+    <div class="navbar-container">
+      <div class="nav-brand-group">
+        <a href="{{.PublicPath}}{{if and .Data .Data.Dashboard .Data.Dashboard.Slug}}/{{.Data.Dashboard.Slug}}{{end}}" class="nav-brand">
+          <div class="logo-icon">
+            <span>C</span>
+          </div>
+          <div class="brand-text-group">
+            <span class="brand-title">{{if and .Data .Data.Dashboard .Data.Dashboard.Title}}{{.Data.Dashboard.Title}}{{else}}CertainStats Status{{end}}</span>
+            <div class="brand-status-sub">
+              <span class="status-dot online" id="public-overall-status-dot"></span>
+              <span class="status-text" id="public-overall-status-text">Operational</span>
+            </div>
+          </div>
+        </a>
+      </div>
+
+      <div class="nav-right">
+        <button id="theme-toggle" class="btn btn-secondary btn-sm" type="button" title="Toggle Theme">
+          Theme
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="container">
+    {{template "content" .Data}}
+  </main>
+
+  <footer class="footer">
+    <div class="footer-content">
+      <span>Powered by CertainStats &copy; {{.Year}}</span>
+      <span class="footer-stats">Initial Render Time: {{.RenderTime}}</span>
+    </div>
+  </footer>
+
+  <div id="toast-container"></div>
+</body>
+</html>{{end}}

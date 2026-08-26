@@ -1,0 +1,107 @@
+{{define "base"}}
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{if .Title}}{{.Title}} — {{end}}CertainStats</title>
+  <script>(function(){try{var t=localStorage.getItem('certainstats_theme')||'dark';document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
+  <link rel="stylesheet" href="{{.StaticPath}}/{{asset "css/styles.css"}}" integrity="{{integrity "css/styles.css"}}">
+  <script src="{{.StaticPath}}/{{asset "js/chart.js"}}" integrity="{{integrity "js/chart.js"}}"></script>
+  <script src="{{.StaticPath}}/{{asset "js/telemetry.js"}}" integrity="{{integrity "js/telemetry.js"}}"></script>
+  <script src="{{.StaticPath}}/{{asset "js/provision_renderer.js"}}" integrity="{{integrity "js/provision_renderer.js"}}"></script>
+</head>
+<body data-panel-path="{{.PanelPath}}" data-static-path="{{.StaticPath}}">
+  <header class="navbar admin-navbar">
+    <div class="navbar-container">
+      <div class="nav-left">
+        <a href="{{.PanelPath}}" class="nav-brand">
+          <div class="logo-icon">
+            <span>C</span>
+          </div>
+          <span class="brand-title">CertainStats</span>
+        </a>
+
+        {{if .Authenticated}}
+        <nav class="nav-links mobile-hide">
+          <a href="{{.PanelPath}}" class="nav-link {{if eq .ActiveNav "agents"}}active{{end}}">
+            Agent Hub
+          </a>
+          <a href="{{.PanelPath}}/dashboards" class="nav-link {{if eq .ActiveNav "dashboards"}}active{{end}}">
+            Dashboards
+          </a>
+          <a href="{{.PanelPath}}/alerts" class="nav-link {{if eq .ActiveNav "alerts"}}active{{end}}">
+            Alerts
+          </a>
+          <a href="{{.PanelPath}}/agents/management" class="nav-link {{if eq .ActiveNav "management"}}active{{end}}">
+            Management
+          </a>
+          <a href="{{.PanelPath}}/settings" class="nav-link {{if eq .ActiveNav "settings"}}active{{end}}">
+            Settings
+          </a>
+        </nav>
+        {{end}}
+      </div>
+
+      <div class="nav-right">
+        <button id="theme-toggle" class="btn btn-secondary btn-sm" type="button" title="Toggle Theme">
+          Theme
+        </button>
+
+        {{if .Authenticated}}
+        <div class="nav-divider"></div>
+        <form action="{{.PanelPath}}/logout" method="POST" style="display:inline; margin: 0;">
+          <button type="submit" class="btn btn-danger btn-sm">Logout</button>
+        </form>
+        {{end}}
+      </div>
+    </div>
+  </header>
+
+  {{if .Authenticated}}
+  <!-- MOBILE SECONDARY TAB BAR -->
+  <div class="mobile-subnav mobile-only">
+    <a href="{{.PanelPath}}" class="subnav-link {{if eq .ActiveNav "agents"}}active{{end}}">
+      Agent Hub
+    </a>
+    <a href="{{.PanelPath}}/dashboards" class="subnav-link {{if eq .ActiveNav "dashboards"}}active{{end}}">
+      Dashboards
+    </a>
+    <a href="{{.PanelPath}}/alerts" class="subnav-link {{if eq .ActiveNav "alerts"}}active{{end}}">
+      Alerts
+    </a>
+    <a href="{{.PanelPath}}/agents/management" class="subnav-link {{if eq .ActiveNav "management"}}active{{end}}">
+      Management
+    </a>
+    <a href="{{.PanelPath}}/settings" class="subnav-link {{if eq .ActiveNav "settings"}}active{{end}}">
+      Settings
+    </a>
+  </div>
+  {{end}}
+
+  <main class="container">
+    {{if .FlashSuccess}}
+    <div class="flash flash-success">
+      <span>{{.FlashSuccess}}</span>
+    </div>
+    {{end}}
+
+    {{if .FlashError}}
+    <div class="flash flash-error">
+      <span>{{.FlashError}}</span>
+    </div>
+    {{end}}
+
+    {{template "content" .Data}}
+  </main>
+
+  <footer class="footer">
+    <div class="footer-content">
+      <span>CertainStats &copy; {{.Year}} — Self-Hosted Server Monitoring Platform</span>
+      <span class="footer-stats">Render Time: {{.RenderTime}}</span>
+    </div>
+  </footer>
+
+  <div id="toast-container"></div>
+</body>
+</html>{{end}}

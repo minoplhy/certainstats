@@ -2,7 +2,6 @@ package context
 
 import (
 	base "certainstats/internal/base"
-	"certainstats/internal/compress"
 	accessrules "certainstats/internal/dashboard/accessrules"
 	"sync"
 	"time"
@@ -13,13 +12,20 @@ type contextKey string
 const UserIDKey contextKey = "userID"
 const PanelPathKey contextKey = "panelPath"
 
+// Standard Cache TTLs
+const (
+	DefaultCacheTTL = 60 * time.Second
+	ShortCacheTTL   = 10 * time.Second
+	LongCacheTTL    = 365 * 24 * time.Hour
+)
 
-//var PromTSDB *tsdb.DB
-
-var MetricsCache sync.Map // Key: slug_agentID_metric, Value: *CacheEntry
-var DeviceCache sync.Map
-var DashboardCache sync.Map // Key: slug, Value: *CacheEntry
-var PublicAgentCache sync.Map // Key: dashboardID_publicAgentID, Value: *PublicAgentCacheEntry
+// Global sync.Map caches
+var MetricsCache sync.Map       // Key: slug_agentID_metric_hours, Value: *CacheEntry
+var DeviceCache sync.Map        // Key: device_id, Value: identity
+var DashboardCache sync.Map     // Key: slug, Value: *CacheEntry
+var DashboardHTMLCache sync.Map // Key: html_dash_slug or html_agent_slug_pubID, Value: *CacheEntry
+var PublicAgentCache sync.Map   // Key: dashboardID_publicAgentID, Value: *PublicAgentCacheEntry
+var StaticCache sync.Map        // Key: relative path (e.g. css/styles.css), Value: *CacheEntry
 
 type CacheEntry struct {
 	Payload     []byte
@@ -32,15 +38,4 @@ type PublicAgentCacheEntry struct {
 	Agent       base.FindAgentByPublicID
 	ParsedRules accessrules.AccessRules
 	ExpiresAt   time.Time
-}
-
-//var SqliteDB *sql.DB
-
-func NewCacheEntry(payload []byte, ttl time.Duration) *CacheEntry {
-	return &CacheEntry{
-		Payload:     payload,
-		GzipPayload: compress.CompressGzip(payload),
-		ZstdPayload: compress.CompressZstd(payload),
-		ExpiresAt:   time.Now().Add(ttl),
-	}
 }

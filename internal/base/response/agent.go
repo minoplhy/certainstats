@@ -17,6 +17,7 @@ type PublicAgent struct {
 
 type DiskOdometer struct {
 	Path       string  `json:"path"`
+	TotalBytes *uint64 `json:"total_bytes,omitempty"`
 	ReadBytes  *uint64 `json:"read_bytes,omitempty"`
 	WriteBytes *uint64 `json:"write_bytes,omitempty"`
 }

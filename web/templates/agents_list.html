@@ -1,0 +1,81 @@
+{{define "content"}}
+<!-- Full Overview View -->
+<div id="agents-overview-view">
+  <div class="page-header">
+    <div>
+      <h1 class="page-title">
+        Agent Hub
+        <span class="badge badge-indigo" id="node-count-badge">{{len .Agents}} Nodes</span>
+      </h1>
+    </div>
+
+    <div style="display: flex; gap: 10px; align-items: center;">
+      <a href="{{.PanelPath}}/agents/management" class="btn btn-secondary" title="Manage Fleet Credentials & Drivers">
+        Agent Management
+      </a>
+      <button type="button" class="btn btn-primary" onclick="document.getElementById('add-agent-modal').style.display='block'">
+        + Add Agent
+      </button>
+    </div>
+  </div>
+
+  {{template "agents_cluster_cards" .}}
+  {{template "agents_toolbar" .}}
+
+  {{if not .Agents}}
+  <div class="card" style="text-align: center; padding: 48px;">
+    <h3 style="margin-bottom: 8px;">No Server Agents Configured</h3>
+    <p style="color: var(--text-muted); margin-bottom: 20px;">Provision your first monitoring agent to start collecting CPU, RAM, disk, and network telemetry.</p>
+    <button type="button" class="btn btn-primary" onclick="document.getElementById('add-agent-modal').style.display='block'">
+      Add Agent Now
+    </button>
+  </div>
+  {{else}}
+  {{template "agents_grid_view" .}}
+  {{template "agents_list_view" .}}
+  {{end}}
+</div>
+
+{{template "agents_inpage_detail" .}}
+{{template "agents_provision_modal" .}}
+{{template "reinstall_modal" .}}
+{{template "uninstall_modal" .}}
+
+<script src="{{.StaticPath}}/{{asset "js/admin_agents.js"}}" integrity="{{integrity "js/admin_agents.js"}}"></script>
+<script>
+  window.CertainStatsAdminAgents.init({
+    agents: [
+      {{range .Agents}}
+      {
+        agent_id: '{{.AgentID}}',
+        nickname: '{{.Nickname}}',
+        agent_type: '{{.AgentType}}',
+        note: '{{if .Note}}{{.Note}}{{end}}',
+        cpu_model: '{{.CpuModel}}',
+        linux_version: '{{.LinuxVersion}}',
+        cpu_cores: {{.CpuCores}},
+        ram_size: {{.RamSize}},
+        disk_size: {{.DiskSize}},
+        swap_size: {{.SwapSize}},
+        uptime: {{.Uptime}},
+        is_online: {{.IsOnline}},
+        total_rx_bytes: {{.TotalRxBytes}},
+        total_tx_bytes: {{.TotalTxBytes}},
+        total_disk_read_bytes: {{.TotalDiskReadBytes}},
+        total_disk_write_bytes: {{.TotalDiskWriteBytes}},
+        disks: [
+          {{range .Disks}}
+          {
+            path: '{{.Path}}',
+            total_bytes: {{.TotalBytes}},
+            read_bytes: {{.ReadBytes}},
+            write_bytes: {{.WriteBytes}}
+          },
+          {{end}}
+        ]
+      },
+      {{end}}
+    ]
+  });
+</script>
+{{end}}

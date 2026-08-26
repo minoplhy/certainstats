@@ -1,0 +1,310 @@
+{{define "content"}}
+<div class="page-container" style="max-width: 840px; margin: 0 auto; padding-bottom: 60px;">
+
+  <!-- Header -->
+  <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 28px; gap: 16px; flex-wrap: wrap;">
+    <div style="display: flex; align-items: center; gap: 16px;">
+      <a href="{{$.PanelPath}}/dashboards" class="btn btn-secondary" style="width: 36px; height: 36px; border-radius: 50%; padding: 0; display: inline-flex; align-items: center; justify-content: center; text-decoration: none; font-size: 16px;">
+        &larr;
+      </a>
+      <div>
+        <h1 class="page-title" style="margin: 0 0 4px 0;">{{if .IsCreate}}Create Public Dashboard{{else}}Edit Page{{end}}</h1>
+        {{if not .IsCreate}}
+        <p style="font-size: 12px; color: var(--text-muted); font-family: var(--font-mono); margin: 0;">ID: {{.Dashboard.DashboardID}}</p>
+        {{else}}
+        <p style="font-size: 13px; color: var(--text-muted); margin: 0;">Configure a new external telemetry dashboard</p>
+        {{end}}
+      </div>
+    </div>
+
+    {{if not .IsCreate}}
+    <button type="button" class="btn btn-secondary" onclick="document.getElementById('delete-dashboard-modal').style.display='block'" style="color: var(--status-offline); border-color: rgba(239, 68, 68, 0.3); display: inline-flex; align-items: center; gap: 6px;">
+      Delete
+    </button>
+    {{end}}
+  </div>
+
+  <form id="dashboard-form" action="{{if .IsCreate}}{{$.PanelPath}}/dashboard/create{{else}}{{$.PanelPath}}/dashboard/{{.Dashboard.DashboardID}}{{end}}" method="POST" style="display: flex; flex-direction: column; gap: 24px;">
+    {{if not .IsCreate}}
+    <input type="hidden" name="id" value="{{.Dashboard.DashboardID}}">
+    {{end}}
+    <input type="hidden" id="agents-order-input" name="agents_order" value="">
+    <input type="hidden" id="is-dragged-input" name="is_dragged" value="0">
+
+    <!-- 1. GENERAL -->
+    <div class="card" style="padding: 24px; margin-bottom: 20px;">
+      <h2 style="font-size: 12px; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em; margin: 0 0 16px 0; display: flex; align-items: center; gap: 8px;">
+        General
+      </h2>
+
+      <div style="margin-bottom: 16px;">
+        <label style="display: block; font-size: 11px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px;">Title</label>
+        <input type="text" id="dash-title-input" name="title" required value="{{if not .IsCreate}}{{.Dashboard.Title}}{{end}}" placeholder="e.g., US East Cluster" class="form-input" style="width: 100%;">
+      </div>
+
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;" class="mobile-grid-1">
+        <div>
+          <label style="display: block; font-size: 11px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px;">URL Slug</label>
+          <div style="display: flex; border: 1px solid var(--border-color); border-radius: var(--radius); overflow: hidden; background: var(--bg-primary);">
+            <span style="padding: 9px 12px; background: var(--bg-secondary); border-right: 1px solid var(--border-color); font-size: 12px; color: var(--text-muted); font-family: var(--font-mono); white-space: nowrap;">
+              {{if and $.PublicPath (ne $.PublicPath "/")}}{{$.PublicPath}}/{{else}}/dashboard/{{end}}
+            </span>
+            <input type="text" id="dash-slug-input" name="slug" required value="{{if not .IsCreate}}{{.Dashboard.Slug}}{{end}}" class="form-input" style="border: none; border-radius: 0; flex: 1; min-width: 0;">
+          </div>
+        </div>
+
+        <div>
+          <label style="display: block; font-size: 11px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px;">History (Days)</label>
+          {{$currMaxDays := 7}}
+          {{if and (not .IsCreate) (index .Dashboard.AccessRules "public")}}
+            {{$currMaxDays = (index .Dashboard.AccessRules "public").MaxDays}}
+          {{end}}
+          <select name="max_days" class="form-input" style="width: 100%; cursor: pointer;">
+            <option value="1" {{if eq $currMaxDays 1}}selected{{end}}>1 day (Last 24h)</option>
+            <option value="2" {{if eq $currMaxDays 2}}selected{{end}}>2 days (Last 2d)</option>
+            <option value="7" {{if eq $currMaxDays 7}}selected{{end}}>7 days (Last 7d)</option>
+            <option value="30" {{if eq $currMaxDays 30}}selected{{end}}>30 days (Last 30d)</option>
+            <option value="90" {{if eq $currMaxDays 90}}selected{{end}}>90 days (Last 90d)</option>
+            <option value="180" {{if eq $currMaxDays 180}}selected{{end}}>180 days (Last 180d)</option>
+            <option value="365" {{if eq $currMaxDays 365}}selected{{end}}>365 days (Last 1y)</option>
+            <option value="730" {{if eq $currMaxDays 730}}selected{{end}}>730 days (Last 2y)</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <!-- 2. ALLOWED SYSTEM INFO (8 Features) -->
+    <div class="card" style="padding: 24px; margin-bottom: 20px;">
+      <h2 style="font-size: 12px; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em; margin: 0 0 16px 0; display: flex; align-items: center; gap: 8px;">
+        Allowed System Info (Specifications)
+      </h2>
+      <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px;">
+        {{$rules := index .Dashboard.AccessRules "public"}}
+        
+        <label class="toggle-pill {{if or $.IsCreate (hasFeature $rules "is_online")}}active{{end}}">
+          <input type="checkbox" name="features" value="is_online" {{if or $.IsCreate (hasFeature $rules "is_online")}}checked{{end}} onchange="togglePill(this)">
+          <span class="toggle-icon">✓</span>
+          <span>Online Status</span>
+        </label>
+
+        <label class="toggle-pill {{if or $.IsCreate (hasFeature $rules "uptime")}}active{{end}}">
+          <input type="checkbox" name="features" value="uptime" {{if or $.IsCreate (hasFeature $rules "uptime")}}checked{{end}} onchange="togglePill(this)">
+          <span class="toggle-icon">✓</span>
+          <span>Uptime</span>
+        </label>
+
+        <label class="toggle-pill {{if or $.IsCreate (hasFeature $rules "linux_version")}}active{{end}}">
+          <input type="checkbox" name="features" value="linux_version" {{if or $.IsCreate (hasFeature $rules "linux_version")}}checked{{end}} onchange="togglePill(this)">
+          <span class="toggle-icon">✓</span>
+          <span>OS Kernel</span>
+        </label>
+
+        <label class="toggle-pill {{if or $.IsCreate (hasFeature $rules "cpu_model")}}active{{end}}">
+          <input type="checkbox" name="features" value="cpu_model" {{if or $.IsCreate (hasFeature $rules "cpu_model")}}checked{{end}} onchange="togglePill(this)">
+          <span class="toggle-icon">✓</span>
+          <span>CPU Model</span>
+        </label>
+
+        <label class="toggle-pill {{if or $.IsCreate (hasFeature $rules "cpu_cores")}}active{{end}}">
+          <input type="checkbox" name="features" value="cpu_cores" {{if or $.IsCreate (hasFeature $rules "cpu_cores")}}checked{{end}} onchange="togglePill(this)">
+          <span class="toggle-icon">✓</span>
+          <span>CPU Cores</span>
+        </label>
+
+        <label class="toggle-pill {{if or $.IsCreate (hasFeature $rules "ram_size")}}active{{end}}">
+          <input type="checkbox" name="features" value="ram_size" {{if or $.IsCreate (hasFeature $rules "ram_size")}}checked{{end}} onchange="togglePill(this)">
+          <span class="toggle-icon">✓</span>
+          <span>Total RAM</span>
+        </label>
+
+        <label class="toggle-pill {{if or $.IsCreate (hasFeature $rules "swap_size")}}active{{end}}">
+          <input type="checkbox" name="features" value="swap_size" {{if or $.IsCreate (hasFeature $rules "swap_size")}}checked{{end}} onchange="togglePill(this)">
+          <span class="toggle-icon">✓</span>
+          <span>Total Swap</span>
+        </label>
+
+        <label class="toggle-pill {{if or $.IsCreate (hasFeature $rules "disk_size")}}active{{end}}">
+          <input type="checkbox" name="features" value="disk_size" {{if or $.IsCreate (hasFeature $rules "disk_size")}}checked{{end}} onchange="togglePill(this)">
+          <span class="toggle-icon">✓</span>
+          <span>Total Disk</span>
+        </label>
+      </div>
+    </div>
+
+    <!-- 3. ALLOWED METRICS (10 Series) -->
+    <div class="card" style="padding: 24px; margin-bottom: 20px;">
+      <h2 style="font-size: 12px; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em; margin: 0 0 16px 0; display: flex; align-items: center; gap: 8px;">
+        Allowed Telemetry Metrics (10 Series)
+      </h2>
+      <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px;">
+        <label class="toggle-pill {{if or $.IsCreate (hasMetric $rules "agent_cpu_usage")}}active{{end}}">
+          <input type="checkbox" name="metrics" value="agent_cpu_usage" {{if or $.IsCreate (hasMetric $rules "agent_cpu_usage")}}checked{{end}} onchange="togglePill(this)">
+          <span class="toggle-icon">✓</span>
+          <span>CPU Usage</span>
+        </label>
+
+        <label class="toggle-pill {{if or $.IsCreate (hasMetric $rules "agent_cpu_iowait")}}active{{end}}">
+          <input type="checkbox" name="metrics" value="agent_cpu_iowait" {{if or $.IsCreate (hasMetric $rules "agent_cpu_iowait")}}checked{{end}} onchange="togglePill(this)">
+          <span class="toggle-icon">✓</span>
+          <span>CPU IO Wait</span>
+        </label>
+
+        <label class="toggle-pill {{if or $.IsCreate (hasMetric $rules "agent_cpu_steal")}}active{{end}}">
+          <input type="checkbox" name="metrics" value="agent_cpu_steal" {{if or $.IsCreate (hasMetric $rules "agent_cpu_steal")}}checked{{end}} onchange="togglePill(this)">
+          <span class="toggle-icon">✓</span>
+          <span>CPU Steal</span>
+        </label>
+
+        <label class="toggle-pill {{if or $.IsCreate (hasMetric $rules "agent_ram_used")}}active{{end}}">
+          <input type="checkbox" name="metrics" value="agent_ram_used" {{if or $.IsCreate (hasMetric $rules "agent_ram_used")}}checked{{end}} onchange="togglePill(this)">
+          <span class="toggle-icon">✓</span>
+          <span>RAM Usage</span>
+        </label>
+
+        <label class="toggle-pill {{if or $.IsCreate (hasMetric $rules "agent_swap_used")}}active{{end}}">
+          <input type="checkbox" name="metrics" value="agent_swap_used" {{if or $.IsCreate (hasMetric $rules "agent_swap_used")}}checked{{end}} onchange="togglePill(this)">
+          <span class="toggle-icon">✓</span>
+          <span>Swap Usage</span>
+        </label>
+
+        <label class="toggle-pill {{if or $.IsCreate (hasMetric $rules "agent_disk_used")}}active{{end}}">
+          <input type="checkbox" name="metrics" value="agent_disk_used" {{if or $.IsCreate (hasMetric $rules "agent_disk_used")}}checked{{end}} onchange="togglePill(this)">
+          <span class="toggle-icon">✓</span>
+          <span>Disk Usage</span>
+        </label>
+
+        <label class="toggle-pill {{if or $.IsCreate (hasMetric $rules "agent_disk_read_bytes")}}active{{end}}">
+          <input type="checkbox" name="metrics" value="agent_disk_read_bytes" {{if or $.IsCreate (hasMetric $rules "agent_disk_read_bytes")}}checked{{end}} onchange="togglePill(this)">
+          <span class="toggle-icon">✓</span>
+          <span>Disk Read</span>
+        </label>
+
+        <label class="toggle-pill {{if or $.IsCreate (hasMetric $rules "agent_disk_write_bytes")}}active{{end}}">
+          <input type="checkbox" name="metrics" value="agent_disk_write_bytes" {{if or $.IsCreate (hasMetric $rules "agent_disk_write_bytes")}}checked{{end}} onchange="togglePill(this)">
+          <span class="toggle-icon">✓</span>
+          <span>Disk Write</span>
+        </label>
+
+        <label class="toggle-pill {{if or $.IsCreate (hasMetric $rules "agent_rx_bytes")}}active{{end}}">
+          <input type="checkbox" name="metrics" value="agent_rx_bytes" {{if or $.IsCreate (hasMetric $rules "agent_rx_bytes")}}checked{{end}} onchange="togglePill(this)">
+          <span class="toggle-icon">✓</span>
+          <span>Network RX</span>
+        </label>
+
+        <label class="toggle-pill {{if or $.IsCreate (hasMetric $rules "agent_tx_bytes")}}active{{end}}">
+          <input type="checkbox" name="metrics" value="agent_tx_bytes" {{if or $.IsCreate (hasMetric $rules "agent_tx_bytes")}}checked{{end}} onchange="togglePill(this)">
+          <span class="toggle-icon">✓</span>
+          <span>Network TX</span>
+        </label>
+      </div>
+    </div>
+
+    <!-- 4. SELECT AGENTS -->
+    <div class="card" style="padding: 24px; margin-bottom: 20px;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; gap: 12px; flex-wrap: wrap;">
+        <h2 style="font-size: 12px; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em; margin: 0; display: flex; align-items: center; gap: 8px;">
+          Select Agents
+          <span id="selected-agents-badge" class="badge badge-online" style="display: none; padding: 2px 8px; font-size: 11px;">0 Selected</span>
+        </h2>
+        <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+          <input type="text" id="agent-search" placeholder="Search agents..." class="form-input" style="padding: 6px 12px; font-size: 12px; width: 180px;" oninput="filterAgents()">
+          <button type="button" id="btn-select-all" class="btn btn-secondary btn-sm" onclick="toggleSelectAll()">Select All</button>
+        </div>
+      </div>
+
+      {{if not .AvailableAgents}}
+      <p style="color: var(--text-muted); font-size: 13px; margin: 0;">No agents found. Make sure agents are reporting in.</p>
+      {{else}}
+      <div id="agents-selection-list" style="display: flex; flex-direction: column; gap: 8px; max-height: 420px; overflow-y: auto; padding-right: 4px;">
+        {{range .AvailableAgents}}
+        {{$agentId := .AgentID}}
+        {{$isAssigned := false}}
+        {{$alias := .Nickname}}
+        {{range $.DashboardAgents}}
+          {{if eq .AgentID $agentId}}
+            {{$isAssigned = true}}
+            {{if .PublicAgentNickname}}{{$alias = .PublicAgentNickname}}{{end}}
+          {{end}}
+        {{end}}
+
+        <div class="agent-select-row card" data-agent-id="{{.AgentID}}" data-agent-name="{{.Nickname}}" style="display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; border: 1px solid var(--border-color); border-radius: var(--radius); gap: 16px; flex-wrap: wrap; margin-bottom: 6px; background: var(--bg-primary);">
+          <label style="display: flex; align-items: center; gap: 12px; cursor: pointer; flex: 1; min-width: 200px; margin: 0;">
+            <input type="checkbox" name="agents" value="{{.AgentID}}" {{if $isAssigned}}checked{{end}} onchange="onAgentCheckboxChange('{{.AgentID}}', this.checked)" style="width: 16px; height: 16px; cursor: pointer;">
+            <div>
+              <strong style="font-size: 13px; color: var(--text-primary);">{{.Nickname}}</strong>
+              <div style="font-size: 11px; color: var(--text-muted); font-family: var(--font-mono);">{{.AgentID}}</div>
+            </div>
+          </label>
+          <div class="agent-alias-container" id="alias-box-{{.AgentID}}" style="{{if not $isAssigned}}display: none;{{end}} display: flex; align-items: center; gap: 8px;">
+            <span style="font-size: 10px; color: var(--text-muted); text-transform: uppercase; font-weight: 700;">Alias:</span>
+            <input type="text" name="alias_{{.AgentID}}" id="alias-input-{{.AgentID}}" value="{{$alias}}" {{if not $isAssigned}}disabled{{end}} placeholder="Public alias" class="form-input" style="padding: 4px 10px; font-size: 12px; width: 160px;" oninput="onAliasChange('{{.AgentID}}', this.value)">
+          </div>
+        </div>
+        {{end}}
+      </div>
+
+      <!-- 5. DRAG TO REORDER (Custom Sequence) -->
+      <div id="reorder-section" style="margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--border-color); display: none;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
+          <div>
+            <h3 style="font-size: 12px; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em; margin: 0;">
+              ⇅ Drag to Reorder Sequence
+            </h3>
+            <p style="font-size: 11px; color: var(--text-muted); margin: 2px 0 0 0;">
+              Drag and drop items to customize their display order. Defaults to alphabetical if not customized.
+            </p>
+          </div>
+          <button type="button" id="btn-reset-order" class="btn btn-secondary btn-sm" onclick="resetToAlphabetical()" style="display: none;">
+            ↺ Reset to Alphabetical
+          </button>
+        </div>
+
+        <div id="reorder-list" style="display: flex; flex-direction: column; gap: 6px;">
+          <!-- Reorderable items populated by JS -->
+        </div>
+      </div>
+      {{end}}
+    </div>
+
+    <!-- Actions -->
+    <div style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 8px;">
+      <a href="{{$.PanelPath}}/dashboards" class="btn btn-secondary" style="padding: 10px 24px; text-decoration: none;">Cancel</a>
+      <button type="submit" class="btn btn-primary" style="padding: 10px 32px;">
+        {{if .IsCreate}}Create Dashboard{{else}}Save Dashboard{{end}}
+      </button>
+    </div>
+  </form>
+</div>
+
+<!-- Delete Confirmation Modal -->
+{{if not .IsCreate}}
+<div id="delete-dashboard-modal" class="modal-overlay" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); z-index: 2000; backdrop-filter: blur(4px);">
+  <div style="max-width: 480px; margin: 100px auto; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: var(--radius); padding: 24px; box-shadow: var(--shadow-lg);">
+    <h3 style="margin-top: 0; font-family: var(--font-display);">Delete Dashboard?</h3>
+    <p style="color: var(--text-secondary); font-size: 13px; line-height: 1.5;">
+      Are you sure you want to delete "<strong>{{.Dashboard.Title}}</strong>"? This action cannot be undone and will permanently remove this public dashboard page.
+    </p>
+    <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 24px;">
+      <button type="button" class="btn btn-secondary" onclick="document.getElementById('delete-dashboard-modal').style.display='none'">Cancel</button>
+      <button type="button" class="btn btn-danger" onclick="confirmDeleteDashboard()">Delete Dashboard</button>
+    </div>
+  </div>
+</div>
+{{end}}
+
+<link rel="stylesheet" href="{{.StaticPath}}/{{asset "css/dashboard_edit.css"}}" integrity="{{integrity "css/dashboard_edit.css"}}">
+
+<script src="{{.StaticPath}}/{{asset "js/dashboard_edit.js"}}" integrity="{{integrity "js/dashboard_edit.js"}}"></script>
+<script>
+  window.CertainStatsDashboardEdit.init({
+    selectedAgentsOrder: [
+      {{range .DashboardAgents}}
+      '{{.AgentID}}',
+      {{end}}
+    ],
+    isDragged: {{range .DashboardAgents}}{{if .SortKey}}true{{end}}{{end}} false,
+    isCreate: {{if .IsCreate}}true{{else}}false{{end}},
+    dashboardId: '{{.Dashboard.DashboardID}}'
+  });
+</script>
+{{end}}

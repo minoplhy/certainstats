@@ -489,28 +489,33 @@ export const AgentView: FC<AgentViewProps> = ({
                             { label: 'Used', value: snap?.RAMUsagePercent || 0, color: '#14b8a6', displayValue: fmtBytes(snap?.RAMUsedBytes), totalDisplay: a.ram_size ? fmtBytes(a.ram_size) : undefined },
                             { label: 'Swap', value: snap?.RAMSwapUsagePercent || 0, color: '#4b5563', displayValue: fmtBytes(snap?.RAMSwapUsedBytes), totalDisplay: a.swap_size ? fmtBytes(a.swap_size) : undefined }
                           ]} />
-                          {snap.Disks && snap.Disks.length > 0 ? snap.Disks.map((d: any, idx: number) => {
-                            const pct = d.total_bytes > 0 ? (d.used_bytes / d.total_bytes) * 100 : 0;
-                            const path = d.path || 'Unknown';
-                            return (
+                          {(() => {
+                            const activeDisks = snap?.disks || snap?.Disks;
+                            return activeDisks && activeDisks.length > 0 ? activeDisks.map((d: any, idx: number) => {
+                              const usedBytes = d.used_bytes ?? d.UsedBytes ?? 0;
+                              const totalBytes = d.total_bytes ?? d.TotalBytes ?? 0;
+                              const pct = totalBytes > 0 ? (usedBytes / totalBytes) * 100 : 0;
+                              const path = d.path || d.Path || 'Unknown';
+                              return (
+                                <UsageBar
+                                  key={idx}
+                                  label={path === '/' ? 'DISK' : `DISK (${path})`}
+                                  compact={!isDetailed}
+                                  segments={[
+                                    { label: 'Used', value: pct, color: '#a855f7', displayValue: fmtBytes(usedBytes), totalDisplay: totalBytes ? fmtBytes(totalBytes) : undefined }
+                                  ]}
+                                />
+                              );
+                            }) : (
                               <UsageBar
-                                key={idx}
-                                label={path === '/' ? 'DISK' : `DISK (${path})`}
+                                label="DISK"
                                 compact={!isDetailed}
                                 segments={[
-                                  { label: 'Used', value: pct, color: '#a855f7', displayValue: fmtBytes(d.used_bytes), totalDisplay: d.total_bytes ? fmtBytes(d.total_bytes) : undefined }
+                                  { label: 'Used', value: snap?.DiskUsagePercent || 0, color: '#a855f7', displayValue: fmtBytes(snap?.DiskUsedBytes), totalDisplay: a.disk_size ? fmtBytes(a.disk_size) : undefined }
                                 ]}
                               />
                             );
-                          }) : (
-                            <UsageBar
-                              label="DISK"
-                              compact={!isDetailed}
-                              segments={[
-                                { label: 'Used', value: snap?.DiskUsagePercent || 0, color: '#a855f7', displayValue: fmtBytes(snap?.DiskUsedBytes), totalDisplay: a.disk_size ? fmtBytes(a.disk_size) : undefined }
-                              ]}
-                            />
-                          )}
+                          })()}
                           <UsageBar label="Network" compact={!isDetailed} unit="" segments={[
                             { label: 'RX', value: (snap?.RXBps + snap?.TXBps > 0) ? (snap.RXBps / (snap.RXBps + snap.TXBps)) * 100 : 0, color: '#1e40af', displayValue: fmtBps(snap?.RXBps || 0) },
                             { label: 'TX', value: (snap?.RXBps + snap?.TXBps > 0) ? (snap.TXBps / (snap.RXBps + snap.TXBps)) * 100 : 0, color: '#7e22ce', displayValue: fmtBps(snap?.TXBps || 0) }

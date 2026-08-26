@@ -1,0 +1,116 @@
+{{define "public_cluster_cards"}}
+<!-- Dual-Metric Cluster Cards (Public Total Telemetry Panel) -->
+<div class="total-telemetry-panel">
+  <!-- Card 1: TOTAL BANDWIDTH -->
+  {{if or (hasMetric .AccessRules "agent_rx_bytes") (hasMetric .AccessRules "agent_tx_bytes")}}
+  <div class="telemetry-card">
+    <div class="telemetry-card-header">
+      <span class="telemetry-card-title">TOTAL BANDWIDTH</span>
+      <span class="telemetry-card-icon" style="color: var(--accent-primary);">⇅</span>
+    </div>
+    <div class="telemetry-card-body">
+      {{if hasMetric .AccessRules "agent_rx_bytes"}}
+      <div class="telemetry-col">
+        <div class="telemetry-col-label">Download</div>
+        <div class="telemetry-num-val" id="pub-live-rx-val">↓ 0 B/s</div>
+      </div>
+      {{end}}
+      {{if and (hasMetric .AccessRules "agent_rx_bytes") (hasMetric .AccessRules "agent_tx_bytes")}}
+      <div class="telemetry-divider"></div>
+      {{end}}
+      {{if hasMetric .AccessRules "agent_tx_bytes"}}
+      <div class="telemetry-col">
+        <div class="telemetry-col-label">Upload</div>
+        <div class="telemetry-num-val" id="pub-live-tx-val">↑ 0 B/s</div>
+      </div>
+      {{end}}
+    </div>
+    <div class="telemetry-bottom-line" style="background: linear-gradient(90deg, var(--accent-primary), transparent);"></div>
+  </div>
+  {{end}}
+
+  <!-- Card 2: TOTAL DISK I/O -->
+  {{if or (hasMetric .AccessRules "agent_disk_read_bytes") (hasMetric .AccessRules "agent_disk_write_bytes")}}
+  <div class="telemetry-card">
+    <div class="telemetry-card-header">
+      <span class="telemetry-card-title">TOTAL DISK I/O</span>
+      <span class="telemetry-card-icon" style="color: #fb923c;">⛁</span>
+    </div>
+    <div class="telemetry-card-body">
+      {{if hasMetric .AccessRules "agent_disk_read_bytes"}}
+      <div class="telemetry-col">
+        <div class="telemetry-col-label">Read</div>
+        <div class="telemetry-num-val" id="pub-live-disk-read-val">0 B/s</div>
+      </div>
+      {{end}}
+      {{if and (hasMetric .AccessRules "agent_disk_read_bytes") (hasMetric .AccessRules "agent_disk_write_bytes")}}
+      <div class="telemetry-divider"></div>
+      {{end}}
+      {{if hasMetric .AccessRules "agent_disk_write_bytes"}}
+      <div class="telemetry-col">
+        <div class="telemetry-col-label">Write</div>
+        <div class="telemetry-num-val" id="pub-live-disk-write-val">0 B/s</div>
+      </div>
+      {{end}}
+    </div>
+    <div class="telemetry-bottom-line" style="background: linear-gradient(90deg, #fb923c, transparent);"></div>
+  </div>
+  {{end}}
+
+  <!-- Card 3: TOTAL TRAFFIC -->
+  {{if or (hasMetric .AccessRules "agent_rx_bytes") (hasMetric .AccessRules "agent_tx_bytes")}}
+  <div class="telemetry-card">
+    <div class="telemetry-card-header">
+      <span class="telemetry-card-title">TOTAL TRAFFIC</span>
+      <span class="telemetry-card-icon" style="color: #14b8a6;">☁</span>
+    </div>
+    <div class="telemetry-card-body">
+      {{if hasMetric .AccessRules "agent_rx_bytes"}}
+      <div class="telemetry-col">
+        <div class="telemetry-col-label">Received</div>
+        <div class="telemetry-num-val" id="pub-total-rx-val">↓ 0 B</div>
+      </div>
+      {{end}}
+      {{if and (hasMetric .AccessRules "agent_rx_bytes") (hasMetric .AccessRules "agent_tx_bytes")}}
+      <div class="telemetry-divider"></div>
+      {{end}}
+      {{if hasMetric .AccessRules "agent_tx_bytes"}}
+      <div class="telemetry-col">
+        <div class="telemetry-col-label">Sent</div>
+        <div class="telemetry-num-val" id="pub-total-tx-val">↑ 0 B</div>
+      </div>
+      {{end}}
+    </div>
+    <div class="telemetry-bottom-line" style="background: linear-gradient(90deg, #14b8a6, transparent);"></div>
+  </div>
+  {{end}}
+
+  <!-- Card 4: TOTAL DISK READ/WRITE -->
+  {{if or (hasMetric .AccessRules "agent_disk_read_bytes") (hasMetric .AccessRules "agent_disk_write_bytes")}}
+  <div class="telemetry-card">
+    <div class="telemetry-card-header">
+      <span class="telemetry-card-title">TOTAL DISK READ/WRITE</span>
+      <span class="telemetry-card-icon" style="color: #ef4444;">⛁</span>
+    </div>
+    <div class="telemetry-card-body">
+      {{if hasMetric .AccessRules "agent_disk_read_bytes"}}
+      <div class="telemetry-col">
+        <div class="telemetry-col-label">Read Vol</div>
+        <div class="telemetry-num-val" id="pub-total-disk-read-val">0 B</div>
+      </div>
+      {{end}}
+      {{if and (hasMetric .AccessRules "agent_disk_read_bytes") (hasMetric .AccessRules "agent_disk_write_bytes")}}
+      <div class="telemetry-divider"></div>
+      {{end}}
+      {{if hasMetric .AccessRules "agent_disk_write_bytes"}}
+      <div class="telemetry-col">
+        <div class="telemetry-col-label">Write Vol</div>
+        <div class="telemetry-num-val" id="pub-total-disk-write-val">0 B</div>
+      </div>
+      {{end}}
+    </div>
+    <div class="telemetry-bottom-line" style="background: linear-gradient(90deg, #ef4444, transparent);"></div>
+  </div>
+  {{end}}
+</div>
+{{end}}

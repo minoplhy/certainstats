@@ -202,11 +202,18 @@ export interface AgentSnapshot {
   DiskWriteBps: number;
   RXBps: number;
   TXBps: number;
+  disks?: {
+    path: string;
+    used_bytes: number;
+    total_bytes: number;
+    read_bytes?: number;
+    write_bytes?: number;
+  }[];
   Disks?: {
     path: string;
     used_bytes: number;
     total_bytes: number;
-    read_bytes: number;
-    write_bytes: number;
+    read_bytes?: number;
+    write_bytes?: number;
   }[];
 }

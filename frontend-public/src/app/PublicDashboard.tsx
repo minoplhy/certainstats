@@ -224,7 +224,6 @@ function DashboardContent() {
             const snap = snaps[a.public_id];
             return {
               ...a,
-              is_online: !!snap,
               uptime: snap?.Uptime !== undefined ? snap.Uptime : a.uptime,
               linux_version: snap?.LinuxVersion || a.linux_version,
               cpu_model: snap?.CpuModel || a.cpu_model,
@@ -729,14 +728,32 @@ function DashboardContent() {
                                   />
                                 )}
                                 {allowedMetrics.includes('agent_disk_used') && (
-                                  <UsageBar
-                                    label="DISK"
-                                    compact
-                                    unit=""
-                                    segments={[
-                                      { label: 'Used', value: snap?.DiskUsagePercent || 0, color: '#a855f7', displayValue: fmtBytes(snap?.DiskUsedBytes), totalDisplay: a.disk_size ? fmtBytes(a.disk_size) : undefined }
-                                    ]}
-                                  />
+                                  ((snap?.disks || snap?.Disks) && (snap.disks || snap.Disks).length > 0) ? (snap.disks || snap.Disks).map((d: any, idx: number) => {
+                                    const usedBytes = d.used_bytes ?? d.UsedBytes ?? 0;
+                                    const totalBytes = d.total_bytes ?? d.TotalBytes ?? 0;
+                                    const pct = totalBytes > 0 ? (usedBytes / totalBytes) * 100 : 0;
+                                    const path = d.path || d.Path || 'Unknown';
+                                    return (
+                                      <UsageBar
+                                        key={idx}
+                                        label={path === '/' ? 'DISK' : `DISK (${path})`}
+                                        compact
+                                        unit=""
+                                        segments={[
+                                          { label: 'Used', value: pct, color: '#a855f7', displayValue: fmtBytes(usedBytes), totalDisplay: totalBytes ? fmtBytes(totalBytes) : undefined }
+                                        ]}
+                                      />
+                                    );
+                                  }) : (
+                                    <UsageBar
+                                      label="DISK"
+                                      compact
+                                      unit=""
+                                      segments={[
+                                        { label: 'Used', value: snap?.DiskUsagePercent || 0, color: '#a855f7', displayValue: fmtBytes(snap?.DiskUsedBytes), totalDisplay: a.disk_size ? fmtBytes(a.disk_size) : undefined }
+                                      ]}
+                                    />
+                                  )
                                 )}
                                 {(allowedMetrics.includes('agent_rx_bytes') || allowedMetrics.includes('agent_tx_bytes')) && (
                                   <UsageBar

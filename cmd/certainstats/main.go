@@ -3,6 +3,7 @@ package main
 import (
 	log "certainstats/internal/logger"
 	apiresponse "certainstats/internal/response"
+	"certainstats/internal/web"
 	"context"
 	"crypto/rand"
 	_ "embed"
@@ -119,7 +120,6 @@ func main() {
 	publicHost := cfg.PublicHost
 	panelScheme := cfg.PanelScheme
 	publicScheme := cfg.PublicScheme
-	injectedPublicURL := cfg.InjectedPublicURL
 
 	// 3.5 First-Time Setup initialization check
 	isZero, err := db.IsUserZero(ctx)
@@ -128,7 +128,6 @@ func main() {
 	}
 
 	if isZero {
-		// Generate secure 32-byte in-memory setup token
 		tokenBytes := make([]byte, 32)
 		if _, err := rand.Read(tokenBytes); err != nil {
 			log.Fatalf("failed to generate setup token: %v", err)
@@ -165,6 +164,29 @@ func main() {
 		log.Println("====================================================================")
 	}
 
+	// 3.6 Web Static Pipeline & Template Renderer Initialization
+	if err := web.InitStatic(); err != nil {
+		log.Fatalf("static asset pipeline: %v", err)
+	}
+	renderer, err := web.NewRenderer()
+	if err != nil {
+		log.Fatalf("template renderer: %v", err)
+	}
+
+	staticPath := "/static"
+	if panelPath != "/" {
+		staticPath = panelPath + "/static"
+	}
+
+	webHandler := &web.WebHandler{
+		Renderer:   renderer,
+		Store:      db,
+		Cache:      metricsCache,
+		PanelPath:  panelPath,
+		PublicPath: publicPath,
+		StaticPath: staticPath,
+	}
+
 	// 4. Router setups
 	setupRouter := func(rt chi.Router) {
 		rt.Use(middleware.RequestID)
@@ -184,7 +206,7 @@ func main() {
 	setupRouter(legacyRouter)
 
 	// ─────────────────────────────────────────────────────────────
-	// 5. API Route Definitions
+	// 5. Route Definitions (Web 1.0 HTML Pages + JSON APIs)
 	// ─────────────────────────────────────────────────────────────
 
 	setupPanel := func(rt chi.Router) {
@@ -195,15 +217,57 @@ func main() {
 			})
 		})
 
-		// Submit Endpoint
+		// Static assets
+		web.ServeStatic(rt, "/static")
+
+		// Agent Submission Endpoints
 		rt.Post("/submit", agent.SubmitHandler(db, tdb, parserRegistry, metricsCache))
 		rt.Get("/api/beszel/agent-connect", agent.BeszelWSHandler(db, tdb, wsManager, metricsCache))
 
+		// Web 1.0 HTML Routes
+		rt.Get("/first-time-setup", webHandler.SetupHandler)
+		rt.Post("/first-time-setup", webHandler.SetupHandler)
+		rt.Get("/login", webHandler.LoginHandler)
+		rt.Post("/login", webHandler.LoginHandler)
+		rt.Post("/logout", webHandler.LogoutHandler)
+
+		rt.Get("/", webHandler.RequireAuthWeb(webHandler.AgentsListHandler))
+		rt.Get("/{id}", webHandler.RequireAuthWeb(webHandler.AgentsListHandler))
+
+		rt.Get("/agents/management", webHandler.RequireAuthWeb(webHandler.AgentManagementHandler))
+		rt.Post("/agent/provision", webHandler.RequireAuthWeb(webHandler.AgentProvisionHandler))
+		rt.Post("/agent/reset/token", webHandler.RequireAuthWeb(webHandler.AgentResetTokenHandler))
+		rt.Post("/agent/reset/ssh", webHandler.RequireAuthWeb(webHandler.AgentResetSSHHandler))
+		rt.Post("/agent/delete", webHandler.RequireAuthWeb(webHandler.AgentDeleteHandler))
+
+		rt.Get("/dashboards", webHandler.RequireAuthWeb(webHandler.DashboardsListHandler))
+		rt.Get("/dashboard/create", webHandler.RequireAuthWeb(webHandler.DashboardCreatePageHandler))
+		rt.Post("/dashboard/create", webHandler.RequireAuthWeb(webHandler.DashboardCreateHandler))
+		rt.Get("/dashboard/{id}", webHandler.RequireAuthWeb(webHandler.DashboardEditHandler))
+		rt.Post("/dashboard/{id}", webHandler.RequireAuthWeb(webHandler.DashboardUpdateHandler))
+		rt.Delete("/dashboard/{id}", webHandler.RequireAuthWeb(webHandler.DashboardDeleteHandler))
+
+		rt.Get("/alerts", webHandler.RequireAuthWeb(webHandler.AlertsListHandler))
+		rt.Post("/alerts/create", webHandler.RequireAuthWeb(webHandler.AlertCreateHandler))
+		rt.Post("/alerts/edit", webHandler.RequireAuthWeb(webHandler.AlertUpdateHandler))
+		rt.Post("/alerts/delete", webHandler.RequireAuthWeb(webHandler.AlertDeleteHandler))
+		rt.Post("/alerts/targets/create", webHandler.RequireAuthWeb(webHandler.TargetCreateHandler))
+		rt.Post("/alerts/targets/edit", webHandler.RequireAuthWeb(webHandler.TargetUpdateHandler))
+		rt.Post("/alerts/targets/delete", webHandler.RequireAuthWeb(webHandler.TargetDeleteHandler))
+
+		rt.Get("/settings", webHandler.RequireAuthWeb(webHandler.SettingsHandler))
+		rt.Post("/settings/password", webHandler.RequireAuthWeb(webHandler.PasswordChangeHandler))
+		rt.Post("/settings/sessions/eject", webHandler.RequireAuthWeb(webHandler.SessionEjectHandler))
+		rt.Post("/settings/sessions/eject-other", webHandler.RequireAuthWeb(webHandler.SessionEjectOtherHandler))
+
+		// SPA route for /{agent_id}
+		rt.Get("/{id}", webHandler.RequireAuthWeb(webHandler.AgentsListHandler))
+
+		// REST JSON API Routes
 		rt.Route("/api", func(api chi.Router) {
 			api.Post("/login", auth.LoginHandler(db, db))
 			api.Post("/logout", auth.LogoutHandler(db))
 
-			// Mount first-time setup endpoints ONLY if the database is in a zero-user setup state on boot
 			if isZero {
 				api.Get("/first-time-setup/status", auth.GetSetupStatusHandler(db))
 				api.Get("/first-time-setup/check", auth.CheckSetupHandler())
@@ -225,7 +289,7 @@ func main() {
 				authApi.Get("/agents/management", requireAuth(db, agent.ListAgentsManagementHandler(db)))
 			})
 
-			api.Get("/metrics", requireAuth(db, metrics.MetricsQueryHandler(tdb, metricsCache)))
+			api.Get("/metrics", requireAuth(db, metrics.MetricsQueryHandler(db, tdb, metricsCache)))
 
 			api.Get("/dashboards", requireAuth(db, dashboard.ListDashboardsHandler(db)))
 			api.Post("/dashboard", requireAuth(db, dashboard.CreateDashboardHandler(db)))
@@ -270,41 +334,21 @@ func main() {
 	}
 
 	setupPublic := func(rt chi.Router) {
+		web.ServeStatic(rt, "/static")
+
+		// Register API routes BEFORE wildcard slug routes so they are never intercepted
 		rt.Route("/api/public", func(pubApi chi.Router) {
 			pubApi.Get("/dashboard/{pub_id}", dashboard.PublicDashboardHandler(db))
 			pubApi.Get("/metrics", metrics.PublicMetricsHandler(tdb, db, metricsCache))
 			pubApi.Get("/ws/{id}", ws.PublicWebSocketHandler(db, uiBroadcaster))
 		})
+
+		rt.Get("/dashboard/{slug}", webHandler.PublicDashboardHandler)
+		rt.Get("/dashboard/{slug}/{pub_id}", webHandler.PublicDashboardHandler)
+		rt.Get("/{slug}", webHandler.PublicDashboardHandler)
+		rt.Get("/{slug}/{pub_id}", webHandler.PublicDashboardHandler)
 	}
 
-	// ─────────────────────────────────────────────────────────────
-	// 6. SPA Catch-all Handlers (Context Aware)
-	// ─────────────────────────────────────────────────────────────
-	// Admin Panel SPA
-	panelSpa := spaHandler{
-		staticPath:  "frontend-admin/out",
-		indexPath:   "index.html",
-		directIndex: true,
-		basePath:    panelPath,
-		envVars: map[string]string{
-			"PANEL_PATH":  panelPath,
-			"PUBLIC_PATH": publicPath,
-			"PUBLIC_URL":  injectedPublicURL,
-		},
-	}
-
-	// Public Dashboard SPA
-	publicSpa := spaHandler{
-		staticPath:  "frontend-public/out",
-		indexPath:   "index.html",
-		directIndex: true,
-		basePath:    publicPath,
-		envVars: map[string]string{
-			"PUBLIC_PATH": publicPath,
-		},
-	}
-
-	// Set global 404 handler for all sub-routers
 	notFoundHandler := func(w http.ResponseWriter, r *http.Request) {
 		apiresponse.Error(w, http.StatusNotFound, "Not Found")
 	}
@@ -312,49 +356,36 @@ func main() {
 	publicRouter.NotFound(notFoundHandler)
 	legacyRouter.NotFound(notFoundHandler)
 
-	// mountContext attaches the API endpoints first, and then the SPA catch-all at the very end.
-	mountContext := func(router chi.Router, basePath string, setup func(chi.Router), spa spaHandler) {
-		log.Debugf("[Mount] setting up router mount for basePath=%q (staticPath=%q)", basePath, spa.staticPath)
+	mountContext := func(router chi.Router, basePath string, setup func(chi.Router)) {
+		log.Debugf("[Mount] setting up router mount for basePath=%q", basePath)
 		if basePath == "/" {
 			setup(router)
-			router.Handle("/*", spa)
-			log.Debugf("[Mount] registered root API and catch-all for basePath=%q", basePath)
+			log.Debugf("[Mount] registered root handlers for basePath=%q", basePath)
 		} else {
-			// 1. Force trailing slash: redirect /test to /test/
 			router.Get(basePath, func(w http.ResponseWriter, r *http.Request) {
 				log.Debugf("[Mount] redirecting un-slashed request %q to %s/", r.URL.Path, basePath)
 				http.Redirect(w, r, basePath+"/", http.StatusMovedPermanently)
 			})
-			log.Debugf("[Mount] registered slash redirect for %s -> %s/", basePath, basePath)
 
-			// 2. Mount the sub-router for API and Assets
 			router.Route(basePath+"/", func(sub chi.Router) {
-				sub.Use(func(next http.Handler) http.Handler {
-					return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-						// Ensure we preserve exact request path behavior
-						next.ServeHTTP(w, r)
-					})
-				})
 				setup(sub)
-				// The SPA handler itself (handles all non-API paths under this prefix)
-				sub.Handle("/*", http.StripPrefix(basePath, spa))
-				log.Debugf("[Mount] registered API and StripPrefix catch-all for subpath under %s/", basePath)
+				log.Debugf("[Mount] registered subpath handlers under %s/", basePath)
 			})
 		}
 	}
 
 	// 7. Route and mount Virtual Hosts
 	if panelHost != "" {
-		mountContext(panelRouter, panelPath, setupPanel, panelSpa)
+		mountContext(panelRouter, panelPath, setupPanel)
 	}
 	if publicHost != "" {
 		if publicPath == "/" {
 			mountContext(publicRouter, publicPath, func(rt chi.Router) {
 				setupPublic(rt)
 				rt.Route("/dashboard", setupPublic)
-			}, publicSpa)
+			})
 		} else {
-			mountContext(publicRouter, publicPath, setupPublic, publicSpa)
+			mountContext(publicRouter, publicPath, setupPublic)
 		}
 	}
 
@@ -364,24 +395,24 @@ func main() {
 			setupPanel(rt)
 			setupPublic(rt)
 			rt.Route("/dashboard", setupPublic)
-		}, panelSpa)
+		})
 	} else {
-		mountContext(legacyRouter, panelPath, setupPanel, panelSpa)
+		mountContext(legacyRouter, panelPath, setupPanel)
 
 		if publicPath == "/" {
 			mountContext(legacyRouter, publicPath, func(rt chi.Router) {
 				setupPublic(rt)
 				rt.Route("/dashboard", setupPublic)
-			}, publicSpa)
+			})
 		} else {
-			mountContext(legacyRouter, publicPath, setupPublic, publicSpa)
+			mountContext(legacyRouter, publicPath, setupPublic)
 		}
 	}
 
 	go startHeartbeatSweeper(db, metricsCache)
 	go startSessionSweeper(db)
 
-	log.Printf("CertainStats starting...")
+	log.Printf("CertainStats starting (Web 1.0 Templates Mode)...")
 	displayHost := cfg.Host
 	if displayHost == "" {
 		displayHost = "0.0.0.0"

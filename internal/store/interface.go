@@ -9,6 +9,14 @@ import (
 	"time"
 )
 
+type FullStore interface {
+	AgentStore
+	SessionStore
+	AlertsStore
+	UserStore
+	DashboardStore
+}
+
 type AgentStore interface {
 	// GetByToken resolves a raw token to its owner identity.
 	// Implementations should cache this — it is called on every submit.
@@ -124,10 +132,4 @@ type DashboardStore interface {
 
 	DashboardFindAgentbyPublicID(ctx context.Context, dashboardID string, publicAgentID string) (base.FindAgentByPublicID, error)
 	DashboardGetPulseConfig(ctx context.Context, dashboardID string) (*Dashboard, []PublicAgentIdentity, error)
-}
-
-type DiskDelta struct {
-	Path       string
-	ReadBytes  uint64
-	WriteBytes uint64
 }

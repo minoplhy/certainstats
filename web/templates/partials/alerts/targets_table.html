@@ -1,0 +1,59 @@
+{{define "alerts_targets_table"}}
+<!-- Notification Targets Table -->
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+  <h3 style="font-family: var(--font-display); font-size: 16px; margin: 0; display: flex; align-items: center; gap: 8px;">
+    Notification Target Presets
+  </h3>
+</div>
+
+{{if not .Targets}}
+<div class="card" style="text-align: center; padding: 36px 20px; margin-bottom: 32px; background: var(--bg-secondary);">
+  <p style="color: var(--text-muted); margin: 0 0 12px 0;">No notification targets configured yet. Add Discord or HTTP Webhook targets to receive alert dispatches.</p>
+  <button type="button" class="btn btn-secondary btn-sm" onclick="document.getElementById('new-target-modal').style.display='block'">
+    + Add Target Preset
+  </button>
+</div>
+{{else}}
+<div class="table-responsive" style="margin-bottom: 32px;">
+  <table class="table">
+    <thead>
+      <tr>
+        <th>Target Name</th>
+        <th>Channel Type</th>
+        <th>Destination URL</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {{range $t := .Targets}}
+      <tr>
+        <td><strong style="color: var(--text-primary);">{{$t.Name}}</strong></td>
+        <td><span class="badge badge-indigo" style="font-size: 11px;">{{$t.Type}}</span></td>
+        <td class="mono" style="font-size: 12px; max-width: 340px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{$t.Destination}}</td>
+        <td>
+          <div style="display: flex; gap: 6px; align-items: center;">
+            <button type="button" class="btn btn-secondary btn-sm test-target-btn" data-id="{{$t.TargetID}}" style="font-size: 11px; padding: 3px 8px;">
+              Test Webhook
+            </button>
+            <button type="button" class="btn btn-secondary btn-sm edit-target-btn"
+              data-id="{{$t.TargetID}}"
+              data-name="{{$t.Name}}"
+              data-type="{{$t.Type}}"
+              data-destination="{{$t.Destination}}"
+              data-payload="{{$t.Payload}}"
+              style="font-size: 11px; padding: 3px 8px;">
+              Edit
+            </button>
+            <form action="{{$.PanelPath}}/alerts/targets/delete" method="POST" onsubmit="return confirm('Are you sure you want to delete target \'{{$t.Name}}\'?')" style="margin: 0;">
+              <input type="hidden" name="id" value="{{$t.TargetID}}">
+              <button type="submit" class="btn btn-danger btn-sm" style="font-size: 11px; padding: 3px 8px;">Delete</button>
+            </form>
+          </div>
+        </td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+</div>
+{{end}}
+{{end}}

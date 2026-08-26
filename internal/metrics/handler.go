@@ -33,8 +33,17 @@ func acquireTSDB() func() {
 	return func() { <-globalTSDBQuerySemaphore }
 }
 
+func hasAnyDataPoints(series []map[string]any) bool {
+	for _, s := range series {
+		if data, ok := s["data"].([]m.DataPoint); ok && len(data) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
 // MetricsQueryHandler serves the private (authenticated) metrics endpoint.
-func MetricsQueryHandler(tsb *tsdb.DB, cache *RealtimeCache) http.HandlerFunc {
+func MetricsQueryHandler(db store.AgentStore, tsb *tsdb.DB, cache *RealtimeCache) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 
 		userID := r.Context().Value(ctx.UserIDKey).(string)
@@ -61,25 +70,9 @@ func MetricsQueryHandler(tsb *tsdb.DB, cache *RealtimeCache) http.HandlerFunc {
 			cacheKey = "priv_" + userID + "_" + agentID + "_" + metricName + "_" + strconv.FormatUint(snapped, 10)
 
 			// 1. Check compiled-payload cache (fastest path).
-			if val, hit := ctx.MetricsCache.Load(cacheKey); hit {
-				entry := val.(*ctx.CacheEntry)
-				if time.Now().Before(entry.ExpiresAt) {
-					ae := r.Header.Get("Accept-Encoding")
-					if strings.Contains(ae, "zstd") && len(entry.ZstdPayload) > 0 {
-						w.Header().Set("Content-Encoding", "zstd")
-						w.Header().Set("Content-Type", "application/json")
-						w.Write(entry.ZstdPayload)
-						return
-					} else if strings.Contains(ae, "gzip") && len(entry.GzipPayload) > 0 {
-						w.Header().Set("Content-Encoding", "gzip")
-						w.Header().Set("Content-Type", "application/json")
-						w.Write(entry.GzipPayload)
-						return
-					}
-					w.Header().Set("Content-Type", "application/json")
-					w.Write(entry.Payload)
-					return
-				}
+			if entry, hit := ctx.GetCacheEntry(&ctx.MetricsCache, cacheKey); hit {
+				entry.Serve(w, r, "application/json", http.StatusOK)
+				return
 			}
 		}
 
@@ -101,21 +94,28 @@ func MetricsQueryHandler(tsb *tsdb.DB, cache *RealtimeCache) http.HandlerFunc {
 
 		// 2. Fast path: serve from the 24-hour sliding-window memory cache.
 		if cache != nil {
-			if series, ok := buildFromWindowCache(cache, agentID, metricName, tr); ok {
-				payload, _ := json.Marshal(map[string]any{
-					"metric": metricName,
-					"series": series,
-				})
-				if isRelative {
-					ctx.MetricsCache.Store(cacheKey, ctx.NewCacheEntry(payload, 60*time.Second))
+			if series, ok := buildFromWindowCache(cache, userID, agentID, metricName, tr); ok {
+				if hasAnyDataPoints(series) {
+					payload, _ := json.Marshal(map[string]any{
+						"metric": metricName,
+						"series": series,
+					})
+					entry := ctx.NewCacheEntry(payload, ctx.DefaultCacheTTL)
+					if isRelative {
+						ctx.MetricsCache.Store(cacheKey, entry)
+					}
+					entry.Serve(w, r, "application/json", http.StatusOK)
+					return
 				}
-				w.Header().Set("Content-Type", "application/json")
-				w.Write(payload)
-				return
 			}
 		}
 
 		// 3. Slow path: query the TSDB.
+		if tsb == nil {
+			apiresponse.Error(w, http.StatusNotFound, "Not found")
+			return
+		}
+
 		release := acquireTSDB()
 		defer release()
 
@@ -135,18 +135,21 @@ func MetricsQueryHandler(tsb *tsdb.DB, cache *RealtimeCache) http.HandlerFunc {
 		}
 
 		allSeries := queryTSDB(querier, matchers, metricName, tr)
+		if !hasAnyDataPoints(allSeries) {
+			apiresponse.Error(w, http.StatusNotFound, "Not found")
+			return
+		}
 
 		payload, _ := json.Marshal(map[string]any{
 			"metric": metricName,
 			"series": allSeries,
 		})
 
+		entry := ctx.NewCacheEntry(payload, ctx.DefaultCacheTTL)
 		if isRelative {
-			ctx.MetricsCache.Store(cacheKey, ctx.NewCacheEntry(payload, 60*time.Second))
+			ctx.MetricsCache.Store(cacheKey, entry)
 		}
-
-		w.Header().Set("Content-Type", "application/json")
-		w.Write(payload)
+		entry.Serve(w, r, "application/json", http.StatusOK)
 	}
 }
 
@@ -180,7 +183,7 @@ func PublicMetricsHandler(tsb *tsdb.DB, dashboard store.DashboardStore, cache *R
 			var err error
 			agent, err = dashboard.DashboardFindAgentbyPublicID(r.Context(), dashboardID, publicAgentID)
 			if err != nil {
-				apiresponse.Error(w, http.StatusForbidden, "Forbidden")
+				apiresponse.Error(w, http.StatusNotFound, "Not found")
 				return
 			}
 
@@ -204,7 +207,7 @@ func PublicMetricsHandler(tsb *tsdb.DB, dashboard store.DashboardStore, cache *R
 		}
 		maxHoursAllowed := rules[accessrules.PUBLIC].MaxDays * uint(24)
 		if rawHours > uint64(maxHoursAllowed) {
-			apiresponse.Error(w, http.StatusBadRequest, "Forbidden: requested timeframe exceeds dashboard limit")
+			apiresponse.Error(w, http.StatusNotFound, "Not found")
 			return
 		}
 		snapped := snapToStandardHours(rawHours)
@@ -217,32 +220,16 @@ func PublicMetricsHandler(tsb *tsdb.DB, dashboard store.DashboardStore, cache *R
 
 		// Verify access rules for this metric
 		if _, allowed := rules[accessrules.PUBLIC].MetricSet()[metricName]; !allowed {
-			apiresponse.Error(w, http.StatusForbidden, "Forbidden")
+			apiresponse.Error(w, http.StatusNotFound, "Not found")
 			return
 		}
 
 		cacheKey := "pub_" + dashboardID + "_" + publicAgentID + "_" + metricName + "_" + strconv.FormatUint(snapped, 10)
 
 		// 3. Check the compiled-payload cache (fastest path).
-		if val, hit := ctx.MetricsCache.Load(cacheKey); hit {
-			entry := val.(*ctx.CacheEntry)
-			if time.Now().Before(entry.ExpiresAt) {
-				ae := r.Header.Get("Accept-Encoding")
-				if strings.Contains(ae, "zstd") && len(entry.ZstdPayload) > 0 {
-					w.Header().Set("Content-Encoding", "zstd")
-					w.Header().Set("Content-Type", "application/json")
-					w.Write(entry.ZstdPayload)
-					return
-				} else if strings.Contains(ae, "gzip") && len(entry.GzipPayload) > 0 {
-					w.Header().Set("Content-Encoding", "gzip")
-					w.Header().Set("Content-Type", "application/json")
-					w.Write(entry.GzipPayload)
-					return
-				}
-				w.Header().Set("Content-Type", "application/json")
-				w.Write(entry.Payload)
-				return
-			}
+		if entry, hit := ctx.GetCacheEntry(&ctx.MetricsCache, cacheKey); hit {
+			entry.Serve(w, r, "application/json", http.StatusOK)
+			return
 		}
 
 		// 4. Try the sliding-window memory cache.
@@ -250,21 +237,30 @@ func PublicMetricsHandler(tsb *tsdb.DB, dashboard store.DashboardStore, cache *R
 		served := false
 
 		if cache != nil {
-			if series, ok := buildFromWindowCache(cache, agent.RealAgentID, metricName, tr); ok {
-				singleSeries = series
-				served = true
+			if series, ok := buildFromWindowCache(cache, agent.OwnerID, agent.RealAgentID, metricName, tr); ok {
+				if hasAnyDataPoints(series) {
+					singleSeries = series
+					served = true
 
-				// Cache it
-				payload, _ := json.Marshal(map[string]any{
-					"metric": metricName,
-					"series": series,
-				})
-				ctx.MetricsCache.Store(cacheKey, ctx.NewCacheEntry(payload, 60*time.Second))
+					payload, _ := json.Marshal(map[string]any{
+						"metric": metricName,
+						"series": series,
+					})
+					entry := ctx.NewCacheEntry(payload, ctx.DefaultCacheTTL)
+					ctx.MetricsCache.Store(cacheKey, entry)
+					entry.Serve(w, r, "application/json", http.StatusOK)
+					return
+				}
 			}
 		}
 
 		if !served {
 			// 5. Slow path: query the TSDB.
+			if tsb == nil {
+				apiresponse.Error(w, http.StatusNotFound, "Not found")
+				return
+			}
+
 			release := acquireTSDB()
 			querier, err := tsb.Querier(tr.StartMs, tr.EndMs)
 			if err != nil {
@@ -283,19 +279,20 @@ func PublicMetricsHandler(tsb *tsdb.DB, dashboard store.DashboardStore, cache *R
 			querier.Close()
 			release()
 
-			// Cache it
+			if !hasAnyDataPoints(singleSeries) {
+				apiresponse.Error(w, http.StatusNotFound, "Not found")
+				return
+			}
+
 			payload, _ := json.Marshal(map[string]any{
 				"metric": metricName,
 				"series": singleSeries,
 			})
-			ctx.MetricsCache.Store(cacheKey, ctx.NewCacheEntry(payload, 60*time.Second))
+			entry := ctx.NewCacheEntry(payload, ctx.DefaultCacheTTL)
+			ctx.MetricsCache.Store(cacheKey, entry)
+			entry.Serve(w, r, "application/json", http.StatusOK)
+			return
 		}
-
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{
-			"metric": metricName,
-			"series": singleSeries,
-		})
 	}
 }
 
@@ -305,8 +302,8 @@ func PublicMetricsHandler(tsb *tsdb.DB, dashboard store.DashboardStore, cache *R
 
 // serveFromWindowCache checks the sliding-window cache and writes the JSON
 // response directly if served.  Returns true if the response was written.
-func serveFromWindowCache(w http.ResponseWriter, cache *RealtimeCache, agentID, metricName string, tr TimeRange) bool {
-	series, ok := buildFromWindowCache(cache, agentID, metricName, tr)
+func serveFromWindowCache(w http.ResponseWriter, cache *RealtimeCache, userID, agentID, metricName string, tr TimeRange) bool {
+	series, ok := buildFromWindowCache(cache, userID, agentID, metricName, tr)
 	if !ok {
 		return false
 	}
@@ -316,7 +313,7 @@ func serveFromWindowCache(w http.ResponseWriter, cache *RealtimeCache, agentID, 
 
 // buildFromWindowCache constructs the series slice from the sliding-window
 // cache.  Returns (series, true) on a full cache hit, (nil, false) on any miss.
-func buildFromWindowCache(cache *RealtimeCache, agentID, metricName string, tr TimeRange) ([]map[string]any, bool) {
+func buildFromWindowCache(cache *RealtimeCache, userID, agentID, metricName string, tr TimeRange) ([]map[string]any, bool) {
 	paths := diskPaths(cache, agentID, metricName)
 	if paths == nil {
 		return nil, false
@@ -327,7 +324,7 @@ func buildFromWindowCache(cache *RealtimeCache, agentID, metricName string, tr T
 
 	series := make([]map[string]any, 0, len(paths))
 	for _, path := range paths {
-		pts, hit := cache.GetTimeseries(agentID, metricName, path, tr.StartMs, tr.EndMs)
+		pts, hit := cache.GetTimeseries(userID, agentID, metricName, path, tr.StartMs, tr.EndMs)
 		if !hit {
 			return nil, false
 		}
@@ -425,5 +422,3 @@ func writeJSON(w http.ResponseWriter, metricName string, allSeries []map[string]
 	w.Header().Set("Content-Type", "application/json")
 	w.Write(payload)
 }
-
-

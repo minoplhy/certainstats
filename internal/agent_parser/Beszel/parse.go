@@ -81,16 +81,16 @@ func (b *BeszelStats) Parse(data []byte) (*agentparser.ParsedData, error) {
 		},
 	}
 
-	/*
-		// Add Extra Disks if present
-		for path, fs := range combined.Stats.ExtraFs {
+	// Add Extra Disks if present
+	for path, fs := range combined.Stats.ExtraFs {
+		if fs != nil && path != "/" {
 			disks = append(disks, agentparser.DiskTelemetry{
 				Path:       path,
 				UsedBytes:  uint64(fs.Used * 1024 * 1024 * 1024),
 				TotalBytes: uint64(fs.Total * 1024 * 1024 * 1024),
 			})
 		}
-	*/
+	}
 
 	// We extract the cumulative interface counters directly from the agent.
 	// We specifically pick the single interface with the most cumulative traffic
@@ -105,7 +105,7 @@ func (b *BeszelStats) Parse(data []byte) (*agentparser.ParsedData, error) {
 		}
 	}
 
-	// Fallback to Bandwidth if per-interface stats are missing (will result in dashboard '0 B/s' bug due to being a rate)
+	// Fallback to Bandwidth if per-interface stats are missing
 	if totalTX == 0 && totalRX == 0 {
 		totalTX = float64(combined.Stats.Bandwidth[0])
 		totalRX = float64(combined.Stats.Bandwidth[1])
@@ -119,6 +119,8 @@ func (b *BeszelStats) Parse(data []byte) (*agentparser.ParsedData, error) {
 		TXBytes:          totalTX,
 		RXBytes:          totalRX,
 		Disks:            disks,
+		LoadAvg:          combined.Stats.LoadAvg,
+		Temperatures:     combined.Stats.Temperatures,
 		NetworkIOType:    agentparser.IOCumulative, // Beszel sends cumulative byte counters for network
 		DiskIOType:       agentparser.IORate,       // Beszel sends B/s for disk I/O
 	}

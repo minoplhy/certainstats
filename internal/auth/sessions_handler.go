@@ -4,8 +4,6 @@ import (
 	ctx "certainstats/internal/context"
 	apiresponse "certainstats/internal/response"
 	"certainstats/internal/store"
-	"crypto/sha256"
-	"encoding/hex"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -21,15 +19,8 @@ type SessionResponse struct {
 }
 
 // hashTokenPrefix returns a unique, safe prefix/hash of the session token.
-// This allows the frontend to reference and revoke sessions without revealing the raw token.
 func hashTokenPrefix(token string) string {
-	h := sha256.New()
-	h.Write([]byte(token))
-	hashStr := hex.EncodeToString(h.Sum(nil))
-	if len(hashStr) > 8 {
-		return hashStr[:8]
-	}
-	return hashStr
+	return store.HashTokenPrefix(token)
 }
 
 func ListSessionsHandler(sessions store.SessionStore) http.HandlerFunc {

@@ -5,6 +5,7 @@ import (
 	"certainstats/internal/response"
 	"certainstats/internal/lifecycle"
 	"crypto/rand"
+	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
 	"golang.org/x/crypto/bcrypt"
@@ -37,6 +38,11 @@ func ClearSetupToken() {
 	setupToken = ""
 }
 
+func ValidateSetupToken(tok string) bool {
+	savedToken := GetSetupToken()
+	return secureTokenCompare(tok, savedToken)
+}
+
 type SetupRequest struct {
 	Token           string `json:"token"`
 	Username        string `json:"username"`
@@ -58,11 +64,18 @@ func GetSetupStatusHandler(users store.UserStore) http.HandlerFunc {
 	}
 }
 
+func secureTokenCompare(a, b string) bool {
+	if len(a) == 0 || len(b) == 0 || len(a) != len(b) {
+		return false
+	}
+	return subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1
+}
+
 func CheckSetupHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		token := r.URL.Query().Get("token")
 		savedToken := GetSetupToken()
-		if savedToken == "" || token != savedToken {
+		if !secureTokenCompare(token, savedToken) {
 			response.Error(w, http.StatusNotFound, "Not Found")
 			return
 		}
@@ -82,7 +95,7 @@ func RegisterFirstUserHandler(users store.UserStore) http.HandlerFunc {
 		}
 
 		savedToken := GetSetupToken()
-		if savedToken == "" || req.Token != savedToken {
+		if !secureTokenCompare(req.Token, savedToken) {
 			response.Error(w, http.StatusNotFound, "Not Found")
 			return
 		}

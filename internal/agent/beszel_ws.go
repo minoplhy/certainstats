@@ -154,11 +154,15 @@ func BeszelWSHandler(db store.AgentStore, tdb *tsdb.DB, wsManager *ws.Manager, c
 										continue
 									}
 									if existing, ok := diskDeltas[d.Path]; ok {
+										if d.TotalBytes > 0 {
+											existing.TotalBytes = d.TotalBytes
+										}
 										existing.ReadBytes += d.ReadBytes
 										existing.WriteBytes += d.WriteBytes
 									} else {
 										diskDeltas[d.Path] = &store.DiskDelta{
 											Path:       d.Path,
+											TotalBytes: d.TotalBytes,
 											ReadBytes:  d.ReadBytes,
 											WriteBytes: d.WriteBytes,
 										}
@@ -181,7 +185,7 @@ func BeszelWSHandler(db store.AgentStore, tdb *tsdb.DB, wsManager *ws.Manager, c
 
 						// Update Realtime Cache
 						if cache != nil {
-							cache.Update(identity.AgentID, parsed)
+							cache.Update(identity.UserID, identity.AgentID, parsed)
 						}
 
 						log.Debugf("[WS] Persisted data for %s (Host: %s)", token, parsed.AgentInfo.CpuModel)

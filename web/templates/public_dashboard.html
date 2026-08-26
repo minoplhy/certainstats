@@ -1,0 +1,60 @@
+{{define "content"}}
+<!-- Public Overview View -->
+<div id="public-overview-view">
+  <div class="page-header" style="margin-bottom: 24px;">
+    <div style="display: flex; flex-direction: column; gap: 4px;">
+      <h1 class="page-title">{{.Dashboard.Title}}</h1>
+      <p style="color: var(--text-muted); font-size: 13px; margin: 0;">Real-time system health and status monitoring.</p>
+    </div>
+  </div>
+
+  {{template "public_cluster_cards" .}}
+  {{template "public_toolbar" .}}
+  {{template "public_grid_view" .}}
+  {{template "public_list_view" .}}
+</div>
+
+{{template "public_inpage_detail" .}}
+
+<script src="{{.StaticPath}}/{{asset "js/public_dashboard.js"}}" integrity="{{integrity "js/public_dashboard.js"}}"></script>
+<script>
+  window.CertainStatsPublicDashboard.init({
+    dashId: '{{.Dashboard.DashboardID}}',
+    dashSlug: '{{.Dashboard.Slug}}',
+    maxDays: {{.AccessRules.MaxDays}},
+    allowedMetrics: [
+      {{range .AccessRules.AllowedMetrics}}
+      '{{.}}',
+      {{end}}
+    ],
+    agents: [
+      {{range .Agents}}
+      {
+        public_id: '{{.PublicID}}',
+        display_name: '{{.Name}}',
+        cpu_model: '{{if .CpuModel}}{{.CpuModel}}{{end}}',
+        linux_version: '{{if .LinuxVersion}}{{.LinuxVersion}}{{end}}',
+        cpu_cores: {{if .CpuCores}}{{.CpuCores}}{{else}}0{{end}},
+        ram_size: {{if .RamSize}}{{.RamSize}}{{else}}0{{end}},
+        disk_size: {{if .DiskSize}}{{.DiskSize}}{{else}}0{{end}},
+        swap_size: {{if .SwapSize}}{{.SwapSize}}{{else}}0{{end}},
+        uptime: {{if .Uptime}}{{.Uptime}}{{else}}0{{end}},
+        {{if hasFeature $.AccessRules "is_online"}}is_online: {{if isOnline .IsOnline}}true{{else}}false{{end}},{{end}}
+        total_rx_bytes: {{if and .Net .Net.TotalRxBytes}}{{.Net.TotalRxBytes}}{{else}}0{{end}},
+        total_tx_bytes: {{if and .Net .Net.TotalTxBytes}}{{.Net.TotalTxBytes}}{{else}}0{{end}},
+        disks: [
+          {{range .Disks}}
+          {
+            path: '{{.Path}}',
+            total_bytes: {{if .TotalBytes}}{{.TotalBytes}}{{else}}0{{end}},
+            read_bytes: {{if .ReadBytes}}{{.ReadBytes}}{{else}}0{{end}},
+            write_bytes: {{if .WriteBytes}}{{.WriteBytes}}{{else}}0{{end}}
+          },
+          {{end}}
+        ]
+      },
+      {{end}}
+    ]
+  });
+</script>
+{{end}}

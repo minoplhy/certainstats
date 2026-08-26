@@ -1,0 +1,18 @@
+{{define "agents_toolbar"}}
+<!-- Toolbar (Search, Grid/List, Density) -->
+<div class="toolbar-bar">
+  <div class="toolbar-search">
+    <input type="text" id="agent-search-input" placeholder="Search by nickname, agent or OS..." oninput="filterAgentsList()">
+  </div>
+
+  <div class="toolbar-group">
+    <button type="button" class="toolbar-btn active" id="btn-view-grid" onclick="setAgentViewMode('grid')">Grid</button>
+    <button type="button" class="toolbar-btn" id="btn-view-list" onclick="setAgentViewMode('list')">List</button>
+  </div>
+
+  <div class="toolbar-group" id="density-toggle-group">
+    <button type="button" class="toolbar-btn active" id="btn-density-detailed" onclick="setAgentDensity('detailed')">Detailed</button>
+    <button type="button" class="toolbar-btn" id="btn-density-simplified" onclick="setAgentDensity('simplified')">Simplified</button>
+  </div>
+</div>
+{{end}}

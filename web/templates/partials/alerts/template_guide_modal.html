@@ -1,0 +1,37 @@
+{{define "alerts_template_guide_modal"}}
+<!-- Template Variables Guide Modal -->
+<div id="template-guide-modal" class="modal-overlay" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); z-index: 2000; backdrop-filter: blur(4px);">
+  <div style="max-width: 680px; margin: 40px auto; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: var(--radius); padding: 24px; box-shadow: var(--shadow-lg); max-height: 85vh; overflow-y: auto;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+      <h3 style="margin: 0; font-family: var(--font-display);">Webhook Payload Templating Reference</h3>
+      <button type="button" class="btn btn-secondary btn-sm" onclick="document.getElementById('template-guide-modal').style.display='none'">✕</button>
+    </div>
+
+    <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 16px;">Custom webhook payloads support Go template interpolation with the following available context variables:</p>
+
+    <div class="table-responsive" style="margin-bottom: 16px;">
+      <table class="table" style="font-size: 12px;">
+        <thead>
+          <tr>
+            <th>Variable</th>
+            <th>Type</th>
+            <th>Description</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td class="mono">&#123;&#123;.Alert.Nickname&#125;&#125;</td><td>string</td><td>Name of the firing alert rule</td></tr>
+          <tr><td class="mono">&#123;&#123;.Agent.Nickname&#125;&#125;</td><td>string</td><td>Target server node nickname</td></tr>
+          <tr><td class="mono">&#123;&#123;.Agent.AgentID&#125;&#125;</td><td>string</td><td>Target server unique agent ID</td></tr>
+          <tr><td class="mono">&#123;&#123;.Incident.Value&#125;&#125;</td><td>float64</td><td>Measured metric value that caused the breach</td></tr>
+          <tr><td class="mono">&#123;&#123;.Incident.Status&#125;&#125;</td><td>string</td><td>Incident status ("firing" or "resolved")</td></tr>
+          <tr><td class="mono">&#123;&#123;.Incident.TriggeredAt&#125;&#125;</td><td>time.Time</td><td>UTC timestamp of breach start</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div style="display: flex; justify-content: flex-end;">
+      <button type="button" class="btn btn-secondary" onclick="document.getElementById('template-guide-modal').style.display='none'">Close</button>
+    </div>
+  </div>
+</div>
+{{end}}

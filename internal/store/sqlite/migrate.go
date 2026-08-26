@@ -41,6 +41,7 @@ func (s *Store) migrate() error {
 		`CREATE TABLE IF NOT EXISTS agent_disk_odometers (
 			agent_id    TEXT NOT NULL REFERENCES agents(agent_id) ON DELETE CASCADE,
 			path        TEXT NOT NULL,
+			total_bytes BIGINT DEFAULT 0,
 			read_bytes  BIGINT DEFAULT 0,
 			write_bytes BIGINT DEFAULT 0,
 			PRIMARY KEY (agent_id, path)
@@ -174,6 +175,7 @@ func (s *Store) migrate() error {
 		`UPDATE alert_history SET agent_nickname = (SELECT nickname FROM agents WHERE agents.agent_id = alert_history.agent_id) WHERE COALESCE(agent_nickname, '') = ''`,
 		`ALTER TABLE alert_history ADD COLUMN error_message TEXT DEFAULT ''`,
 		`ALTER TABLE alert_agents ADD COLUMN error_message TEXT DEFAULT ''`,
+		`ALTER TABLE agent_disk_odometers ADD COLUMN total_bytes BIGINT DEFAULT 0`,
 	} {
 		if _, err := s.db.Exec(m); err != nil {
 			// Ignore "duplicate column" — expected on every boot after first run.

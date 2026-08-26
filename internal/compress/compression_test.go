@@ -101,3 +101,29 @@ func TestCompressionMiddleware(t *testing.T) {
 		})
 	}
 }
+
+func TestCompressionMiddleware_ContentLengthRemoval(t *testing.T) {
+	largePayload := make([]byte, 1000)
+	for i := range largePayload {
+		largePayload[i] = 'B'
+	}
+
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Length", "1000")
+		w.Write(largePayload)
+	})
+
+	req := httptest.NewRequest("GET", "http://localhost/", nil)
+	req.Header.Set("Accept-Encoding", "gzip")
+
+	rec := httptest.NewRecorder()
+	middleware := CompressionMiddleware(handler)
+	middleware.ServeHTTP(rec, req)
+
+	if rec.Header().Get("Content-Length") != "" {
+		t.Errorf("Expected Content-Length header to be removed when compressed, but got %q", rec.Header().Get("Content-Length"))
+	}
+	if rec.Header().Get("Content-Encoding") != "gzip" {
+		t.Errorf("Expected Content-Encoding gzip, got %q", rec.Header().Get("Content-Encoding"))
+	}
+}

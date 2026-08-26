@@ -1,0 +1,61 @@
+{{define "public_list_view"}}
+<!-- List View Container -->
+<div id="public-list-container" class="table-responsive" style="display: none; margin-bottom: 24px;">
+  <table class="table">
+    <thead>
+      <tr>
+        <th>Status</th>
+        <th>Monitor Name</th>
+        {{if or (hasMetric $.AccessRules "agent_cpu_usage") (hasMetric $.AccessRules "agent_cpu_iowait") (hasMetric $.AccessRules "agent_cpu_steal") (hasMetric $.AccessRules "agent_ram_used") (hasMetric $.AccessRules "agent_swap_used") (hasMetric $.AccessRules "agent_rx_bytes") (hasMetric $.AccessRules "agent_tx_bytes")}}<th>Load / Telemetry</th>{{end}}
+        {{if hasFeature $.AccessRules "cpu_model"}}<th>CPU Architecture</th>{{end}}
+        {{if hasFeature $.AccessRules "ram_size"}}<th>RAM Capacity</th>{{end}}
+        {{if hasFeature $.AccessRules "disk_size"}}<th>Disk Capacity</th>{{end}}
+        {{if hasFeature $.AccessRules "uptime"}}<th>Uptime</th>{{end}}
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {{range .Agents}}
+      <tr class="public-monitor-row" data-pub-id="{{.PublicID}}" data-name="{{.Name}}" onclick="handlePubItemClick(event, '{{.PublicID}}');" style="cursor: pointer;">
+        <td>{{if hasFeature $.AccessRules "is_online"}}<span class="status-dot {{if isOnline .IsOnline}}online{{else}}offline{{end}}" id="pub-td-dot-{{.PublicID}}"></span>{{end}}</td>
+        <td>
+          <a href="{{if $.Dashboard.Slug}}{{if and $.PublicPath (ne $.PublicPath "/")}}{{$.PublicPath}}/{{$.Dashboard.Slug}}{{else}}/dashboard/{{$.Dashboard.Slug}}{{end}}/{{.PublicID}}{{else}}/{{.PublicID}}{{end}}" class="agent-name" onclick="handlePubItemClick(event, '{{.PublicID}}');">
+            <strong>{{.Name}}</strong>
+          </a>
+        </td>
+        {{if or (hasMetric $.AccessRules "agent_cpu_usage") (hasMetric $.AccessRules "agent_cpu_iowait") (hasMetric $.AccessRules "agent_cpu_steal") (hasMetric $.AccessRules "agent_ram_used") (hasMetric $.AccessRules "agent_swap_used") (hasMetric $.AccessRules "agent_rx_bytes") (hasMetric $.AccessRules "agent_tx_bytes")}}
+        <td style="min-width: 180px;">
+          {{if or (hasMetric $.AccessRules "agent_cpu_usage") (hasMetric $.AccessRules "agent_cpu_iowait") (hasMetric $.AccessRules "agent_cpu_steal")}}
+          <div class="usage-bar-track compact" id="pub-td-track-cpu-{{.PublicID}}" data-tooltip-header="CPU Utilization" data-tooltip-rows='[{{if hasMetric $.AccessRules "agent_cpu_usage"}}{"label":"Used","val":"0.0%","color":"#3b82f6"}{{end}}{{if and (hasMetric $.AccessRules "agent_cpu_usage") (or (hasMetric $.AccessRules "agent_cpu_iowait") (hasMetric $.AccessRules "agent_cpu_steal"))}},{{end}}{{if hasMetric $.AccessRules "agent_cpu_iowait"}}{"label":"IO Wait","val":"0.0%","color":"#fb923c"}{{end}}{{if and (hasMetric $.AccessRules "agent_cpu_iowait") (hasMetric $.AccessRules "agent_cpu_steal")}},{{end}}{{if hasMetric $.AccessRules "agent_cpu_steal"}}{"label":"Steal","val":"0.0%","color":"#ef4444"}{{end}}]'>
+            {{if hasMetric $.AccessRules "agent_cpu_usage"}}<div class="usage-segment seg-cpu-usr" id="pub-td-seg-cpu-{{.PublicID}}" style="width: 0%;"></div>{{end}}
+            {{if hasMetric $.AccessRules "agent_cpu_iowait"}}<div class="usage-segment seg-cpu-io" id="pub-td-seg-cpu-io-{{.PublicID}}" style="width: 0%;"></div>{{end}}
+            {{if hasMetric $.AccessRules "agent_cpu_steal"}}<div class="usage-segment seg-cpu-stl" id="pub-td-seg-cpu-stl-{{.PublicID}}" style="width: 0%;"></div>{{end}}
+          </div>
+          {{end}}
+          {{if or (hasMetric $.AccessRules "agent_ram_used") (hasMetric $.AccessRules "agent_swap_used")}}
+          <div class="usage-bar-track compact" id="pub-td-track-ram-{{.PublicID}}" data-tooltip-header="RAM Usage" data-tooltip-rows='[{{if hasMetric $.AccessRules "agent_ram_used"}}{"label":"RAM Used","val":"0 B","color":"#14b8a6"}{{end}}{{if and (hasMetric $.AccessRules "agent_ram_used") (hasMetric $.AccessRules "agent_swap_used")}},{{end}}{{if hasMetric $.AccessRules "agent_swap_used"}}{"label":"Swap Used","val":"0 B","color":"#4b5563"}{{end}}]'>
+            {{if hasMetric $.AccessRules "agent_ram_used"}}<div class="usage-segment seg-ram-used" id="pub-td-seg-ram-{{.PublicID}}" style="width: 0%;"></div>{{end}}
+            {{if hasMetric $.AccessRules "agent_swap_used"}}<div class="usage-segment seg-ram-swap" id="pub-td-seg-ram-swap-{{.PublicID}}" style="width: 0%;"></div>{{end}}
+          </div>
+          {{end}}
+          {{if or (hasMetric $.AccessRules "agent_rx_bytes") (hasMetric $.AccessRules "agent_tx_bytes")}}
+          <div class="usage-bar-track compact" id="pub-td-track-net-{{.PublicID}}" data-tooltip-header="Network Rate" data-tooltip-rows='[{{if hasMetric $.AccessRules "agent_rx_bytes"}}{"label":"Download (RX)","val":"0 B/s","color":"#1e40af"}{{end}}{{if and (hasMetric $.AccessRules "agent_rx_bytes") (hasMetric $.AccessRules "agent_tx_bytes")}},{{end}}{{if hasMetric $.AccessRules "agent_tx_bytes"}}{"label":"Upload (TX)","val":"0 B/s","color":"#7e22ce"}{{end}}]'>
+            {{if hasMetric $.AccessRules "agent_rx_bytes"}}<div class="usage-segment seg-net-rx" id="pub-td-seg-net-rx-{{.PublicID}}" style="width: 0%;"></div>{{end}}
+            {{if hasMetric $.AccessRules "agent_tx_bytes"}}<div class="usage-segment seg-net-tx" id="pub-td-seg-net-tx-{{.PublicID}}" style="width: 0%;"></div>{{end}}
+          </div>
+          {{end}}
+        </td>
+        {{end}}
+        {{if hasFeature $.AccessRules "cpu_model"}}<td>{{if .CpuModel}}{{.CpuModel}}{{if and (hasFeature $.AccessRules "cpu_cores") .CpuCores}} ({{.CpuCores}} C){{end}}{{else}}-{{end}}</td>{{end}}
+        {{if hasFeature $.AccessRules "ram_size"}}<td>{{formatBytes .RamSize}}</td>{{end}}
+        {{if hasFeature $.AccessRules "disk_size"}}<td>{{formatBytes .DiskSize}}</td>{{end}}
+        {{if hasFeature $.AccessRules "uptime"}}<td id="pub-td-uptime-{{.PublicID}}">{{formatUptime .Uptime}}</td>{{end}}
+        <td>
+          <button type="button" class="btn btn-secondary btn-sm" onclick="event.stopPropagation(); navigateToPubAgent('{{.PublicID}}');">Telemetry ↗</button>
+        </td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+</div>
+{{end}}

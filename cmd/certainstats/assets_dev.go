@@ -3,12 +3,12 @@
 package main
 
 import (
+	"certainstats/web"
 	"io/fs"
-	"os"
 )
 
-func getFrontendFS(path string) fs.FS {
-	return os.DirFS(path)
+func getStaticFS() fs.FS {
+	return web.StaticFS()
 }
 
 const isEmbedded = false

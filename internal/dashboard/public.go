@@ -10,7 +10,6 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
-	"time"
 )
 
 // GET /api/public/dashboard
@@ -22,15 +21,10 @@ func PublicDashboardHandler(dashboard store.DashboardStore) http.HandlerFunc {
 			return
 		}
 
-		// Cache hit
-		if val, ok := ctx.DashboardCache.Load(slug); ok {
-			entry := val.(*ctx.CacheEntry)
-			if time.Now().Before(entry.ExpiresAt) {
-				w.Header().Set("Content-Type", "application/json")
-				w.Write(entry.Payload)
-				return
-			}
-			ctx.DashboardCache.Delete(slug)
+		// 1. Unified Cache Check
+		if entry, hit := ctx.GetCacheEntry(&ctx.DashboardCache, slug); hit {
+			entry.Serve(w, r, "application/json", http.StatusOK)
+			return
 		}
 
 		dash, err := dashboard.DashboardGetBySlug(r.Context(), slug)
@@ -67,12 +61,8 @@ func PublicDashboardHandler(dashboard store.DashboardStore) http.HandlerFunc {
 			return
 		}
 
-		ctx.DashboardCache.Store(slug, &ctx.CacheEntry{
-			Payload:   payload,
-			ExpiresAt: time.Now().Add(60 * time.Second),
-		})
-
-		w.Header().Set("Content-Type", "application/json")
-		w.Write(payload)
+		entry := ctx.NewCacheEntry(payload, ctx.DefaultCacheTTL)
+		ctx.DashboardCache.Store(slug, entry)
+		entry.Serve(w, r, "application/json", http.StatusOK)
 	}
 }

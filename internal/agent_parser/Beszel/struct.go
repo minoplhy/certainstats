@@ -60,8 +60,8 @@ type Details struct {
 }
 
 type FsStats struct {
-	Used  float64 `cbor:"0,keyasint"`
-	Total float64 `cbor:"1,keyasint"`
+	Total float64 `cbor:"0,keyasint"`
+	Used  float64 `cbor:"1,keyasint"`
 }
 
 type GPUData struct {

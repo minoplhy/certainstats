@@ -1,0 +1,18 @@
+{{define "content"}}
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Account & Security Settings</h1>
+    <p style="color: var(--text-muted); font-size: 13px;">Manage administrator password, examine active browser sessions, and revoke unrecognized devices.</p>
+  </div>
+</div>
+
+<div class="settings-grid">
+  {{template "settings_password_form" .}}
+  {{template "settings_sessions_table" .}}
+</div>
+
+<script src="{{.StaticPath}}/{{asset "js/admin_modals.js"}}" integrity="{{integrity "js/admin_modals.js"}}"></script>
+<script>
+  window.CertainStatsAdminModals.initSessions();
+</script>
+{{end}}

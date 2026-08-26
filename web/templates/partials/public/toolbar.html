@@ -1,0 +1,13 @@
+{{define "public_toolbar"}}
+<!-- Toolbar -->
+<div class="toolbar-bar">
+  <div class="toolbar-search">
+    <input type="text" id="public-search-input" placeholder="Find monitor by name..." oninput="filterPublicMonitors()">
+  </div>
+
+  <div class="toolbar-group">
+    <button type="button" class="toolbar-btn active" id="btn-pub-grid" onclick="setPublicViewMode('grid')">Grid</button>
+    <button type="button" class="toolbar-btn" id="btn-pub-list" onclick="setPublicViewMode('list')">List</button>
+  </div>
+</div>
+{{end}}

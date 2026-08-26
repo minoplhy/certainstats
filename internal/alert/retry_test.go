@@ -143,9 +143,12 @@ func TestRetryAlertHandler(t *testing.T) {
 		if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
 			t.Fatalf("failed to decode response: %v", err)
 		}
-		if resp["status"] != "success" {
-			t.Errorf("expected success status, got %q", resp["status"])
+		if resp["status"] != "queued" {
+			t.Errorf("expected queued status, got %q", resp["status"])
 		}
+
+		// Allow background goroutine to execute
+		time.Sleep(50 * time.Millisecond)
 
 		if updatedHistoryID != "history-123" || updatedHistoryStatus != "success" || updatedHistoryErrMsg != "" {
 			t.Errorf("unexpected history status update: id=%s status=%s err=%s", updatedHistoryID, updatedHistoryStatus, updatedHistoryErrMsg)
@@ -229,9 +232,12 @@ func TestRetryAlertHandler(t *testing.T) {
 		if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
 			t.Fatalf("failed to decode response: %v", err)
 		}
-		if resp["status"] != "failed" {
-			t.Errorf("expected failed status, got %q", resp["status"])
+		if resp["status"] != "queued" {
+			t.Errorf("expected queued status, got %q", resp["status"])
 		}
+
+		// Allow background goroutine to execute
+		time.Sleep(50 * time.Millisecond)
 
 		if updatedHistoryID != "history-123" || updatedHistoryStatus != "failed" || updatedHistoryErrMsg == "" {
 			t.Errorf("unexpected history status update: id=%s status=%s err=%s", updatedHistoryID, updatedHistoryStatus, updatedHistoryErrMsg)
@@ -312,9 +318,12 @@ func TestRetryAlertHandler(t *testing.T) {
 		if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
 			t.Fatalf("failed to decode response: %v", err)
 		}
-		if resp["status"] != "failed" {
-			t.Errorf("expected failed status, got %q", resp["status"])
+		if resp["status"] != "queued" {
+			t.Errorf("expected queued status, got %q", resp["status"])
 		}
+
+		// Allow background goroutine to execute
+		time.Sleep(50 * time.Millisecond)
 
 		if updatedHistoryID != "history-456" || updatedHistoryStatus != "failed" || updatedHistoryErrMsg != "alert target not found" {
 			t.Errorf("unexpected history status update: id=%s status=%s err=%s", updatedHistoryID, updatedHistoryStatus, updatedHistoryErrMsg)

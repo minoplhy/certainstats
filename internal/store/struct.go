@@ -5,6 +5,8 @@ import (
 	c "certainstats/internal/base/alert"
 	a "certainstats/internal/base/response"
 	"certainstats/internal/dashboard/accessrules"
+	"crypto/sha256"
+	"encoding/hex"
 	"time"
 )
 
@@ -30,12 +32,45 @@ type Session struct {
 	UserAgent       string
 }
 
+// HashTokenPrefix returns a unique, safe prefix/hash of the session token.
+func HashTokenPrefix(token string) string {
+	h := sha256.New()
+	h.Write([]byte(token))
+	hashStr := hex.EncodeToString(h.Sum(nil))
+	if len(hashStr) > 8 {
+		return hashStr[:8]
+	}
+	return hashStr
+}
+
+func (s Session) TokenPrefix() string {
+	return HashTokenPrefix(s.Token)
+}
+
+func (s Session) IsCurrentSession(currentToken string) bool {
+	return s.Token != "" && s.Token == currentToken
+}
+
+func (s Session) LastConnected() string {
+	if s.LastConnectedAt.IsZero() {
+		return "Never"
+	}
+	return s.LastConnectedAt.Format("2006-01-02 15:04:05")
+}
+
 type Dashboard struct {
 	DashboardID string
 	UserID      string
 	Slug        string
 	Title       string
 	AccessRules accessrules.AccessRules
+}
+
+func (d Dashboard) MaxDays() uint {
+	if rule, ok := d.AccessRules["public"]; ok && rule.MaxDays > 0 {
+		return rule.MaxDays
+	}
+	return 7
 }
 
 type PublicAgent a.PublicAgent
@@ -80,4 +115,12 @@ type AgentManagement struct {
 	Nickname        string `json:"nickname"`
 	Token           string `json:"token"`
 	BeszelPublicKey string `json:"beszel_public_key"`
+}
+
+// Per Ingestion disk info from Agent
+type DiskDelta struct {
+	Path       string
+	TotalBytes uint64
+	ReadBytes  uint64
+	WriteBytes uint64
 }

@@ -1,0 +1,36 @@
+{{define "content"}}
+<div class="page-header" style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 16px;">
+  <div>
+    <h1 class="page-title">Alert & Incident Center</h1>
+    <p style="color: var(--text-muted); font-size: 13px;">Configure rule thresholds, webhook destinations, notification targets, and review incident timelines.</p>
+  </div>
+
+  <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+    <button type="button" class="btn btn-secondary" onclick="document.getElementById('template-guide-modal').style.display='block'">
+      Payload Template Guide
+    </button>
+    <button type="button" class="btn btn-secondary" onclick="document.getElementById('new-target-modal').style.display='block'">
+      + Notification Target
+    </button>
+    <button type="button" class="btn btn-primary" onclick="document.getElementById('new-alert-modal').style.display='block'">
+      + Create Alert Rule
+    </button>
+  </div>
+</div>
+
+{{template "alerts_incidents_banner" .}}
+{{template "alerts_rules_table" .}}
+{{template "alerts_targets_table" .}}
+{{template "alerts_history_table" .}}
+
+{{template "alerts_new_alert_modal" .}}
+{{template "alerts_edit_alert_modal" .}}
+{{template "alerts_new_target_modal" .}}
+{{template "alerts_edit_target_modal" .}}
+{{template "alerts_template_guide_modal" .}}
+
+<script src="{{.StaticPath}}/{{asset "js/admin_alerts.js"}}" integrity="{{integrity "js/admin_alerts.js"}}"></script>
+<script>
+  window.CertainStatsAdminAlerts.init();
+</script>
+{{end}}

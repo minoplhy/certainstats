@@ -1,0 +1,128 @@
+{{define "content"}}
+<div class="page-header" style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 16px;">
+  <div>
+    <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 6px;">
+      <a href="{{.PanelPath}}" style="color: var(--text-muted); text-decoration: none; display: inline-flex; align-items: center; gap: 4px;">
+        &larr; Back to Fleet Overview
+      </a>
+    </div>
+    <h1 class="page-title">Agents Management & Credentials</h1>
+    <p style="color: var(--text-muted); font-size: 13px; margin: 4px 0 0 0;">Manage agent security tokens, Beszel SSH keys, driver protocols, and host provisioning.</p>
+  </div>
+
+  <div>
+    <button type="button" class="btn btn-primary" onclick="document.getElementById('add-agent-modal').style.display='block'">
+      + Add Agent
+    </button>
+  </div>
+</div>
+
+<div class="card" style="padding: 0; overflow: hidden; margin-bottom: 24px;">
+  <div class="table-responsive">
+    <table class="table" style="margin: 0;">
+      <thead>
+        <tr>
+          <th>Agent / Nickname</th>
+          <th>Driver</th>
+          <th>Pre-shared Token</th>
+          <th>Beszel SSH Public Key</th>
+          <th style="text-align: right;">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{range .Agents}}
+        <tr>
+          <td>
+            <div style="font-weight: 700;">
+              <a href="{{$.PanelPath}}/{{.AgentID}}" style="color: var(--text-primary); text-decoration: none;">
+                {{.Nickname}}
+              </a>
+            </div>
+            <div class="mono" style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">{{.AgentID}}</div>
+          </td>
+          <td>
+            <span class="badge badge-indigo">{{if .AgentType}}{{.AgentType}}{{else}}beszel{{end}}</span>
+          </td>
+          <td>
+            {{if .Token}}
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span class="mono" style="font-size: 11px; max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; background: rgba(0,0,0,0.2); padding: 2px 6px; border-radius: 4px; border: 1px solid var(--border-color);" title="{{.Token}}">
+                {{.Token}}
+              </span>
+              <button type="button" class="btn btn-secondary btn-sm" style="padding: 2px 6px; font-size: 11px;" onclick="copyCredential('{{.Token}}', 'Token')" title="Copy Token">
+                Copy
+              </button>
+            </div>
+            {{else}}
+            <span style="color: var(--text-muted); font-style: italic; font-size: 12px;">No token</span>
+            {{end}}
+          </td>
+          <td>
+            {{if .BeszelPublicKey}}
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span class="mono" style="font-size: 11px; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; background: rgba(0,0,0,0.2); padding: 2px 6px; border-radius: 4px; border: 1px solid var(--border-color);" title="{{.BeszelPublicKey}}">
+                {{.BeszelPublicKey}}
+              </span>
+              <button type="button" class="btn btn-secondary btn-sm" style="padding: 2px 6px; font-size: 11px;" onclick="copyCredential('{{.BeszelPublicKey}}', 'SSH Key')" title="Copy SSH Public Key">
+                Copy
+              </button>
+            </div>
+            {{else}}
+            <span style="color: var(--text-muted); font-style: italic; font-size: 12px;">N/A</span>
+            {{end}}
+          </td>
+          <td style="text-align: right;">
+            <div style="display: inline-flex; gap: 6px; align-items: center;">
+              <button type="button" class="btn btn-secondary btn-sm" onclick="showReinstallModal('{{.AgentID}}', '{{.Nickname}}', '{{.AgentType}}', '{{.Token}}', '{{.BeszelPublicKey}}')" title="Reinstall Instructions">
+                Reinstall
+              </button>
+
+              <form action="{{$.PanelPath}}/agent/reset/token" method="POST" onsubmit="return confirm('Reset pre-shared token for {{.Nickname}}? Connected agents will need the updated token.')" style="margin: 0;">
+                <input type="hidden" name="agent_id" value="{{.AgentID}}">
+                <input type="hidden" name="redirect_to" value="{{$.PanelPath}}/agents/management">
+                <button type="submit" class="btn btn-secondary btn-sm" title="Reset Token">
+                  Reset Token
+                </button>
+              </form>
+
+              {{if eq .AgentType "beszel"}}
+              <form action="{{$.PanelPath}}/agent/reset/ssh" method="POST" onsubmit="return confirm('Generate new SSH key pair for Beszel agent {{.Nickname}}?')" style="margin: 0;">
+                <input type="hidden" name="agent_id" value="{{.AgentID}}">
+                <input type="hidden" name="redirect_to" value="{{$.PanelPath}}/agents/management">
+                <button type="submit" class="btn btn-secondary btn-sm" title="Reset Beszel SSH Key">
+                  Reset SSH
+                </button>
+              </form>
+              {{end}}
+
+              <form action="{{$.PanelPath}}/agent/delete" method="POST" onsubmit="return confirm('Revoke and delete agent {{.Nickname}}? All historical TSDB metric data will be permanently purged.')" style="margin: 0;">
+                <input type="hidden" name="agent_id" value="{{.AgentID}}">
+                <input type="hidden" name="redirect_to" value="{{$.PanelPath}}/agents/management">
+                <button type="submit" class="btn btn-danger btn-sm" title="Revoke & Delete Agent">
+                  Delete
+                </button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        {{else}}
+        <tr>
+          <td colspan="5" style="text-align: center; padding: 40px; color: var(--text-muted);">
+            No agents found. Click "+ Provision Agent" to register your first host.
+          </td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{{template "agents_provision_modal" .}}
+{{template "reinstall_modal" .}}
+
+<script src="{{.StaticPath}}/{{asset "js/agent_management.js"}}" integrity="{{integrity "js/agent_management.js"}}"></script>
+<script>
+  window.CertainStatsAgentManagement.init();
+</script>
+{{end}}
+

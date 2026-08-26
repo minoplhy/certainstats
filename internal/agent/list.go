@@ -40,8 +40,10 @@ func ListAgentsHandler(agents store.AgentStore, cache *metrics.RealtimeCache) ht
 					for j, d := range a.Disks {
 						rVal := d.ReadBytes
 						wVal := d.WriteBytes
+						tVal := d.TotalBytes
 						disks[j] = resp.DiskOdometer{
 							Path:       d.Path,
+							TotalBytes: &tVal,
 							ReadBytes:  &rVal,
 							WriteBytes: &wVal,
 						}

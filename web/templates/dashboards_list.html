@@ -1,0 +1,57 @@
+{{define "content"}}
+<div class="page-header" style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 16px;">
+  <div>
+    <h1 class="page-title">Public Dashboards & Status Pages</h1>
+    <p style="color: var(--text-muted); font-size: 13px;">Create and manage public, unauthenticated status pages with granular metric access control matrices.</p>
+  </div>
+
+  <a href="{{$.PanelPath}}/dashboard/create" class="btn btn-primary">
+    + Create Public Dashboard
+  </a>
+</div>
+
+{{if not .Dashboards}}
+<div class="card" style="text-align: center; padding: 48px;">
+  <h3 style="margin-bottom: 8px;">No Public Dashboards</h3>
+  <p style="color: var(--text-muted); margin-bottom: 20px;">Share curated agent metrics publicly with fine-grained access control rules.</p>
+  <a href="{{$.PanelPath}}/dashboard/create" class="btn btn-primary">
+    Create Public Dashboard
+  </a>
+</div>
+{{else}}
+<div class="table-responsive">
+  <table class="table">
+    <thead>
+      <tr>
+        <th>Title</th>
+        <th>Public URL Slug</th>
+        <th>Max History Days</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {{range .Dashboards}}
+      <tr>
+        <td><strong>{{.Title}}</strong></td>
+        <td class="mono">
+          <a href="{{if eq $.PublicPath "/"}}/dashboard/{{.Slug}}{{else}}{{$.PublicPath}}/{{.Slug}}{{end}}" target="_blank" style="color: var(--accent-primary); text-decoration: none; display: inline-flex; align-items: center; gap: 4px;">
+            <span>/dashboard/{{.Slug}}</span>
+            <span style="font-size: 12px;">↗</span>
+          </a>
+        </td>
+        <td>{{if (index .AccessRules "public")}}{{(index .AccessRules "public").MaxDays}}{{else}}7{{end}} Days</td>
+        <td>
+          <div style="display: flex; gap: 6px;">
+            <a href="{{$.PanelPath}}/dashboard/{{.DashboardID}}" class="btn btn-secondary btn-sm">Edit</a>
+            <button type="button" class="btn btn-danger btn-sm" onclick="deleteDashboard('{{.DashboardID}}', '{{.Title}}')">Delete</button>
+          </div>
+        </td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+</div>
+{{end}}
+
+<script src="{{.StaticPath}}/{{asset "js/admin_modals.js"}}" integrity="{{integrity "js/admin_modals.js"}}"></script>
+{{end}}

@@ -143,9 +143,10 @@ func (h *HTStats) Parse(data []byte) (*agentparser.ParsedData, error) {
 	ramSwapUsage, _ := strconv.ParseFloat(JSONdata.RAMSwap, 64)
 
 	disks := []agentparser.DiskTelemetry{}
-	//	for _, part := range diskParts {
-	if len(diskParts) > 0 {
-		part := diskParts[0] // Only take the first disk reported
+	decodedIOPS, _ := base64.StdEncoding.DecodeString(JSONdata.IOPS)
+	iopsParts := strings.Split(string(decodedIOPS), ";")
+
+	for i, part := range diskParts {
 		fields := strings.Split(part, ",")
 		if len(fields) >= 5 {
 			size, _ := strconv.ParseUint(fields[2], 10, 64)
@@ -156,13 +157,11 @@ func (h *HTStats) Parse(data []byte) (*agentparser.ParsedData, error) {
 			}
 
 			var readBps, writeBps uint64
-			decodedIOPS, _ := base64.StdEncoding.DecodeString(JSONdata.IOPS)
-			iopsParts := strings.Split(string(decodedIOPS), ";")
-			if len(iopsParts) > 0 {
-				fields := strings.Split(iopsParts[0], ",")
-				if len(fields) >= 3 {
-					rb, _ := strconv.ParseUint(fields[1], 10, 64)
-					wb, _ := strconv.ParseUint(fields[2], 10, 64)
+			if i < len(iopsParts) {
+				ioFields := strings.Split(iopsParts[i], ",")
+				if len(ioFields) >= 3 {
+					rb, _ := strconv.ParseUint(ioFields[1], 10, 64)
+					wb, _ := strconv.ParseUint(ioFields[2], 10, 64)
 					readBps = rb
 					writeBps = wb
 				}

@@ -5,30 +5,49 @@ import (
 	ctx "certainstats/internal/context"
 	"certainstats/internal/notifications"
 	apiresponse "certainstats/internal/response"
-
 	"certainstats/internal/store"
 	"encoding/json"
 	"net/http"
 )
 
 type TestAlertRequest struct {
-	Action alert.AlertAction `json:"action"`
+	AlertID string             `json:"alert_id,omitempty"`
+	Action  *alert.AlertAction `json:"action,omitempty"`
 }
 
 func TestAlertHandler(s store.AlertsStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		userID, ok := r.Context().Value(ctx.UserIDKey).(string)
+		if !ok {
+			apiresponse.Error(w, http.StatusUnauthorized, "Unauthorized")
+			return
+		}
+
 		var req TestAlertRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			apiresponse.Error(w, http.StatusBadRequest, "Invalid request body")
 			return
 		}
 
-		action := req.Action
+		var action alert.AlertAction
+		if req.AlertID != "" {
+			alertVal, err := s.AlertGetInfo(r.Context(), req.AlertID, userID)
+			if err != nil {
+				apiresponse.Error(w, http.StatusNotFound, "Alert rule not found: "+err.Error())
+				return
+			}
+			action = alertVal.Action
+		} else if req.Action != nil {
+			action = *req.Action
+		} else {
+			apiresponse.Error(w, http.StatusBadRequest, "Either alert_id or action configuration is required")
+			return
+		}
+
 		if action.Type == alert.DestPreset && action.TargetID != "" {
-			userID := r.Context().Value(ctx.UserIDKey).(string)
 			target, err := s.TargetGetByID(r.Context(), action.TargetID, userID)
 			if err != nil {
-				apiresponse.Error(w, http.StatusBadRequest, "Failed to resolve target: "+err.Error())
+				apiresponse.Error(w, http.StatusBadRequest, "Failed to resolve target preset: "+err.Error())
 				return
 			}
 			action.Type = target.Type
@@ -36,6 +55,11 @@ func TestAlertHandler(s store.AlertsStore) http.HandlerFunc {
 			if action.Payload == "" {
 				action.Payload = target.Payload
 			}
+		}
+
+		if action.Type == "" {
+			apiresponse.Error(w, http.StatusBadRequest, "Notification destination type is not configured")
+			return
 		}
 
 		// Dispatch a dummy notification
