@@ -64,9 +64,7 @@
   <div class="spec-grid">
     <div class="spec-tile">
       <div class="spec-label">Public ID</div>
-      <div class="spec-value mono">
-        <span class="spec-id-badge" id="pub-inpage-spec-id" title="Click to copy Public ID" onclick="window.CertainStatsTelemetry.copyText(this.getAttribute('data-full-id') || this.textContent, 'Public ID')">-</span>
-      </div>
+      <div class="spec-value mono" id="pub-inpage-spec-id">-</div>
     </div>
     {{if hasFeature .AccessRules "uptime"}}
     <div class="spec-tile">

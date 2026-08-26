@@ -210,12 +210,8 @@
       const elSwap = document.getElementById('pub-inpage-hw-swap');
       if (elSwap) elSwap.textContent = window.CertainStatsChart.formatBytes(agent.swap_size);
 
-      const pubIdBadge = document.getElementById('pub-inpage-spec-id');
-      if (pubIdBadge) {
-        pubIdBadge.textContent = agent.public_id;
-        pubIdBadge.setAttribute('data-full-id', agent.public_id);
-        pubIdBadge.title = 'Click to copy: ' + agent.public_id;
-      }
+      const pubIdEl = document.getElementById('pub-inpage-spec-id');
+      if (pubIdEl) pubIdEl.textContent = agent.public_id;
       const elUptime = document.getElementById('pub-inpage-spec-uptime');
       if (elUptime) elUptime.textContent = window.CertainStatsTelemetry.formatUptime(agent.uptime);
       const elKernel = document.getElementById('pub-inpage-spec-kernel');

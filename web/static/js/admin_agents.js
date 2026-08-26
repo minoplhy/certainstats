@@ -374,12 +374,8 @@
       const elDisk = document.getElementById('inpage-hw-disk'); if (elDisk) elDisk.textContent = window.CertainStatsChart.formatBytes(agent.disk_size);
       const elSwap = document.getElementById('inpage-hw-swap'); if (elSwap) elSwap.textContent = window.CertainStatsChart.formatBytes(agent.swap_size);
 
-      const idBadge = document.getElementById('inpage-spec-id');
-      if (idBadge) {
-        idBadge.textContent = agent.agent_id;
-        idBadge.setAttribute('data-full-id', agent.agent_id);
-        idBadge.title = 'Click to copy: ' + agent.agent_id;
-      }
+      const idEl = document.getElementById('inpage-spec-id');
+      if (idEl) idEl.textContent = agent.agent_id;
       const elUptime = document.getElementById('inpage-spec-uptime'); if (elUptime) elUptime.textContent = window.CertainStatsTelemetry.formatUptime(agent.uptime);
       const elKernel = document.getElementById('inpage-spec-kernel'); if (elKernel) elKernel.textContent = agent.linux_version || 'Linux';
       const elCpuModel = document.getElementById('inpage-spec-cpu'); if (elCpuModel) elCpuModel.textContent = agent.cpu_model || 'Generic CPU';
