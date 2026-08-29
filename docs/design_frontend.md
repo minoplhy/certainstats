@@ -371,8 +371,8 @@ The main admin navigation bar contains:
 | `/dashboard/create` | `dashboard_edit.html` | `dashboard_edit.css` | Create new public dashboard |
 | `/dashboard/{id}` | `dashboard_edit.html` | `dashboard_edit.css` | Configure slug, Access Rules, and assigned agents |
 | `/alerts` | `alerts_list.html` | — | Alert rule builder and Webhook targets (Discord, etc.) |
-| `/settings` | `settings.html` | — | Password change and active session revocation |
-| `/login` | `login.html` | — | User authentication |
+| `/settings` | `settings.html` | `admin_modals.js` | Password change, active session browser table, and individual/bulk session ejection |
+| `/login` | `login.html` | — | User authentication (24h default expiration with 30-day "Remember me" option) |
 | `/first-time-setup` | `setup.html` | — | Initial administrator provisioning |
 | `/dashboard/{slug}` | `public_dashboard.html` | `public_dashboard.js` | Public Status Page Overview |
 | `/dashboard/{slug}/{pub_id}` | `public_dashboard.html` | `public_dashboard.js` | Public Status Page In-Page Monitor Detail |

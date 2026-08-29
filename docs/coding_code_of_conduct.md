@@ -25,11 +25,13 @@ CertainStats is a high-performance, dense, real-time infrastructure and fleet mo
 ### 2.1 Project Structure & Package Isolation
 - **`cmd/`**: Contains executable entrypoints only (e.g., `cmd/certainstats`). No business logic should reside directly in `cmd/` without abstraction.
 - **`internal/`**: Private application code. Group packages logically by responsibility:
-  - `internal/agent`: Agent protocols, submission handlers, and ingestion loops.
-  - `internal/metrics`: Realtime cache and telemetry aggregation.
-  - `internal/context`: Centralized cache registries and lifecycle context.
-  - `internal/store/sqlite`: Database access, migrations, and query operations.
-  - `internal/auth`: Session management, token generation, and password hashing.
+  - `internal/agent`: Agent submission handlers (`POST /submit`), provisioning, and Beszel WS integration.
+  - `internal/agent_parser`: Dedicated payload parsers for `Beszel`, `LTstats`, and `HetrixTools` formats.
+  - `internal/metrics`: Realtime cache and TSDB query handlers.
+  - `internal/context`: Centralized cache registries (`DashboardCache`, `MetricsCache`, `StaticCache`) and lifecycle context.
+  - `internal/store/sqlite`: Database access, idempotent migrations, and query operations.
+  - `internal/auth`: Session token generation (`GenerateSessionToken`), password hashing, and session authentication.
+  - `internal/routine`: Background timers (alert sweeps, synchronized pulses, hourly session cleanups).
   - `internal/minify`: Static asset minification, hashing, and SRI generation.
   - `internal/web`: Go template renderer, routing, and HTTP handlers.
 

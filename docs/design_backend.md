@@ -33,7 +33,7 @@ The backend is a single Go binary (`certainstats`) using:
 │                                                          │
 │  ┌─────────────────┐    ┌────────────────────────────┐  │
 │  │  Admin Panel    │    │   Public Dashboard SPA      │  │
-│  │  (React/Vite)   │    │   (React/Vite, no-auth)     │  │
+│  │  (SSR + In-Page)│    │   (SSR + In-Page, no-auth)  │  │
 │  │  /              │    │   /dashboard/               │  │
 │  └────────┬────────┘    └────────────┬───────────────┘  │
 │           │ REST + WS                │ REST + WS         │
@@ -45,37 +45,42 @@ The backend is a single Go binary (`certainstats`) using:
 │  ┌──────────────▼──────────────────┐                    │
 │  │  internal/                      │                    │
 │  │   agent/        — provision, submit, heartbeat       │
-│  │   agent_parser/ — Beszel/generic metric parsing      │
+│  │   agent_parser/ — Beszel, LTstats, HetrixTools       │
 │  │   alert/        — rule engine, retry, notifications  │
-│  │   auth/         — session, JWT, first-time setup     │
+│  │   auth/         — session, login/logout, setup       │
 │  │   dashboard/    — access rules, public sharing       │
 │  │   metrics/      — real-time cache, TSDB query        │
 │  │   store/sqlite/ — SQLite repository impls            │
 │  │   ws/           — UI broadcaster, public WS          │
 │  │   routine/      — background sweep goroutine         │
+│  │   web/          — SSR HTML templates, in-place router│
+│  │   minify/       — asset minification & SRI hashes    │
 │  └──────────────┬──────────────────┘                    │
 │                 │                                        │
 │  ┌──────────────▼──────────────────┐                    │
 │  │  SQLite (agent_state.db)        │                    │
 │  │  Prometheus TSDB (./data/tsdb)  │                    │
+│  │  Context In-Memory Cache (RAM)  │                    │
 │  └─────────────────────────────────┘                    │
 └─────────────────────────────────────────────────────────┘
-          ▲                  ▲
-          │ CBOR /submit     │ SSH tunnel
-  ┌───────┴──────┐  ┌────────┴────────┐
-  │ Generic Agent│  │  Beszel Agent   │
-  │  (binary/    │  │  (WS + SSH)     │
-  │   script)    │  └─────────────────┘
-  └──────────────┘
+          ▲                    ▲                  ▲
+          │ Custom Binary      │ Gzip/Base64 JSON │ WebSocket (CBOR)
+  ┌───────┴──────┐     ┌───────┴────────┐ ┌───────┴────────┐
+  │   LTstats    │     │  HetrixTools   │ │  Beszel Agent  │
+  │    Agent     │     │     Agent      │ │     (WS)       │
+  └──────────────┘     └────────────────┘ └────────────────┘
 ```
 
 ### 2.1 Data Flow
 
-1. **Agent → Server:** Agents submit a CBOR payload to `POST /submit` or connect via `GET /api/beszel/agent-connect` (WebSocket for Beszel agents). Each request is authenticated with a per-agent pre-shared token.
-2. **Server → TSDB:** The `agent_parser` registry decodes the payload into standard metric series and writes them to the Prometheus TSDB via an `Appender`.
-3. **Server → SQLite:** Heartbeat timestamps, online status, hardware details, and traffic odometers are upserted into SQLite.
-4. **Server → Admin UI (WS):** The `uiBroadcaster` pushes live `AgentSnapshot` deltas to all authenticated admin WebSocket connections.
-5. **Admin UI → Server:** REST calls for agent management, dashboard CRUD, alert CRUD, settings.
+1. **Agent → Server:**
+   - **LTstats Agents**: Push custom packed binary payloads (`POST /submit`).
+   - **HetrixTools Agents**: Push gzipped, base64-encoded JSON payloads (`POST /submit`).
+   - **Beszel Agents**: Connect via WebSocket (`GET /api/beszel/agent-connect`) using CBOR serialization.
+2. **Server → TSDB:** The `agent_parser` registry automatically detects the agent format, decodes raw metrics into standard time-series data, and appends them to Prometheus TSDB.
+3. **Server → SQLite:** Heartbeat timestamps, online status, hardware metadata, and cumulative traffic odometers are upserted into SQLite.
+4. **Server → Admin UI (WS):** The `uiBroadcaster` pushes live `AgentSnapshot` deltas to authenticated admin WebSocket connections (`/api/ws`).
+5. **Admin UI → Server:** REST calls for agent management, dashboard configuration, alert rules, and settings.
 6. **Public UI → Server:** Calls to `GET /api/public/dashboard/{slug}` and `/api/public/metrics` which enforce per-dashboard `AccessRule` field filtering.
 
 ---
@@ -94,20 +99,44 @@ Configuration via environment variables — see [`environment.md`](environment.m
 
 ---
 
-## 4. Agent Types
+## 4. Agent Drivers & Protocols
 
-| Type | Transport | Auth | Notes |
-|---|---|---|---|
-| `generic` | CBOR over HTTPS `POST /submit` | Per-agent token header | Supports any push-based agent binary |
-| `beszel` | WebSocket `GET /api/beszel/agent-connect` | SSH key-pair + token | Compatible with [Beszel](https://github.com/henrygd/beszel) hub protocol |
+CertainStats supports 3 dedicated agent drivers:
+
+| Driver | Transport | Format | Auth | Notes |
+|---|---|---|---|---|
+| `beszel` | WebSocket `GET /api/beszel/agent-connect` | CBOR | Token (`X-Token` header) | Beszel agent protocol over WebSocket; pulls telemetry on-demand |
+| `ltstats` | HTTPS `POST /submit` | Custom packed binary | Token embedded in payload | High-efficiency custom binary layout (`NetHeader`, `Details`, `StatT`) |
+| `hetrixtools` | HTTPS `POST /submit` | Gzip + Base64 JSON | Token in payload | HetrixTools agent compatible format |
 
 Each agent has a unique `agent_id` (ULID), a human-readable `nickname`, and carries the following hardware snapshot metadata:
 
 - `cpu_model`, `cpu_cores`
 - `ram_size`, `swap_size`
-- `disk_size`, disk mount points
+- `disk_size`, multi-disk mount points and partitions
 - `linux_version`, `uptime`
 - Network traffic odometers (`rx_bytes`, `tx_bytes`)
+- Storage I/O odometers (`disk_read_bytes`, `disk_write_bytes`)
+
+---
+
+## 4.1 Authentication & Session Architecture
+
+Authentication is unified across both the JSON API (`/api/auth/login`) and the server-rendered Web UI (`/login`):
+
+- **Token Generation**: Cryptographically secure 32-byte URL-safe base64 session tokens generated via `auth.GenerateSessionToken()`.
+- **Session Duration**:
+  - **Default**: **24 hours** (`24 * time.Hour`) for standard logins.
+  - **Remember Me**: **30 days** (`30 * 24 * time.Hour`) when `remember` is requested via form checkbox or API payload.
+- **Cookie Security**:
+  - Name: `session_token`
+  - Flags: `HttpOnly`, `SameSite=Lax`, `Path=/`, dynamic `Secure` flag (enabled over direct HTTPS or when behind `X-Forwarded-Proto: https` proxies).
+  - Expiration: Synchronized with database `expires_at`.
+- **Session Lifecycle & Management**:
+  - Validated on every authenticated request via `requireAuth` (API) and `RequireAuthWeb` (Web).
+  - Active sessions track `user_id`, `ip_address`, `user_agent`, `created_at`, `last_connected_at`, and `expires_at`.
+  - Sessions can be audited and individually ejected or bulk-revoked ("Eject Other Sessions") from `/settings`.
+  - Expired sessions are automatically purged hourly by the background routine (`routine.go`).
 
 ---
 
@@ -269,8 +298,6 @@ CertainStats targets a **premium, minimal, dark-first** aesthetic that feels at 
 
 ### 9.1 Agent Hub — Main View + Agent Detail
 
-![Agent Hub and Telemetry Detail](mockup-agent-hub.png)
-
 The Agent Hub is the primary landing page of the admin panel. It presents:
 
 - **Left sidebar** with compact per-agent status and mini CPU/RAM bars for at-a-glance scanning
@@ -353,22 +380,25 @@ The Agent Hub is the primary landing page of the admin panel. It presents:
 
 | Package | Responsibility |
 |---|---|
-| `cmd/certainstats` | Entry point, router wiring, virtual-host dispatch, config, SPA handler, heartbeat sweeper |
-| `internal/agent` | Provision, submit handler, list, rename, revoke, token/SSH reset, Beszel WS handler |
-| `internal/agent_parser` | Parser registry; Beszel-specific CBOR decoder; generic parser |
+| `cmd/certainstats` | Entry point, router wiring, virtual-host dispatch, config, embedded asset mounting, heartbeat sweeper |
+| `internal/agent` | Provision, submit handler (`POST /submit`), list, rename, revoke, token reset, Beszel WS handler |
+| `internal/agent_data` | Shared time diff constants, token generation, string helpers |
+| `internal/agent_parser` | Parser registry; dedicated decoders for Beszel (CBOR), LTstats (custom binary), HetrixTools (gzip JSON) |
 | `internal/alert` | Alert CRUD handlers, rule evaluation, notification dispatch, retry logic |
-| `internal/auth` | Login/logout handlers, session middleware, `requireAuth`, first-time setup flow |
+| `internal/auth` | Session management, password hashing, login/logout handlers, `requireAuth` middleware, first-time setup |
 | `internal/compress` | Brotli/gzip response compression middleware |
-| `internal/context` | Typed context keys (`PanelPathKey`) |
+| `internal/context` | Global in-memory cache registries (`DashboardCache`, `DashboardHTMLCache`, `MetricsCache`, `StaticCache`) |
 | `internal/dashboard` | Dashboard CRUD handlers, access rule enforcement, public endpoint |
-| `internal/lifecycle` | Graceful shutdown channel |
+| `internal/lifecycle` | Graceful shutdown channel & server restart trigger |
 | `internal/logger` | Structured leveled logger |
 | `internal/metrics` | `RealtimeCache` (in-memory), TSDB query handler, public metrics handler |
-| `internal/notifications` | Webhook + Discord delivery implementations |
-| `internal/response` | Shared JSON response helpers |
-| `internal/routine` | Background goroutine: alert sweep, session cleanup, offline marking |
-| `internal/store` | Store interfaces (`AgentStore`, `AlertsStore`, `DashboardStore`, `UserStore`, `SessionStore`) |
-| `internal/store/sqlite` | SQLite implementations of all store interfaces + schema migrations |
+| `internal/minify` | Static asset minification (HTML/CSS/JS), content fingerprinting, and W3C SRI hash calculation |
+| `internal/notifications` | Webhook + Discord embed delivery implementations with retry worker |
+| `internal/response` | Shared JSON API response helpers |
+| `internal/routine` | Background goroutine: alert sweep, hourly session cleanup, offline marking, synchronized UI pulse |
+| `internal/store` | Store interfaces (`AgentStore`, `AlertsStore`, `DashboardStore`, `UserStore`, `SessionStore`, `FullStore`) |
+| `internal/store/sqlite` | SQLite implementations of all store interfaces + idempotent schema migrations |
+| `internal/web` | Go template renderer, server-rendered views, in-page SPA routing, session/settings handlers |
 | `internal/ws` | `Manager` (Beszel WS), `AgentBroadcaster` (UI push), UI handler, public WS handler |
 
 ---
