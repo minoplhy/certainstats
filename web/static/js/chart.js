@@ -720,7 +720,7 @@
               const len = s.data.length;
               if (len > 0) {
                 const lastTs = getPtTs(s.data[len - 1]);
-                if (Math.abs(ts - lastTs) < 5000) {
+                if (Math.abs(ts - lastTs) < stepMs) {
                   if (Array.isArray(s.data[len - 1])) {
                     s.data[len - 1][1] = val;
                   } else {

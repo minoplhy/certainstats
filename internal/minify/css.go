@@ -4,10 +4,13 @@ import (
 	"bytes"
 )
 
-// MinifyCSS minifies stylesheet content by stripping comment blocks and collapsing whitespace.
-func (p *AssetPipeline) MinifyCSS(src []byte) []byte {
+// CSSMinifier minifies stylesheet content.
+type CSSMinifier struct{}
+
+// Minify minifies stylesheet content by stripping comment blocks and collapsing whitespace.
+func (m *CSSMinifier) Minify(src []byte) ([]byte, error) {
 	if len(src) == 0 {
-		return src
+		return src, nil
 	}
 
 	var buf bytes.Buffer
@@ -89,7 +92,7 @@ func (p *AssetPipeline) MinifyCSS(src []byte) []byte {
 		i++
 	}
 
-	return bytes.TrimSpace(buf.Bytes())
+	return bytes.TrimSpace(buf.Bytes()), nil
 }
 
 func isWhitespace(c byte) bool {

@@ -188,6 +188,7 @@
     } else {
       baseQuery += '&hours=' + hours;
     }
+    const qEnd = customRange ? customRange.end : Date.now();
 
     if (agent) {
       const isOnline = agent.is_online === true || (agent.last_seen && (Date.now() - new Date(agent.last_seen).getTime()) < 120000);
@@ -272,10 +273,12 @@
             unit: '%',
             maxAdd: 1,
             maxCap: 100,
-            hours: hours
+            hours: hours,
+            customRange: customRange,
+            queryEndTime: qEnd
           });
         } else {
-          pubInpageCpuChart.updateSeries(seriesList, hours, null, undefined, undefined, 1);
+          pubInpageCpuChart.updateSeries(seriesList, hours, null, qEnd, customRange, 1);
         }
       });
     }
@@ -308,10 +311,12 @@
             seriesList: seriesList,
             formatter: window.CertainStatsChart.formatBytes,
             yMax: maxCapacity > 0 ? maxCapacity : null,
-            hours: hours
+            hours: hours,
+            customRange: customRange,
+            queryEndTime: qEnd
           });
         } else {
-          pubInpageRamChart.updateSeries(seriesList, hours, maxCapacity > 0 ? maxCapacity : null);
+          pubInpageRamChart.updateSeries(seriesList, hours, maxCapacity > 0 ? maxCapacity : null, qEnd, customRange);
         }
       });
     }
@@ -344,10 +349,12 @@
           pubInpageNetChart = window.CertainStatsChart.renderMultiChart('pub-inpage-chart-net', {
             seriesList: seriesList,
             formatter: window.CertainStatsChart.formatBps,
-            hours: hours
+            hours: hours,
+            customRange: customRange,
+            queryEndTime: qEnd
           });
         } else {
-          pubInpageNetChart.updateSeries(seriesList, hours, undefined);
+          pubInpageNetChart.updateSeries(seriesList, hours, undefined, qEnd, customRange);
         }
       });
     }
@@ -465,7 +472,9 @@
                 seriesList: usageSeries,
                 formatter: window.CertainStatsChart.formatBytes,
                 yMax: totalDisk > 0 ? totalDisk : null,
-                hours: hours
+                hours: hours,
+                customRange: customRange,
+                queryEndTime: qEnd
               });
             }
             let ioChart = null;
@@ -473,16 +482,18 @@
               ioChart = window.CertainStatsChart.renderMultiChart('pub-inpage-chart-disk-io-' + safe, {
                 seriesList: ioSeries,
                 formatter: window.CertainStatsChart.formatBps,
-                hours: hours
+                hours: hours,
+                customRange: customRange,
+                queryEndTime: qEnd
               });
             }
             pubInpageDiskCharts[p] = { usageChart, ioChart };
           } else {
             if (pubInpageDiskCharts[p].usageChart) {
-              pubInpageDiskCharts[p].usageChart.updateSeries(usageSeries, hours, totalDisk > 0 ? totalDisk : null);
+              pubInpageDiskCharts[p].usageChart.updateSeries(usageSeries, hours, totalDisk > 0 ? totalDisk : null, qEnd, customRange);
             }
             if (pubInpageDiskCharts[p].ioChart) {
-              pubInpageDiskCharts[p].ioChart.updateSeries(ioSeries, hours, undefined);
+              pubInpageDiskCharts[p].ioChart.updateSeries(ioSeries, hours, undefined, qEnd, customRange);
             }
           }
         });

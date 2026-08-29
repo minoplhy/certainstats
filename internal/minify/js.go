@@ -4,10 +4,13 @@ import (
 	"bytes"
 )
 
-// MinifyJS minifies JavaScript content by stripping comments and compressing whitespace.
-func (p *AssetPipeline) MinifyJS(src []byte) []byte {
+// JSMinifier minifies JavaScript content.
+type JSMinifier struct{}
+
+// Minify minifies JavaScript content by stripping comments and compressing whitespace.
+func (m *JSMinifier) Minify(src []byte) ([]byte, error) {
 	if len(src) == 0 {
-		return src
+		return src, nil
 	}
 
 	var buf bytes.Buffer
@@ -112,7 +115,7 @@ func (p *AssetPipeline) MinifyJS(src []byte) []byte {
 		i++
 	}
 
-	return bytes.TrimSpace(buf.Bytes())
+	return bytes.TrimSpace(buf.Bytes()), nil
 }
 
 func isIdentifierChar(c byte) bool {

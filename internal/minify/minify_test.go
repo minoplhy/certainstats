@@ -135,3 +135,88 @@ func TestPipeline(t *testing.T) {
 		t.Errorf("expected empty string for non-existent asset integrity, got %q", fallbackSri)
 	}
 }
+
+func TestMinifyHTML(t *testing.T) {
+	input := "   <div>   <span>Hello World</span>   </div>   \n"
+	got := string(HTML([]byte(input)))
+	expected := "<div>   <span>Hello World</span>   </div>"
+	if got != expected {
+		t.Errorf("expected %q, got %q", expected, got)
+	}
+}
+
+func TestMinifierInterfaceAndDispatch(t *testing.T) {
+	p := New()
+
+	// Test CSS dispatch via generic Minify
+	cssIn := []byte("body {   color: #fff;   }")
+	cssOut, err := p.Minify("text/css", cssIn)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if string(cssOut) != "body{color:#fff}" {
+		t.Errorf("expected minified CSS, got %q", string(cssOut))
+	}
+
+	// Test JS dispatch with parameter
+	jsIn := []byte("function test() { // comment\n return 1; }")
+	jsOut, err := p.Minify("application/javascript; charset=utf-8", jsIn)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if strings.Contains(string(jsOut), "comment") {
+		t.Errorf("expected comments stripped in JS, got %q", string(jsOut))
+	}
+
+	// Test HTML dispatch
+	htmlIn := []byte("   <p>Test</p>   ")
+	htmlOut, err := p.Minify("html", htmlIn)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if string(htmlOut) != "<p>Test</p>" {
+		t.Errorf("expected trimmed HTML, got %q", string(htmlOut))
+	}
+
+	// Test unregistered media type fallback (returns source untouched)
+	unknownIn := []byte("unknown data")
+	unknownOut, err := p.Minify("application/octet-stream", unknownIn)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if string(unknownOut) != string(unknownIn) {
+		t.Errorf("expected untouched source, got %q", string(unknownOut))
+	}
+}
+
+func TestRegisterMinifierAndMinifierFunc(t *testing.T) {
+	p := New()
+
+	// Register custom minifier using MinifierFunc adapter
+	customFn := MinifierFunc(func(src []byte) ([]byte, error) {
+		return []byte(strings.ToUpper(string(src))), nil
+	})
+	p.RegisterMinifier("custom/upper", customFn)
+
+	out, err := p.Minify("custom/upper", []byte("hello world"))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if string(out) != "HELLO WORLD" {
+		t.Errorf("expected 'HELLO WORLD', got %q", string(out))
+	}
+
+	// Package-level RegisterMinifier and Minify
+	RegisterMinifier("custom/json", MinifierFunc(func(src []byte) ([]byte, error) {
+		return []byte(strings.ReplaceAll(string(src), " ", "")), nil
+	}))
+
+	pkgOut, err := Minify("custom/json", []byte("{\"a\": 1, \"b\": 2}"))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if string(pkgOut) != "{\"a\":1,\"b\":2}" {
+		t.Errorf("expected whitespace stripped, got %q", string(pkgOut))
+	}
+}
+

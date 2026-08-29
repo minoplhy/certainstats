@@ -1,7 +1,6 @@
 package minify
 
 import (
-	"bytes"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -15,31 +14,97 @@ type AssetInfo struct {
 
 // AssetPipeline is the standard implementation of the Pipeline interface.
 type AssetPipeline struct {
-	manifest sync.Map
+	manifest  sync.Map
+	minifiers sync.Map
 }
 
-// New returns a new Pipeline instance.
+// New returns a new Pipeline instance configured with standard format minifiers.
 func New() Pipeline {
-	return &AssetPipeline{}
+	p := &AssetPipeline{}
+	cssMinifier := &CSSMinifier{}
+	jsMinifier := &JSMinifier{}
+	htmlMinifier := &HTMLMinifier{}
+
+	p.RegisterMinifier("css", cssMinifier)
+	p.RegisterMinifier("text/css", cssMinifier)
+
+	p.RegisterMinifier("js", jsMinifier)
+	p.RegisterMinifier("javascript", jsMinifier)
+	p.RegisterMinifier("text/javascript", jsMinifier)
+	p.RegisterMinifier("application/javascript", jsMinifier)
+	p.RegisterMinifier("application/x-javascript", jsMinifier)
+	p.RegisterMinifier("application/ecmascript", jsMinifier)
+	p.RegisterMinifier("text/ecmascript", jsMinifier)
+
+	p.RegisterMinifier("html", htmlMinifier)
+	p.RegisterMinifier("htm", htmlMinifier)
+	p.RegisterMinifier("text/html", htmlMinifier)
+
+	return p
 }
 
-// Minify minifies source content based on the given mediaType.
+func normalizeMediaType(mediaType string) string {
+	mt := strings.ToLower(strings.TrimSpace(mediaType))
+	mt = strings.TrimPrefix(mt, ".")
+	if idx := strings.Index(mt, ";"); idx != -1 {
+		mt = strings.TrimSpace(mt[:idx])
+	}
+	return mt
+}
+
+// RegisterMinifier registers a ContentMinifier for a given mediaType or format alias.
+func (p *AssetPipeline) RegisterMinifier(mediaType string, minifier ContentMinifier) {
+	cleanType := normalizeMediaType(mediaType)
+	p.minifiers.Store(cleanType, minifier)
+}
+
+// Minify minifies source content based on the given mediaType by dispatching to the registered ContentMinifier.
 func (p *AssetPipeline) Minify(mediaType string, src []byte) ([]byte, error) {
-	if strings.Contains(mediaType, "css") {
-		return p.MinifyCSS(src), nil
+	norm := normalizeMediaType(mediaType)
+	if val, ok := p.minifiers.Load(norm); ok {
+		if m, ok := val.(ContentMinifier); ok && m != nil {
+			return m.Minify(src)
+		}
 	}
-	if strings.Contains(mediaType, "javascript") || strings.Contains(mediaType, "ecmascript") || strings.Contains(mediaType, "js") {
-		return p.MinifyJS(src), nil
+
+	var matched ContentMinifier
+	p.minifiers.Range(func(key, val any) bool {
+		k, ok := key.(string)
+		if !ok {
+			return true
+		}
+		if (k != "" && strings.Contains(norm, k)) || (norm != "" && strings.Contains(k, norm)) {
+			if m, ok := val.(ContentMinifier); ok && m != nil {
+				matched = m
+				return false
+			}
+		}
+		return true
+	})
+
+	if matched != nil {
+		return matched.Minify(src)
 	}
-	if strings.Contains(mediaType, "html") {
-		return p.MinifyHTML(src), nil
-	}
+
 	return src, nil
 }
 
-// MinifyHTML strips HTML comments and trims excess whitespace.
+// MinifyCSS minifies stylesheet content using the registered CSS minifier.
+func (p *AssetPipeline) MinifyCSS(src []byte) []byte {
+	res, _ := p.Minify("text/css", src)
+	return res
+}
+
+// MinifyJS minifies JavaScript content using the registered JS minifier.
+func (p *AssetPipeline) MinifyJS(src []byte) []byte {
+	res, _ := p.Minify("text/javascript", src)
+	return res
+}
+
+// MinifyHTML minifies HTML content using the registered HTML minifier.
 func (p *AssetPipeline) MinifyHTML(src []byte) []byte {
-	return bytes.TrimSpace(src)
+	res, _ := p.Minify("text/html", src)
+	return res
 }
 
 // Process minifies the asset, computes its fingerprint and SRI, and stores the mapping in the manifest.
@@ -47,16 +112,10 @@ func (p *AssetPipeline) Process(relPath string, data []byte) (string, []byte, er
 	cleanPath := strings.TrimPrefix(filepath.ToSlash(relPath), "/")
 	ext := filepath.Ext(cleanPath)
 
-	var minified []byte
-	switch ext {
-	case ".css":
-		minified = p.MinifyCSS(data)
-	case ".js":
-		minified = p.MinifyJS(data)
-	case ".html", ".htm":
-		minified = p.MinifyHTML(data)
-	default:
-		minified = data
+	mediaType := strings.TrimPrefix(ext, ".")
+	minified, err := p.Minify(mediaType, data)
+	if err != nil {
+		return "", nil, err
 	}
 
 	fpPath, _ := p.Fingerprint(cleanPath, minified)
@@ -101,19 +160,32 @@ func (p *AssetPipeline) RegisterAsset(canonicalPath string, fingerprintedPath st
 // Global default pipeline instance
 var defaultPipeline = New()
 
+// Minify minifies source content based on the given mediaType using the default pipeline.
+func Minify(mediaType string, src []byte) ([]byte, error) {
+	return defaultPipeline.Minify(mediaType, src)
+}
+
+// RegisterMinifier registers a content minifier for a media type in the default pipeline.
+func RegisterMinifier(mediaType string, minifier ContentMinifier) {
+	defaultPipeline.RegisterMinifier(mediaType, minifier)
+}
+
 // CSS minifies stylesheet bytes using the default pipeline.
 func CSS(src []byte) []byte {
-	return defaultPipeline.MinifyCSS(src)
+	res, _ := defaultPipeline.Minify("text/css", src)
+	return res
 }
 
 // JS minifies JavaScript bytes using the default pipeline.
 func JS(src []byte) []byte {
-	return defaultPipeline.MinifyJS(src)
+	res, _ := defaultPipeline.Minify("text/javascript", src)
+	return res
 }
 
 // HTML minifies HTML bytes using the default pipeline.
 func HTML(src []byte) []byte {
-	return defaultPipeline.MinifyHTML(src)
+	res, _ := defaultPipeline.Minify("text/html", src)
+	return res
 }
 
 // Fingerprint generates a content-hashed path using the default pipeline.

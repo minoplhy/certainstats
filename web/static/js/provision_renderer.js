@@ -325,7 +325,7 @@
       .then(data => {
         if (btn) {
           btn.disabled = false;
-          btn.textContent = 'Generate Instructions';
+          btn.textContent = 'Provision';
         }
 
         const stepSelect = document.getElementById('provision-step-select');
@@ -342,7 +342,7 @@
       .catch(err => {
         if (btn) {
           btn.disabled = false;
-          btn.textContent = 'Generate Instructions';
+          btn.textContent = 'Provision';
         }
         alert('Failed to provision agent: ' + err.message);
       });

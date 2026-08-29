@@ -40,7 +40,7 @@ func LoginHandler(users store.UserStore, sessions store.SessionStore) http.Handl
 			return
 		}
 
-		token := generateSessionToken()
+		token := GenerateSessionToken()
 		duration := 24 * time.Hour
 		if req.Remember {
 			duration = 30 * 24 * time.Hour

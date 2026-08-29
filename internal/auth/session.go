@@ -8,7 +8,8 @@ import (
 	"time"
 )
 
-func generateSessionToken() string {
+// GenerateSessionToken generates a cryptographically secure URL-safe base64 session token.
+func GenerateSessionToken() string {
 	b := make([]byte, 32)
 	rand.Read(b)
 	return base64.URLEncoding.EncodeToString(b)

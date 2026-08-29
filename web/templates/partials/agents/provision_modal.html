@@ -10,13 +10,13 @@
         <button type="button" class="btn btn-secondary btn-sm" onclick="document.getElementById('add-agent-modal').style.display='none'">✕</button>
       </div>
       <p style="color: var(--text-secondary); margin-bottom: 20px; font-size: 13px;">
-        Choose the monitoring protocol for your new agent.
+        Choose the monitoring tools for your new agent.
       </p>
 
       <div style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px;">
         <div class="driver-select-card selected" data-type="beszel" onclick="selectProvisionDriver(this, 'beszel')">
           <div class="driver-select-name">Beszel</div>
-          <div class="driver-select-desc">Lightweight server monitoring written in Go (WebSocket & SSH support)</div>
+          <div class="driver-select-desc">Lightweight server monitoring written in Go (WebSocket)</div>
         </div>
         <div class="driver-select-card" data-type="ltstats" onclick="selectProvisionDriver(this, 'ltstats')">
           <div class="driver-select-name">LTstats</div>
@@ -35,7 +35,7 @@
 
       <div style="display: flex; justify-content: flex-end; gap: 10px;">
         <button type="button" class="btn btn-secondary" onclick="document.getElementById('add-agent-modal').style.display='none'">Cancel</button>
-        <button type="button" id="btn-provision-submit" class="btn btn-primary" onclick="submitProvisionAgent()">Generate Instructions</button>
+        <button type="button" id="btn-provision-submit" class="btn btn-primary" onclick="submitProvisionAgent()">Provision</button>
       </div>
     </div>
 

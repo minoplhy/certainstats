@@ -185,7 +185,7 @@ function MetricPanel({
     lastProcessedTs.current = livePoint.Timestamp;
 
     const durationMs = hours * 3600 * 1000;
-    const stepMs = Math.max(60000, durationMs / 1000);
+    const stepMs = Math.max(15000, durationMs / 1000);
 
     const ts = new Date(livePoint.Timestamp).getTime();
     setData(prev => {
@@ -223,7 +223,7 @@ function MetricPanel({
       if (updateInPlace) {
         return [...prev.slice(0, -1), newPt];
       } else {
-        return [...prev, newPt].slice(-1010);
+        return [...prev, newPt].slice(-1200);
       }
     });
   }, [livePoint, loading, hours, activeSeries]);

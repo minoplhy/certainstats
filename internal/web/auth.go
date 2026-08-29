@@ -5,9 +5,8 @@ import (
 	"certainstats/internal/auth"
 	log "certainstats/internal/logger"
 	"certainstats/internal/store"
-	"crypto/rand"
-	"encoding/hex"
 	"net/http"
+	"strings"
 	"time"
 
 	"golang.org/x/crypto/bcrypt"
@@ -71,6 +70,7 @@ func (h *WebHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 
 		username := r.FormValue("username")
 		password := r.FormValue("password")
+		remember := r.FormValue("remember") == "true" || r.FormValue("remember") == "on" || r.FormValue("remember") == "1"
 
 		user, err := h.Store.GetByUsername(r.Context(), username)
 		if err != nil {
@@ -87,20 +87,38 @@ func (h *WebHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		tokBytes := make([]byte, 32)
-		rand.Read(tokBytes)
-		tok := hex.EncodeToString(tokBytes)
-		expiresAt := time.Now().Add(30 * 24 * time.Hour)
+		tok := auth.GenerateSessionToken()
+		duration := 24 * time.Hour
+		if remember {
+			duration = 30 * 24 * time.Hour
+		}
+		expiresAt := time.Now().Add(duration)
 
-		h.Store.SessionCreate(r.Context(), store.Session{
+		// Parse IP Address from headers or RemoteAddr
+		ip := r.Header.Get("X-Forwarded-For")
+		if ip == "" {
+			ip = r.RemoteAddr
+		}
+		if idx := strings.Index(ip, ","); idx != -1 {
+			ip = strings.TrimSpace(ip[:idx])
+		}
+
+		now := time.Now()
+		if err := h.Store.SessionCreate(r.Context(), store.Session{
 			Token:           tok,
 			UserID:          user.UserID,
 			ExpiresAt:       expiresAt,
-			CreatedAt:       time.Now(),
-			LastConnectedAt: time.Now(),
-			IPAddress:       r.RemoteAddr,
+			CreatedAt:       now,
+			LastConnectedAt: now,
+			IPAddress:       ip,
 			UserAgent:       r.UserAgent(),
-		})
+		}); err != nil {
+			log.Printf("failed to create session: %v", err)
+			pd := h.newPageData(r, "Sign In", "", nil)
+			pd.FlashError = "Failed to create session"
+			h.Renderer.RenderHTTP(w, http.StatusInternalServerError, "login.html", pd)
+			return
+		}
 
 		auth.SetSessionCookie(w, r, tok, expiresAt)
 		http.Redirect(w, r, h.PanelPath+"/", http.StatusSeeOther)

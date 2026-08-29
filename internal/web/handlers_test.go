@@ -6,13 +6,16 @@ import (
 	"certainstats/internal/dashboard/accessrules"
 	"certainstats/internal/store"
 	"context"
+	"database/sql"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/go-chi/chi/v5"
+	"golang.org/x/crypto/bcrypt"
 )
 
 type mockWebStore struct {
@@ -33,6 +36,21 @@ type mockWebStore struct {
 	dashboardGetCalled bool
 	dashboardSlug      string
 	publicAgentsCalled bool
+
+	user           *store.User
+	createdSession *store.Session
+}
+
+func (m *mockWebStore) GetByUsername(ctx context.Context, username string) (*store.User, error) {
+	if m.user != nil {
+		return m.user, nil
+	}
+	return nil, sql.ErrNoRows
+}
+
+func (m *mockWebStore) SessionCreate(ctx context.Context, s store.Session) error {
+	m.createdSession = &s
+	return nil
 }
 
 func (m *mockWebStore) AgentProvision(ctx context.Context, agentID, userID, token, nickname, agentType string) error {
@@ -264,3 +282,95 @@ func TestPublicDashboardHandler_ContextCache(t *testing.T) {
 		t.Errorf("expected cache entry to be purged after InvalidateDashboard")
 	}
 }
+
+func TestWebLoginHandler_SessionExpiration(t *testing.T) {
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte("secret123"), bcrypt.DefaultCost)
+	if err != nil {
+		t.Fatalf("failed to hash password: %v", err)
+	}
+
+	renderer, err := NewRenderer()
+	if err != nil {
+		t.Fatalf("failed to init renderer: %v", err)
+	}
+
+	t.Run("default login sets 24h session expiration", func(t *testing.T) {
+		mock := &mockWebStore{
+			user: &store.User{
+				UserID:       "usr_123",
+				Username:     "admin",
+				PasswordHash: string(hashedPassword),
+			},
+		}
+
+		handler := &WebHandler{
+			Renderer:  renderer,
+			Store:     mock,
+			PanelPath: "",
+		}
+
+		form := url.Values{
+			"username": {"admin"},
+			"password": {"secret123"},
+		}
+		req := httptest.NewRequest("POST", "/login", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		rec := httptest.NewRecorder()
+
+		handler.LoginHandler(rec, req)
+
+		if rec.Code != http.StatusSeeOther {
+			t.Fatalf("expected redirect 303, got %d", rec.Code)
+		}
+		if mock.createdSession == nil {
+			t.Fatalf("expected session to be created")
+		}
+
+		// Check session duration is roughly 24 hours
+		duration := mock.createdSession.ExpiresAt.Sub(mock.createdSession.CreatedAt)
+		if duration < 23*time.Hour || duration > 25*time.Hour {
+			t.Errorf("expected ~24h session duration, got %v", duration)
+		}
+	})
+
+	t.Run("remember login sets 30d session expiration", func(t *testing.T) {
+		mock := &mockWebStore{
+			user: &store.User{
+				UserID:       "usr_123",
+				Username:     "admin",
+				PasswordHash: string(hashedPassword),
+			},
+		}
+
+		handler := &WebHandler{
+			Renderer:  renderer,
+			Store:     mock,
+			PanelPath: "",
+		}
+
+		form := url.Values{
+			"username": {"admin"},
+			"password": {"secret123"},
+			"remember": {"true"},
+		}
+		req := httptest.NewRequest("POST", "/login", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		rec := httptest.NewRecorder()
+
+		handler.LoginHandler(rec, req)
+
+		if rec.Code != http.StatusSeeOther {
+			t.Fatalf("expected redirect 303, got %d", rec.Code)
+		}
+		if mock.createdSession == nil {
+			t.Fatalf("expected session to be created")
+		}
+
+		// Check session duration is roughly 30 days
+		duration := mock.createdSession.ExpiresAt.Sub(mock.createdSession.CreatedAt)
+		if duration < 29*24*time.Hour || duration > 31*24*time.Hour {
+			t.Errorf("expected ~30d session duration with remember, got %v", duration)
+		}
+	})
+}
+
