@@ -471,6 +471,47 @@ func TestDashboardUpdateHandler_PreservesAllAgentsWhenNewAdded(t *testing.T) {
 			t.Fatalf("expected all 3 agents to be preserved, got %d", len(mock.dashboardUpdatedAgents))
 		}
 	})
+
+	t.Run("correctly orders agents when agents_order is submitted as an array", func(t *testing.T) {
+		mock := &mockWebStore{}
+		handler := &WebHandler{
+			Renderer:  renderer,
+			Store:     mock,
+			PanelPath: "",
+		}
+
+		form := url.Values{
+			"id":           {"dash-001"},
+			"title":        {"Production Status"},
+			"slug":         {"prod-status"},
+			"max_days":     {"7"},
+			"agents":       {"agent-1", "agent-2", "agent-3"},
+			"agents_order": {"agent-3", "agent-1", "agent-2"}, // array of values
+			"is_dragged":   {"1"},
+		}
+
+		req := httptest.NewRequest("POST", "/dashboard/dash-001", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req = req.WithContext(context.WithValue(req.Context(), ctx.UserIDKey, "user-test"))
+
+		rec := httptest.NewRecorder()
+		handler.DashboardUpdateHandler(rec, req)
+
+		if rec.Code != http.StatusSeeOther {
+			t.Fatalf("expected redirect 303, got %d", rec.Code)
+		}
+
+		if len(mock.dashboardUpdatedAgents) != 3 {
+			t.Fatalf("expected 3 agents, got %d", len(mock.dashboardUpdatedAgents))
+		}
+
+		expectedOrder := []string{"agent-3", "agent-1", "agent-2"}
+		for i, exp := range expectedOrder {
+			if mock.dashboardUpdatedAgents[i].AgentID != exp {
+				t.Errorf("expected agent at index %d to be %s, got %s", i, exp, mock.dashboardUpdatedAgents[i].AgentID)
+			}
+		}
+	})
 }
 
 

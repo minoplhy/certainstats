@@ -130,7 +130,6 @@ func (h *WebHandler) DashboardCreateHandler(w http.ResponseWriter, r *http.Reque
 	}
 
 	var reqAgents []baseresponse.CreateDashboardReqAgent
-	agentsOrderRaw := r.FormValue("agents_order")
 	isDragged := r.FormValue("is_dragged") == "1"
 
 	selectedAgentsMap := make(map[string]bool)
@@ -141,10 +140,15 @@ func (h *WebHandler) DashboardCreateHandler(w http.ResponseWriter, r *http.Reque
 		}
 	}
 
+	agentsOrderValues := r.Form["agents_order"]
+	if len(agentsOrderValues) == 0 {
+		agentsOrderValues = r.Form["agents_order[]"]
+	}
+
 	var orderedAgentIDs []string
 	seen := make(map[string]bool)
-	if agentsOrderRaw != "" {
-		for _, aid := range strings.Split(agentsOrderRaw, ",") {
+	for _, raw := range agentsOrderValues {
+		for _, aid := range strings.Split(raw, ",") {
 			aid = strings.TrimSpace(aid)
 			if aid != "" && selectedAgentsMap[aid] && !seen[aid] {
 				orderedAgentIDs = append(orderedAgentIDs, aid)
@@ -237,7 +241,6 @@ func (h *WebHandler) DashboardUpdateHandler(w http.ResponseWriter, r *http.Reque
 	}
 
 	var reqAgents []baseresponse.CreateDashboardReqAgent
-	agentsOrderRaw := r.FormValue("agents_order")
 	isDragged := r.FormValue("is_dragged") == "1"
 
 	selectedAgentsMap := make(map[string]bool)
@@ -248,10 +251,15 @@ func (h *WebHandler) DashboardUpdateHandler(w http.ResponseWriter, r *http.Reque
 		}
 	}
 
+	agentsOrderValues := r.Form["agents_order"]
+	if len(agentsOrderValues) == 0 {
+		agentsOrderValues = r.Form["agents_order[]"]
+	}
+
 	var orderedAgentIDs []string
 	seen := make(map[string]bool)
-	if agentsOrderRaw != "" {
-		for _, aid := range strings.Split(agentsOrderRaw, ",") {
+	for _, raw := range agentsOrderValues {
+		for _, aid := range strings.Split(raw, ",") {
 			aid = strings.TrimSpace(aid)
 			if aid != "" && selectedAgentsMap[aid] && !seen[aid] {
 				orderedAgentIDs = append(orderedAgentIDs, aid)

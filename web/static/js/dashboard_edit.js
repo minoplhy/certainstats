@@ -112,9 +112,22 @@
   }
 
   function syncOrderInput() {
+    const container = document.getElementById('agents-order-container');
+    if (container) {
+      container.innerHTML = '';
+      selectedAgentsOrder.forEach(function(agentId) {
+        if (agentId && agentId.trim()) {
+          const input = document.createElement('input');
+          input.type = 'hidden';
+          input.name = 'agents_order';
+          input.value = agentId.trim();
+          container.appendChild(input);
+        }
+      });
+    }
     const orderInput = document.getElementById('agents-order-input');
-    const draggedInput = document.getElementById('is-dragged-input');
     if (orderInput) orderInput.value = selectedAgentsOrder.join(',');
+    const draggedInput = document.getElementById('is-dragged-input');
     if (draggedInput) draggedInput.value = isDragged ? '1' : '0';
   }
 
