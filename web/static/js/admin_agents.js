@@ -252,6 +252,101 @@
     });
   }
 
+  function startInpageAgentNameEdit() {
+    if (!currentActiveAgentId) return;
+    const agent = agentsData.find(a => a.agent_id === currentActiveAgentId);
+    const readEl = document.getElementById('detail-name-read-container');
+    const editEl = document.getElementById('detail-name-edit-container');
+    const input = document.getElementById('detail-name-input');
+    if (readEl) readEl.style.display = 'none';
+    if (editEl) editEl.style.display = 'inline-flex';
+    if (input) {
+      input.value = agent ? (agent.nickname || agent.agent_id) : '';
+      input.focus();
+      input.select();
+    }
+  }
+
+  function cancelInpageAgentNameEdit() {
+    const readEl = document.getElementById('detail-name-read-container');
+    const editEl = document.getElementById('detail-name-edit-container');
+    if (editEl) editEl.style.display = 'none';
+    if (readEl) readEl.style.display = 'inline-flex';
+  }
+
+  function saveInpageAgentName() {
+    if (!currentActiveAgentId) return;
+    const input = document.getElementById('detail-name-input');
+    const saveBtn = document.getElementById('detail-name-save-btn');
+    const newNickname = input ? input.value.trim() : '';
+
+    if (!newNickname) {
+      window.CertainStatsTelemetry.showToast('Nickname cannot be empty', false);
+      if (input) input.focus();
+      return;
+    }
+    if (newNickname.length > 64) {
+      window.CertainStatsTelemetry.showToast('Nickname cannot exceed 64 characters', false);
+      if (input) input.focus();
+      return;
+    }
+
+    if (saveBtn) {
+      saveBtn.disabled = true;
+      saveBtn.textContent = 'Saving...';
+    }
+
+    fetch(panelPath + '/api/agent', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ agent_id: currentActiveAgentId, nickname: newNickname })
+    }).then(r => {
+      if (saveBtn) {
+        saveBtn.disabled = false;
+        saveBtn.textContent = 'Save';
+      }
+      if (r.ok) {
+        const agent = agentsData.find(a => a.agent_id === currentActiveAgentId);
+        if (agent) {
+          agent.nickname = newNickname;
+        }
+
+        // Update active name in header
+        const activeNameEl = document.getElementById('detail-active-name');
+        if (activeNameEl) activeNameEl.textContent = newNickname;
+
+        // Update overview grid card
+        document.querySelectorAll('.agent-card-item[data-agent-id="' + currentActiveAgentId + '"]').forEach(card => {
+          card.setAttribute('data-agent-name', newNickname);
+          const nameSpan = card.querySelector('.agent-name span:not(.status-dot)');
+          if (nameSpan) nameSpan.textContent = newNickname;
+        });
+
+        // Update overview list row
+        document.querySelectorAll('.agent-row-item[data-agent-id="' + currentActiveAgentId + '"]').forEach(row => {
+          row.setAttribute('data-agent-name', newNickname);
+          const nameStrong = row.querySelector('.agent-name strong');
+          if (nameStrong) nameStrong.textContent = newNickname;
+        });
+
+        cancelInpageAgentNameEdit();
+        window.CertainStatsTelemetry.showToast('Agent renamed to ' + newNickname, true);
+      } else {
+        r.json().then(errData => {
+          window.CertainStatsTelemetry.showToast(errData.error || 'Failed to rename agent', false);
+        }).catch(() => {
+          window.CertainStatsTelemetry.showToast('Failed to rename agent', false);
+        });
+      }
+    }).catch(() => {
+      if (saveBtn) {
+        saveBtn.disabled = false;
+        saveBtn.textContent = 'Save';
+      }
+      window.CertainStatsTelemetry.showToast('Network error renaming agent', false);
+    });
+  }
+
   function handleInpageZoom(startMs, endMs) {
     inpageCustomRange = { start: startMs, end: endMs };
     if (inpageTimePicker) {
@@ -1046,6 +1141,15 @@
           if (e.key === 'Escape') cancelInpageHeaderNoteEdit();
         });
       }
+
+      // Inpage Header Agent Name Enter/Escape Key Handler
+      const inpageNameInput = document.getElementById('detail-name-input');
+      if (inpageNameInput) {
+        inpageNameInput.addEventListener('keydown', function(e) {
+          if (e.key === 'Enter') saveInpageAgentName();
+          if (e.key === 'Escape') cancelInpageAgentNameEdit();
+        });
+      }
     });
 
     setInterval(syncAdminAgentsMetadata, ADMIN_METADATA_SYNC_INTERVAL_MS);
@@ -1066,6 +1170,9 @@
     handleInpageHeaderNoteClick: handleInpageHeaderNoteClick,
     cancelInpageHeaderNoteEdit: cancelInpageHeaderNoteEdit,
     saveInpageHeaderInlineNote: saveInpageHeaderInlineNote,
+    startInpageAgentNameEdit: startInpageAgentNameEdit,
+    cancelInpageAgentNameEdit: cancelInpageAgentNameEdit,
+    saveInpageAgentName: saveInpageAgentName,
     startInpageExpandedNotesEdit: startInpageExpandedNotesEdit,
     cancelInpageExpandedNotesEdit: cancelInpageExpandedNotesEdit,
     saveInpageExpandedNotes: saveInpageExpandedNotes,
@@ -1084,6 +1191,9 @@
   window.handleInpageHeaderNoteClick = handleInpageHeaderNoteClick;
   window.cancelInpageHeaderNoteEdit = cancelInpageHeaderNoteEdit;
   window.saveInpageHeaderInlineNote = saveInpageHeaderInlineNote;
+  window.startInpageAgentNameEdit = startInpageAgentNameEdit;
+  window.cancelInpageAgentNameEdit = cancelInpageAgentNameEdit;
+  window.saveInpageAgentName = saveInpageAgentName;
   window.startInpageExpandedNotesEdit = startInpageExpandedNotesEdit;
   window.cancelInpageExpandedNotesEdit = cancelInpageExpandedNotesEdit;
   window.saveInpageExpandedNotes = saveInpageExpandedNotes;

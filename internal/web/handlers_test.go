@@ -42,6 +42,11 @@ type mockWebStore struct {
 
 	user           *store.User
 	createdSession *store.Session
+
+	agentUpdateCalled bool
+	updatedAgentID    string
+	updatedNickname   *string
+	updatedNote       *string
 }
 
 func (m *mockWebStore) GetByUsername(ctx context.Context, username string) (*store.User, error) {
@@ -60,6 +65,14 @@ func (m *mockWebStore) AgentProvision(ctx context.Context, agentID, userID, toke
 	m.agentProvisionCalled = true
 	m.provisionedType = agentType
 	m.provisionedNick = nickname
+	return nil
+}
+
+func (m *mockWebStore) AgentUpdate(ctx context.Context, agentID, userID string, nickname *string, note *string) error {
+	m.agentUpdateCalled = true
+	m.updatedAgentID = agentID
+	m.updatedNickname = nickname
+	m.updatedNote = note
 	return nil
 }
 
@@ -554,5 +567,114 @@ func TestDashboardUpdateHandler_PreservesAllAgentsWhenNewAdded(t *testing.T) {
 		}
 	})
 }
+
+func TestAgentRenameHandler(t *testing.T) {
+	t.Run("Valid rename redirects and updates store", func(t *testing.T) {
+		mock := &mockWebStore{}
+		handler := &WebHandler{
+			Store:     mock,
+			PanelPath: "",
+		}
+
+		form := url.Values{
+			"agent_id":    {"agent-123"},
+			"nickname":    {"web-prod-01"},
+			"redirect_to": {"/agents/management"},
+		}
+
+		req := httptest.NewRequest("POST", "/agent/rename", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req = req.WithContext(context.WithValue(req.Context(), ctx.UserIDKey, "user-test"))
+
+		rec := httptest.NewRecorder()
+		handler.AgentRenameHandler(rec, req)
+
+		if rec.Code != http.StatusSeeOther {
+			t.Fatalf("expected redirect 303, got %d", rec.Code)
+		}
+		if !mock.agentUpdateCalled {
+			t.Fatalf("expected AgentUpdate to be called")
+		}
+		if mock.updatedAgentID != "agent-123" {
+			t.Errorf("expected agent ID 'agent-123', got '%s'", mock.updatedAgentID)
+		}
+		if mock.updatedNickname == nil || *mock.updatedNickname != "web-prod-01" {
+			t.Errorf("expected nickname 'web-prod-01', got %v", mock.updatedNickname)
+		}
+	})
+
+	t.Run("Empty nickname returns 400", func(t *testing.T) {
+		mock := &mockWebStore{}
+		handler := &WebHandler{
+			Store:     mock,
+			PanelPath: "",
+		}
+
+		form := url.Values{
+			"agent_id": {"agent-123"},
+			"nickname": {"   "},
+		}
+
+		req := httptest.NewRequest("POST", "/agent/rename", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req = req.WithContext(context.WithValue(req.Context(), ctx.UserIDKey, "user-test"))
+
+		rec := httptest.NewRecorder()
+		handler.AgentRenameHandler(rec, req)
+
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("expected status 400, got %d", rec.Code)
+		}
+	})
+
+	t.Run("Oversized nickname > 64 chars returns 400", func(t *testing.T) {
+		mock := &mockWebStore{}
+		handler := &WebHandler{
+			Store:     mock,
+			PanelPath: "",
+		}
+
+		form := url.Values{
+			"agent_id": {"agent-123"},
+			"nickname": {strings.Repeat("a", 65)},
+		}
+
+		req := httptest.NewRequest("POST", "/agent/rename", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req = req.WithContext(context.WithValue(req.Context(), ctx.UserIDKey, "user-test"))
+
+		rec := httptest.NewRecorder()
+		handler.AgentRenameHandler(rec, req)
+
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("expected status 400, got %d", rec.Code)
+		}
+	})
+
+	t.Run("Missing agent_id returns 400", func(t *testing.T) {
+		mock := &mockWebStore{}
+		handler := &WebHandler{
+			Store:     mock,
+			PanelPath: "",
+		}
+
+		form := url.Values{
+			"agent_id": {""},
+			"nickname": {"web-prod"},
+		}
+
+		req := httptest.NewRequest("POST", "/agent/rename", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req = req.WithContext(context.WithValue(req.Context(), ctx.UserIDKey, "user-test"))
+
+		rec := httptest.NewRecorder()
+		handler.AgentRenameHandler(rec, req)
+
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("expected status 400, got %d", rec.Code)
+		}
+	})
+}
+
 
 

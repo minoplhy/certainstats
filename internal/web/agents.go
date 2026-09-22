@@ -3,6 +3,7 @@ package web
 import (
 	"certainstats/internal/agent"
 	agentdata "certainstats/internal/agent_data"
+	ctx "certainstats/internal/context"
 	"certainstats/internal/store"
 	"crypto/ed25519"
 	"crypto/rand"
@@ -148,6 +149,42 @@ func (h *WebHandler) AgentResetSSHHandler(w http.ResponseWriter, r *http.Request
 			}
 		}
 	}
+
+	redir := r.FormValue("redirect_to")
+	if redir == "" {
+		redir = h.PanelPath + "/agents/management"
+	}
+	http.Redirect(w, r, redir, http.StatusSeeOther)
+}
+
+func (h *WebHandler) AgentRenameHandler(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "Invalid form", http.StatusBadRequest)
+		return
+	}
+
+	userID := getUserID(r)
+	agentID := strings.TrimSpace(r.FormValue("agent_id"))
+	if agentID == "" {
+		http.Error(w, "Agent ID is required", http.StatusBadRequest)
+		return
+	}
+
+	nickname := strings.TrimSpace(r.FormValue("nickname"))
+	if nickname == "" {
+		http.Error(w, "Nickname cannot be empty", http.StatusBadRequest)
+		return
+	}
+	if len(nickname) > 64 {
+		http.Error(w, "Nickname too long (max 64 chars)", http.StatusBadRequest)
+		return
+	}
+
+	if err := h.Store.AgentUpdate(r.Context(), agentID, userID, &nickname, nil); err != nil {
+		http.Error(w, "Failed to rename agent: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	ctx.InvalidateAgent(agentID)
 
 	redir := r.FormValue("redirect_to")
 	if redir == "" {

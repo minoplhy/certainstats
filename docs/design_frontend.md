@@ -200,22 +200,31 @@ Compact metadata chips:
 
 ---
 
-### 3.4 In-Place Notes System
+### 3.4 In-Place Agent Name & Notes System
 
-Replicated directly from the original `frontend-admin` design with a zero-modal, dual-tier interaction model:
+Replicated with a zero-modal, in-place editing interaction model across the panel:
 
 ```
-[ Monitor Header ]  ● Online  [beszel]  |  [No notes / short text / See below] notes
-                                                 │
-                                                 ├── Short/Empty → Click opens inline <input> in header
-                                                 └── Long/Multiline → Click scrolls to #agent-notes-section
+[ Monitor Header ]  ● Online  [ Node Name ] [edit]  [beszel]  |  [No notes / short text / See below] notes
+                                  │                                   │
+                                  │                                   ├── Short/Empty → Click opens inline <input> in header
+                                  │                                   └── Long/Multiline → Click scrolls to #agent-notes-section
+                                  │
+                                  └── Click opens inline <input> directly in title + [Save] + [✕]
 ```
 
-1. **Header Inline Notes Widget** (`#header-inline-notes`):
+1. **In-Place Agent Name Editing**:
+   - **Affordance**: The agent title is styled with `.editable-title` (dashed underline, subtle edit pencil SVG, `cursor: pointer`, hover accent transition).
+   - **Click to Edit**: Clicking on the name activates an inline `<input>` with `[Save]` and `[✕]` right in the header bar.
+   - **Keyboard & Actions**: Pressing `Enter` or clicking `Save` sends `PUT /api/agent` (with Web 1.0 `POST /agent/rename` fallback), updates in-memory stores and all DOM elements in real-time, and displays a success toast. Pressing `Escape` or clicking `✕` reverts changes immediately.
+   - **Fleet Management**: The same click-to-edit interaction model is implemented on the Fleet Management page (`/agents/management`) for table rows.
+   - **Zero-Modal**: No popup dialogs or modal overlays are used for renaming agents.
+
+2. **Header Inline Notes Widget** (`#header-inline-notes`):
    - **Empty**: Displays `"No notes"`. Clicking switches to an inline `<input>` + `Save` + `✕` directly in the header bar.
    - **Short (≤ 40 chars & single line)**: Displays the note text with a dashed underline. Clicking opens the header inline editor.
    - **Long (> 40 chars or multiline `\n`)**: Displays `"See below"`. Clicking smoothly scrolls the viewport to `#agent-notes-section`.
-2. **Expanded Notes Section** (`#agent-notes-section`):
+3. **Expanded Notes Section** (`#agent-notes-section`):
    - Automatically appears below specifications when a note is long; hidden when short or empty.
    - Read mode: Pre-wrap formatted monospace card with an **Edit** button.
    - Edit mode: Expands into full `<textarea>` with **Save Note** and **Cancel** controls.

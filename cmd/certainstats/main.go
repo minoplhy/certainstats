@@ -236,6 +236,7 @@ func main() {
 
 		rt.Get("/agents/management", webHandler.RequireAuthWeb(webHandler.AgentManagementHandler))
 		rt.Post("/agent/provision", webHandler.RequireAuthWeb(webHandler.AgentProvisionHandler))
+		rt.Post("/agent/rename", webHandler.RequireAuthWeb(webHandler.AgentRenameHandler))
 		rt.Post("/agent/reset/token", webHandler.RequireAuthWeb(webHandler.AgentResetTokenHandler))
 		rt.Post("/agent/reset/ssh", webHandler.RequireAuthWeb(webHandler.AgentResetSSHHandler))
 		rt.Post("/agent/delete", webHandler.RequireAuthWeb(webHandler.AgentDeleteHandler))

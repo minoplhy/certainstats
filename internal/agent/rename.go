@@ -63,6 +63,8 @@ func RenameAgentHandler(agent store.AgentStore) http.HandlerFunc {
 			return
 		}
 
+		ctx.InvalidateAgent(req.AgentID)
+
 		w.Header().Set("Content-Type", "application/json")
 		respData := map[string]any{"status": "ok"}
 		if nickname != nil {

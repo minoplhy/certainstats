@@ -1685,3 +1685,33 @@ body {
   line-height: 1.4;
 }
 
+/* In-Place Editable Title & Pencil Affordance */
+.editable-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  border-bottom: 1px dashed var(--border-hover);
+  transition: border-color 0.2s ease, color 0.2s ease;
+}
+
+.editable-title:hover {
+  border-bottom-color: var(--accent-primary);
+  color: var(--text-primary);
+}
+
+.editable-title:hover .editable-pencil {
+  color: var(--accent-primary);
+  opacity: 1;
+}
+
+.editable-pencil {
+  color: var(--text-muted);
+  opacity: 0.6;
+  transition: color 0.2s ease, opacity 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+

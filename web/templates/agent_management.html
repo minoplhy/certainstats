@@ -31,14 +31,22 @@
       </thead>
       <tbody>
         {{range .Agents}}
-        <tr>
+        <tr data-mgmt-agent-id="{{.AgentID}}">
           <td>
-            <div style="font-weight: 700;">
-              <a href="{{$.PanelPath}}/{{.AgentID}}" style="color: var(--text-primary); text-decoration: none;">
-                {{.Nickname}}
-              </a>
+            <div id="mgmt-name-read-{{.AgentID}}" class="editable-title" onclick="startMgmtAgentRename('{{.AgentID}}')" title="Click to edit nickname">
+              <span class="agent-mgmt-nickname" style="font-weight: 700; color: var(--text-primary);">{{.Nickname}}</span>
+              <span class="editable-pencil">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+              </span>
             </div>
-            <div class="mono" style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">{{.AgentID}}</div>
+            <div id="mgmt-name-edit-{{.AgentID}}" style="display: none; align-items: center; gap: 4px; margin-bottom: 2px;">
+              <input type="text" id="mgmt-name-input-{{.AgentID}}" value="{{.Nickname}}" class="form-input" style="padding: 2px 6px; font-size: 12px; height: 26px; width: 140px;" maxlength="64" autocomplete="off">
+              <button type="button" id="mgmt-name-save-btn-{{.AgentID}}" class="btn btn-primary btn-sm" style="padding: 2px 8px; font-size: 11px; height: 26px;" onclick="saveMgmtAgentRename('{{.AgentID}}')">Save</button>
+              <button type="button" class="btn btn-secondary btn-sm" style="padding: 2px 6px; font-size: 11px; height: 26px;" onclick="cancelMgmtAgentRename('{{.AgentID}}')">✕</button>
+            </div>
+            <div class="mono" style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">
+              <a href="{{$.PanelPath}}/{{.AgentID}}" style="color: var(--text-muted); text-decoration: none;" title="Open Node Telemetry">{{.AgentID}} ↗</a>
+            </div>
           </td>
           <td>
             <span class="badge badge-indigo">{{if .AgentType}}{{.AgentType}}{{else}}beszel{{end}}</span>
