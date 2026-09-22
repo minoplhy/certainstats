@@ -1,6 +1,7 @@
 package sqlite
 
 import (
+	baseresponse "certainstats/internal/base/response"
 	"certainstats/internal/dashboard/accessrules"
 	"certainstats/internal/store"
 	"context"
@@ -374,3 +375,76 @@ func TestDashboardStoreOperations(t *testing.T) {
 		t.Fatalf("DashboardDelete error: %v", err)
 	}
 }
+
+func TestDashboardUpdate_AddNewAgentsPreservesExisting(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	userID := "usr_dash_sync"
+	_ = s.CreateUser(ctx, userID, "dash_sync_user", "hash", true)
+
+	// Provision 3 agents
+	for _, id := range []string{"ag_1", "ag_2", "ag_3"} {
+		if err := s.AgentProvision(ctx, id, userID, "tok_"+id, "Agent "+id, "beszel"); err != nil {
+			t.Fatalf("AgentProvision failed: %v", err)
+		}
+	}
+
+	dash := store.Dashboard{
+		DashboardID: "dash_sync_001",
+		UserID:      userID,
+		Slug:        "cluster-sync",
+		Title:       "Cluster Sync",
+		AccessRules: accessrules.AccessRules{},
+	}
+	if err := s.DashboardCreate(ctx, dash); err != nil {
+		t.Fatalf("DashboardCreate failed: %v", err)
+	}
+
+	// Step 1: Initial assign agent 1 and 2
+	initialAgents := []baseresponse.CreateDashboardReqAgent{
+		{AgentID: "ag_1", Alias: "Node 1", SortKey: "00000000"},
+		{AgentID: "ag_2", Alias: "Node 2", SortKey: "00000001"},
+	}
+	if err := s.DashboardUpdate(ctx, dash, initialAgents); err != nil {
+		t.Fatalf("DashboardUpdate initial failed: %v", err)
+	}
+
+	agents, err := s.DashboardGetAgents(ctx, dash.DashboardID, userID)
+	if err != nil {
+		t.Fatalf("DashboardGetAgents failed: %v", err)
+	}
+	if len(agents) != 2 {
+		t.Fatalf("expected 2 agents, got %d", len(agents))
+	}
+
+	// Step 2: Add agent 3 alongside agent 1 and 2
+	updatedAgents := []baseresponse.CreateDashboardReqAgent{
+		{AgentID: "ag_1", Alias: "Node 1", SortKey: "00000000"},
+		{AgentID: "ag_2", Alias: "Node 2", SortKey: "00000001"},
+		{AgentID: "ag_3", Alias: "Node 3", SortKey: "00000002"},
+	}
+	if err := s.DashboardUpdate(ctx, dash, updatedAgents); err != nil {
+		t.Fatalf("DashboardUpdate with new agent failed: %v", err)
+	}
+
+	agents, err = s.DashboardGetAgents(ctx, dash.DashboardID, userID)
+	if err != nil {
+		t.Fatalf("DashboardGetAgents failed: %v", err)
+	}
+	if len(agents) != 3 {
+		t.Fatalf("expected 3 agents after update, got %d: %+v", len(agents), agents)
+	}
+
+	// Verify all 3 IDs exist
+	found := make(map[string]bool)
+	for _, a := range agents {
+		found[a.AgentID] = true
+	}
+	for _, expectedID := range []string{"ag_1", "ag_2", "ag_3"} {
+		if !found[expectedID] {
+			t.Errorf("expected agent %s to be present in dashboard, but was missing", expectedID)
+		}
+	}
+}
+

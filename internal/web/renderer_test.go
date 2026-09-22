@@ -127,3 +127,95 @@ func TestRenderer_ParseAndRender(t *testing.T) {
 	}
 }
 
+func TestDashboardEdit_RenderJSValid(t *testing.T) {
+	renderer, err := NewRenderer()
+	if err != nil {
+		t.Fatalf("NewRenderer failed: %v", err)
+	}
+
+	t.Run("renders valid isDragged boolean when agents have SortKey", func(t *testing.T) {
+		var buf bytes.Buffer
+		pd := PageData{
+			Title:         "Edit Dashboard",
+			PanelPath:     "/",
+			StaticPath:    "/static",
+			ActiveNav:     "dashboards",
+			Authenticated: true,
+			Year:          2026,
+			Data: map[string]any{
+				"IsCreate": false,
+				"Dashboard": store.Dashboard{
+					DashboardID: "dash-multi-agent",
+					Title:       "Multi Agent Dash",
+					Slug:        "multi-agent",
+					AccessRules: accessrules.AccessRules{},
+				},
+				"AvailableAgents": []store.Agent{
+					{AgentID: "node-1", Nickname: "Server 01"},
+					{AgentID: "node-2", Nickname: "Server 02"},
+				},
+				"DashboardAgents": []store.PublicAgentIdentity{
+					{AgentID: "node-1", PublicAgentNickname: "Edge 1", SortKey: "00000000"},
+					{AgentID: "node-2", PublicAgentNickname: "Edge 2", SortKey: "00000001"},
+				},
+				"IsDragged": true,
+			},
+		}
+
+		err := renderer.Render(&buf, "dashboard_edit.html", pd)
+		if err != nil {
+			t.Fatalf("Failed to render dashboard_edit.html: %v", err)
+		}
+
+		output := buf.String()
+		if strings.Contains(output, "true false") || strings.Contains(output, "truetrue") {
+			t.Errorf("Rendered output contains invalid JS tokens: %s", output)
+		}
+		if !strings.Contains(output, "isDragged: true,") {
+			t.Errorf("Expected output to contain 'isDragged: true,', got: %s", output)
+		}
+		if !strings.Contains(output, `value="node-1,node-2"`) {
+			t.Errorf("Expected pre-populated agents_order to contain 'node-1,node-2', got: %s", output)
+		}
+	})
+
+	t.Run("renders valid isDragged false when agents do not have SortKey", func(t *testing.T) {
+		var buf bytes.Buffer
+		pd := PageData{
+			Title:         "Edit Dashboard",
+			PanelPath:     "/",
+			StaticPath:    "/static",
+			ActiveNav:     "dashboards",
+			Authenticated: true,
+			Year:          2026,
+			Data: map[string]any{
+				"IsCreate": false,
+				"Dashboard": store.Dashboard{
+					DashboardID: "dash-nosort",
+					Title:       "No Sort Dash",
+					Slug:        "no-sort",
+					AccessRules: accessrules.AccessRules{},
+				},
+				"AvailableAgents": []store.Agent{
+					{AgentID: "node-1", Nickname: "Server 01"},
+				},
+				"DashboardAgents": []store.PublicAgentIdentity{
+					{AgentID: "node-1", PublicAgentNickname: "Edge 1", SortKey: ""},
+				},
+				"IsDragged": false,
+			},
+		}
+
+		err := renderer.Render(&buf, "dashboard_edit.html", pd)
+		if err != nil {
+			t.Fatalf("Failed to render dashboard_edit.html: %v", err)
+		}
+
+		output := buf.String()
+		if !strings.Contains(output, "isDragged: false,") {
+			t.Errorf("Expected output to contain 'isDragged: false,', got: %s", output)
+		}
+	})
+}
+
+

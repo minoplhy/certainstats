@@ -3,6 +3,7 @@ package web
 import (
 	"certainstats/internal/dashboard/accessrules"
 	"certainstats/internal/minify"
+	"certainstats/internal/store"
 	"certainstats/web"
 	"fmt"
 	"html/template"
@@ -157,6 +158,16 @@ func NewRenderer() (*TemplateRenderer, error) {
 			if r, ok := rules.(accessrules.AccessRule); ok {
 				for _, m := range r.AllowedMetrics {
 					if m == metric {
+						return true
+					}
+				}
+			}
+			return false
+		},
+		"hasSortKey": func(agents any) bool {
+			if list, ok := agents.([]store.PublicAgentIdentity); ok {
+				for _, a := range list {
+					if a.SortKey != "" {
 						return true
 					}
 				}

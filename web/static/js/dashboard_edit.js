@@ -52,6 +52,13 @@
       aliasInput.disabled = !checked;
     }
 
+    // Ensure all checked checkboxes are represented in selectedAgentsOrder
+    document.querySelectorAll('input[type="checkbox"][name="agents"]:checked').forEach(function(cb) {
+      if (cb.value && !selectedAgentsOrder.includes(cb.value)) {
+        selectedAgentsOrder.push(cb.value);
+      }
+    });
+
     if (checked) {
       if (!selectedAgentsOrder.includes(agentId)) {
         selectedAgentsOrder.push(agentId);
@@ -122,7 +129,10 @@
       badge.style.display = selectedAgentsOrder.length > 0 ? 'inline-block' : 'none';
     }
 
-    if (!reorderSec || !reorderList) return;
+    if (!reorderSec || !reorderList) {
+      syncOrderInput();
+      return;
+    }
 
     if (selectedAgentsOrder.length <= 1) {
       reorderSec.style.display = 'none';
@@ -190,26 +200,52 @@
 
   function init(options) {
     options = options || {};
-    selectedAgentsOrder = options.selectedAgentsOrder || [];
+    selectedAgentsOrder = (options.selectedAgentsOrder || []).filter(function(id) {
+      return typeof id === 'string' && id.trim().length > 0;
+    });
     isDragged = !!options.isDragged;
     isCreate = !!options.isCreate;
     dashboardId = options.dashboardId || '';
-    panelPath = options.panelPath || window.CertainStatsTelemetry.getPanelPath();
+    panelPath = options.panelPath || (window.CertainStatsTelemetry && window.CertainStatsTelemetry.getPanelPath ? window.CertainStatsTelemetry.getPanelPath() : '');
 
-    window.CertainStatsTelemetry.onReady(function() {
-      // Live Slug auto-generation on create
-      if (isCreate) {
-        const titleInput = document.getElementById('dash-title-input');
-        const slugInput = document.getElementById('dash-slug-input');
-        if (titleInput && slugInput) {
-          titleInput.addEventListener('input', function() {
-            slugInput.value = this.value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
-          });
-        }
+    // Fallback: ensure all currently checked checkboxes are present in selectedAgentsOrder
+    document.querySelectorAll('input[type="checkbox"][name="agents"]:checked').forEach(function(cb) {
+      if (cb.value && !selectedAgentsOrder.includes(cb.value)) {
+        selectedAgentsOrder.push(cb.value);
       }
-
-      updateReorderSection();
     });
+
+    updateReorderSection();
+
+    // Hook form submit to ensure all currently checked agents are synced to agents-order-input
+    const form = document.getElementById('dashboard-form');
+    if (form) {
+      form.addEventListener('submit', function() {
+        document.querySelectorAll('input[type="checkbox"][name="agents"]:checked').forEach(function(cb) {
+          if (cb.value && !selectedAgentsOrder.includes(cb.value)) {
+            selectedAgentsOrder.push(cb.value);
+          }
+        });
+        syncOrderInput();
+      });
+    }
+
+    if (window.CertainStatsTelemetry && window.CertainStatsTelemetry.onReady) {
+      window.CertainStatsTelemetry.onReady(function() {
+        // Live Slug auto-generation on create
+        if (isCreate) {
+          const titleInput = document.getElementById('dash-title-input');
+          const slugInput = document.getElementById('dash-slug-input');
+          if (titleInput && slugInput) {
+            titleInput.addEventListener('input', function() {
+              slugInput.value = this.value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+            });
+          }
+        }
+
+        updateReorderSection();
+      });
+    }
   }
 
   window.CertainStatsDashboardEdit = {

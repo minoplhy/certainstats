@@ -1,6 +1,7 @@
 package web
 
 import (
+	baseresponse "certainstats/internal/base/response"
 	c "certainstats/internal/base/alert"
 	ctx "certainstats/internal/context"
 	"certainstats/internal/dashboard/accessrules"
@@ -33,9 +34,11 @@ type mockWebStore struct {
 	targetCreated c.AlertTarget
 	targetUpdated c.AlertTarget
 
-	dashboardGetCalled bool
-	dashboardSlug      string
-	publicAgentsCalled bool
+	dashboardGetCalled     bool
+	dashboardSlug          string
+	publicAgentsCalled     bool
+	dashboardUpdated       store.Dashboard
+	dashboardUpdatedAgents []baseresponse.CreateDashboardReqAgent
 
 	user           *store.User
 	createdSession *store.Session
@@ -107,6 +110,12 @@ func (m *mockWebStore) DashboardGetPublicAgents(ctx context.Context, slug string
 	return []store.PublicAgent{
 		{PublicID: "pub_1", Name: "Node-1"},
 	}, nil
+}
+
+func (m *mockWebStore) DashboardUpdate(ctx context.Context, d store.Dashboard, newAgents []baseresponse.CreateDashboardReqAgent) error {
+	m.dashboardUpdated = d
+	m.dashboardUpdatedAgents = newAgents
+	return nil
 }
 
 func TestAgentProvisionHandler_BeszelSSHAndRedirect(t *testing.T) {
@@ -373,4 +382,95 @@ func TestWebLoginHandler_SessionExpiration(t *testing.T) {
 		}
 	})
 }
+
+func TestDashboardUpdateHandler_PreservesAllAgentsWhenNewAdded(t *testing.T) {
+	renderer, err := NewRenderer()
+	if err != nil {
+		t.Fatalf("failed to init renderer: %v", err)
+	}
+
+	t.Run("preserves existing agents when agents_order only contains the new agent", func(t *testing.T) {
+		mock := &mockWebStore{}
+		handler := &WebHandler{
+			Renderer:  renderer,
+			Store:     mock,
+			PanelPath: "",
+		}
+
+		// Simulate form submission where existing agents are checked (agent-1, agent-2),
+		// new agent is added (agent-3), but agents_order only contains "agent-3"
+		form := url.Values{
+			"id":           {"dash-001"},
+			"title":        {"Production Status"},
+			"slug":         {"prod-status"},
+			"max_days":     {"7"},
+			"agents":       {"agent-1", "agent-2", "agent-3"},
+			"agents_order": {"agent-3"}, // Partial or desynced agents_order
+			"is_dragged":   {"0"},
+			"alias_agent-1": {"Server 1"},
+			"alias_agent-2": {"Server 2"},
+			"alias_agent-3": {"Server 3"},
+		}
+
+		req := httptest.NewRequest("POST", "/dashboard/dash-001", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req = req.WithContext(context.WithValue(req.Context(), ctx.UserIDKey, "user-test"))
+
+		rec := httptest.NewRecorder()
+		handler.DashboardUpdateHandler(rec, req)
+
+		if rec.Code != http.StatusSeeOther {
+			t.Fatalf("expected redirect 303, got %d", rec.Code)
+		}
+
+		if len(mock.dashboardUpdatedAgents) != 3 {
+			t.Fatalf("expected all 3 agents to be preserved, got %d: %+v", len(mock.dashboardUpdatedAgents), mock.dashboardUpdatedAgents)
+		}
+
+		agentIDs := make(map[string]bool)
+		for _, a := range mock.dashboardUpdatedAgents {
+			agentIDs[a.AgentID] = true
+		}
+		for _, expectedID := range []string{"agent-1", "agent-2", "agent-3"} {
+			if !agentIDs[expectedID] {
+				t.Errorf("expected agent %s to be preserved, but was missing", expectedID)
+			}
+		}
+	})
+
+	t.Run("preserves existing agents when agents_order is completely empty", func(t *testing.T) {
+		mock := &mockWebStore{}
+		handler := &WebHandler{
+			Renderer:  renderer,
+			Store:     mock,
+			PanelPath: "",
+		}
+
+		form := url.Values{
+			"id":           {"dash-001"},
+			"title":        {"Production Status"},
+			"slug":         {"prod-status"},
+			"max_days":     {"7"},
+			"agents":       {"agent-1", "agent-2", "agent-3"},
+			"agents_order": {""},
+			"is_dragged":   {"0"},
+		}
+
+		req := httptest.NewRequest("POST", "/dashboard/dash-001", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req = req.WithContext(context.WithValue(req.Context(), ctx.UserIDKey, "user-test"))
+
+		rec := httptest.NewRecorder()
+		handler.DashboardUpdateHandler(rec, req)
+
+		if rec.Code != http.StatusSeeOther {
+			t.Fatalf("expected redirect 303, got %d", rec.Code)
+		}
+
+		if len(mock.dashboardUpdatedAgents) != 3 {
+			t.Fatalf("expected all 3 agents to be preserved, got %d", len(mock.dashboardUpdatedAgents))
+		}
+	})
+}
+
 

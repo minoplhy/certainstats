@@ -28,8 +28,8 @@
     {{if not .IsCreate}}
     <input type="hidden" name="id" value="{{.Dashboard.DashboardID}}">
     {{end}}
-    <input type="hidden" id="agents-order-input" name="agents_order" value="">
-    <input type="hidden" id="is-dragged-input" name="is_dragged" value="0">
+    <input type="hidden" id="agents-order-input" name="agents_order" value="{{range $i, $a := .DashboardAgents}}{{if $i}},{{end}}{{$a.AgentID}}{{end}}">
+    <input type="hidden" id="is-dragged-input" name="is_dragged" value="{{if or .IsDragged (hasSortKey .DashboardAgents)}}1{{else}}0{{end}}">
 
     <!-- 1. GENERAL -->
     <div class="card" style="padding: 24px; margin-bottom: 20px;">
@@ -302,7 +302,7 @@
       '{{.AgentID}}',
       {{end}}
     ],
-    isDragged: {{range .DashboardAgents}}{{if .SortKey}}true{{end}}{{end}} false,
+    isDragged: {{if or .IsDragged (hasSortKey .DashboardAgents)}}true{{else}}false{{end}},
     isCreate: {{if .IsCreate}}true{{else}}false{{end}},
     dashboardId: '{{.Dashboard.DashboardID}}'
   });

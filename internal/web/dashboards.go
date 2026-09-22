@@ -75,11 +75,20 @@ func (h *WebHandler) DashboardEditHandler(w http.ResponseWriter, r *http.Request
 	dashAgents, _ := h.Store.DashboardGetAgents(r.Context(), dashID, userID)
 	availableAgents, _ := h.Store.AgentList(r.Context(), userID)
 
+	isDragged := false
+	for _, a := range dashAgents {
+		if a.SortKey != "" {
+			isDragged = true
+			break
+		}
+	}
+
 	pd := h.newPageData(r, "Edit Dashboard — "+dash.Title, "dashboards", map[string]any{
 		"IsCreate":        false,
 		"Dashboard":       dash,
 		"AvailableAgents": availableAgents,
 		"DashboardAgents": dashAgents,
+		"IsDragged":       isDragged,
 	})
 	h.Renderer.RenderHTTP(w, http.StatusOK, "dashboard_edit.html", pd)
 }
@@ -126,23 +135,28 @@ func (h *WebHandler) DashboardCreateHandler(w http.ResponseWriter, r *http.Reque
 
 	selectedAgentsMap := make(map[string]bool)
 	for _, aid := range r.Form["agents"] {
-		selectedAgentsMap[strings.TrimSpace(aid)] = true
+		aid = strings.TrimSpace(aid)
+		if aid != "" {
+			selectedAgentsMap[aid] = true
+		}
 	}
 
 	var orderedAgentIDs []string
+	seen := make(map[string]bool)
 	if agentsOrderRaw != "" {
 		for _, aid := range strings.Split(agentsOrderRaw, ",") {
 			aid = strings.TrimSpace(aid)
-			if aid != "" && selectedAgentsMap[aid] {
+			if aid != "" && selectedAgentsMap[aid] && !seen[aid] {
 				orderedAgentIDs = append(orderedAgentIDs, aid)
+				seen[aid] = true
 			}
 		}
-	} else {
-		for _, aid := range r.Form["agents"] {
-			aid = strings.TrimSpace(aid)
-			if aid != "" {
-				orderedAgentIDs = append(orderedAgentIDs, aid)
-			}
+	}
+	for _, aid := range r.Form["agents"] {
+		aid = strings.TrimSpace(aid)
+		if aid != "" && selectedAgentsMap[aid] && !seen[aid] {
+			orderedAgentIDs = append(orderedAgentIDs, aid)
+			seen[aid] = true
 		}
 	}
 
@@ -228,23 +242,28 @@ func (h *WebHandler) DashboardUpdateHandler(w http.ResponseWriter, r *http.Reque
 
 	selectedAgentsMap := make(map[string]bool)
 	for _, aid := range r.Form["agents"] {
-		selectedAgentsMap[strings.TrimSpace(aid)] = true
+		aid = strings.TrimSpace(aid)
+		if aid != "" {
+			selectedAgentsMap[aid] = true
+		}
 	}
 
 	var orderedAgentIDs []string
+	seen := make(map[string]bool)
 	if agentsOrderRaw != "" {
 		for _, aid := range strings.Split(agentsOrderRaw, ",") {
 			aid = strings.TrimSpace(aid)
-			if aid != "" && selectedAgentsMap[aid] {
+			if aid != "" && selectedAgentsMap[aid] && !seen[aid] {
 				orderedAgentIDs = append(orderedAgentIDs, aid)
+				seen[aid] = true
 			}
 		}
-	} else {
-		for _, aid := range r.Form["agents"] {
-			aid = strings.TrimSpace(aid)
-			if aid != "" {
-				orderedAgentIDs = append(orderedAgentIDs, aid)
-			}
+	}
+	for _, aid := range r.Form["agents"] {
+		aid = strings.TrimSpace(aid)
+		if aid != "" && selectedAgentsMap[aid] && !seen[aid] {
+			orderedAgentIDs = append(orderedAgentIDs, aid)
+			seen[aid] = true
 		}
 	}
 

@@ -517,14 +517,14 @@ func (s *Store) DashboardUpdate(ctx context.Context, d store.Dashboard, newAgent
 	}
 	existingAgents := make(map[string]agentMeta)
 	for rows.Next() {
-		var agentID, nickname string
-		var sortKey sql.NullString
+		var agentID string
+		var nickname, sortKey sql.NullString
 		if err := rows.Scan(&agentID, &nickname, &sortKey); err != nil {
 			rows.Close()
 			return err
 		}
 		existingAgents[agentID] = agentMeta{
-			nickname: nickname,
+			nickname: nickname.String,
 			sortKey:  sortKey.String,
 		}
 	}
