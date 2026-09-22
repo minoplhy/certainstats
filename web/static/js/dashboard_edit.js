@@ -80,34 +80,65 @@
     return div.innerHTML;
   }
 
+  function getDragAfterElement(container, y) {
+    const draggableElements = Array.from(container.querySelectorAll('.reorder-item:not(.dragging)'));
+
+    return draggableElements.reduce((closest, child) => {
+      const box = child.getBoundingClientRect();
+      const offset = y - box.top - box.height / 2;
+      if (offset < 0 && offset > closest.offset) {
+        return { offset: offset, element: child };
+      } else {
+        return closest;
+      }
+    }, { offset: Number.NEGATIVE_INFINITY }).element;
+  }
+
+  function updateOrderBadges() {
+    const list = document.getElementById('reorder-list');
+    if (!list) return;
+    const items = list.querySelectorAll('.reorder-item');
+    items.forEach((item, index) => {
+      item.setAttribute('data-index', index);
+      const badge = item.querySelector('.reorder-badge');
+      if (badge) {
+        badge.textContent = '#' + (index + 1);
+      }
+    });
+  }
+
+  function finalizeReorder() {
+    const list = document.getElementById('reorder-list');
+    if (!list) return;
+    const items = Array.from(list.querySelectorAll('.reorder-item'));
+    const newOrder = items.map(el => el.getAttribute('data-agent-id')).filter(Boolean);
+    if (newOrder.length > 0) {
+      selectedAgentsOrder = newOrder;
+      isDragged = true;
+      syncOrderInput();
+      const btnReset = document.getElementById('btn-reset-order');
+      if (btnReset) btnReset.style.display = 'inline-block';
+    }
+    updateOrderBadges();
+  }
+
   function setupDragEvents(el) {
     el.addEventListener('dragstart', function(e) {
       draggedItem = this;
       this.classList.add('dragging');
       e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', this.getAttribute('data-agent-id'));
     });
 
     el.addEventListener('dragend', function() {
       this.classList.remove('dragging');
       draggedItem = null;
+      finalizeReorder();
     });
 
     el.addEventListener('dragover', function(e) {
       e.preventDefault();
-      if (!draggedItem || draggedItem === this) return;
-
-      const list = document.getElementById('reorder-list');
-      const items = Array.from(list.querySelectorAll('.reorder-item'));
-      const fromIndex = items.indexOf(draggedItem);
-      const toIndex = items.indexOf(this);
-
-      if (fromIndex !== -1 && toIndex !== -1 && fromIndex !== toIndex) {
-        const movedId = selectedAgentsOrder[fromIndex];
-        selectedAgentsOrder.splice(fromIndex, 1);
-        selectedAgentsOrder.splice(toIndex, 0, movedId);
-        isDragged = true;
-        updateReorderSection();
-      }
+      e.dataTransfer.dropEffect = 'move';
     });
   }
 
@@ -131,6 +162,37 @@
     window.agents_order = selectedAgentsOrder;
   }
 
+  function ensureReorderListDragEvents(list) {
+    if (!list || list.__dragEventsAttached) return;
+    list.__dragEventsAttached = true;
+
+    list.addEventListener('dragover', function(e) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      if (!draggedItem) return;
+
+      const afterElement = getDragAfterElement(list, e.clientY);
+      if (afterElement == null) {
+        if (list.lastElementChild !== draggedItem) {
+          list.appendChild(draggedItem);
+          updateOrderBadges();
+        }
+      } else if (afterElement !== draggedItem && afterElement !== draggedItem.nextSibling) {
+        list.insertBefore(draggedItem, afterElement);
+        updateOrderBadges();
+      }
+    });
+
+    list.addEventListener('drop', function(e) {
+      e.preventDefault();
+      if (draggedItem) {
+        draggedItem.classList.remove('dragging');
+        draggedItem = null;
+      }
+      finalizeReorder();
+    });
+  }
+
   function updateReorderSection() {
     const reorderSec = document.getElementById('reorder-section');
     const reorderList = document.getElementById('reorder-list');
@@ -146,6 +208,8 @@
       syncOrderInput();
       return;
     }
+
+    ensureReorderListDragEvents(reorderList);
 
     if (selectedAgentsOrder.length <= 1) {
       reorderSec.style.display = 'none';
@@ -171,7 +235,7 @@
 
       item.innerHTML = `
         <span style="color: var(--text-muted); cursor: grab; font-size: 14px;">⋮⋮</span>
-        <span style="font-size: 10px; font-weight: 700; background: var(--bg-secondary); padding: 2px 6px; border-radius: 4px; color: var(--text-muted); font-family: var(--font-mono);">#${index + 1}</span>
+        <span class="reorder-badge" style="font-size: 10px; font-weight: 700; background: var(--bg-secondary); padding: 2px 6px; border-radius: 4px; color: var(--text-muted); font-family: var(--font-mono);">#${index + 1}</span>
         <div style="flex: 1; display: flex; justify-content: space-between; align-items: center;">
           <span style="font-size: 12px; font-weight: 600; color: var(--text-primary);">${escapeHtml(alias)}</span>
           <span style="font-size: 10px; color: var(--text-muted); font-family: var(--font-mono);">${escapeHtml(agentId)}</span>

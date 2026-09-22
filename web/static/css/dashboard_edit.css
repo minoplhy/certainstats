@@ -59,6 +59,9 @@
   background: rgba(99, 102, 241, 0.1);
   border-color: var(--accent-primary);
 }
+.reorder-item * {
+  pointer-events: none;
+}
 @media (max-width: 640px) {
   .mobile-grid-1 {
     grid-template-columns: 1fr !important;
