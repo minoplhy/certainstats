@@ -27,6 +27,7 @@
   }
 
   function navigateToAgent(agentId) {
+    resetInpageEditStates();
     const targetUrl = (panelPath ? panelPath : '') + '/' + agentId;
     if (window.location.pathname !== targetUrl) {
       history.pushState({ agentId: agentId }, '', targetUrl);
@@ -35,6 +36,7 @@
   }
 
   function closeAgentDetail() {
+    resetInpageEditStates();
     const targetUrl = panelPath ? (panelPath + '/') : '/';
     if (window.location.pathname !== targetUrl) {
       history.pushState({}, '', targetUrl);
@@ -347,6 +349,21 @@
     });
   }
 
+  function resetInpageEditStates() {
+    cancelInpageAgentNameEdit();
+    cancelInpageHeaderNoteEdit();
+    cancelInpageExpandedNotesEdit();
+
+    // Close any open modals
+    const modalIds = ['reinstall-modal', 'uninstall-modal', 'add-agent-modal', 'provision-modal'];
+    modalIds.forEach(id => {
+      const el = document.getElementById(id);
+      if (el && el.style.display !== 'none') {
+        el.style.display = 'none';
+      }
+    });
+  }
+
   function handleInpageZoom(startMs, endMs) {
     inpageCustomRange = { start: startMs, end: endMs };
     if (inpageTimePicker) {
@@ -453,6 +470,7 @@
     const qEnd = customRange ? customRange.end : Date.now();
 
     if (agent) {
+      resetInpageEditStates();
       const isOnline = agent.is_online === true || (agent.last_seen && (Date.now() - new Date(agent.last_seen).getTime()) < 120000);
       const dotEl = document.getElementById('detail-active-dot');
       const badgeEl = document.getElementById('detail-active-badge');
@@ -1101,6 +1119,8 @@
           const overviewView = document.getElementById('agents-overview-view');
           const detailView = document.getElementById('agents-detail-view');
 
+          resetInpageEditStates();
+
           if (!agentId) {
             if (detailView) detailView.style.display = 'none';
             if (overviewView) overviewView.style.display = 'block';
@@ -1161,6 +1181,7 @@
     handleAgentItemClick: handleAgentItemClick,
     navigateToAgent: navigateToAgent,
     closeAgentDetail: closeAgentDetail,
+    resetInpageEditStates: resetInpageEditStates,
     setAgentViewMode: setAgentViewMode,
     setAgentDensity: setAgentDensity,
     filterAgentsList: filterAgentsList,
@@ -1183,6 +1204,7 @@
   window.handleAgentItemClick = handleAgentItemClick;
   window.navigateToAgent = navigateToAgent;
   window.closeAgentDetail = closeAgentDetail;
+  window.resetInpageEditStates = resetInpageEditStates;
   window.setAgentViewMode = setAgentViewMode;
   window.setAgentDensity = setAgentDensity;
   window.filterAgentsList = filterAgentsList;

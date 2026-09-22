@@ -2,6 +2,7 @@
   'use strict';
 
   let panelPath = '';
+  let activeEditingMgmtAgentId = null;
 
   function copyCredential(text, label) {
     navigator.clipboard.writeText(text).then(() => {
@@ -26,6 +27,11 @@
   }
 
   function startMgmtAgentRename(agentId) {
+    if (activeEditingMgmtAgentId && activeEditingMgmtAgentId !== agentId) {
+      cancelMgmtAgentRename(activeEditingMgmtAgentId);
+    }
+    activeEditingMgmtAgentId = agentId;
+
     const readEl = document.getElementById('mgmt-name-read-' + agentId);
     const editEl = document.getElementById('mgmt-name-edit-' + agentId);
     const input = document.getElementById('mgmt-name-input-' + agentId);
@@ -45,6 +51,9 @@
   }
 
   function cancelMgmtAgentRename(agentId) {
+    if (activeEditingMgmtAgentId === agentId) {
+      activeEditingMgmtAgentId = null;
+    }
     const readEl = document.getElementById('mgmt-name-read-' + agentId);
     const editEl = document.getElementById('mgmt-name-edit-' + agentId);
     if (editEl) editEl.style.display = 'none';
