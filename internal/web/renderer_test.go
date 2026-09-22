@@ -174,10 +174,9 @@ func TestDashboardEdit_RenderJSValid(t *testing.T) {
 		if !strings.Contains(output, "isDragged: true,") {
 			t.Errorf("Expected output to contain 'isDragged: true,', got: %s", output)
 		}
-		if !strings.Contains(output, `name="agents_order"`) ||
-			!strings.Contains(output, `node-1`) ||
-			!strings.Contains(output, `node-2`) {
-			t.Errorf("Expected pre-populated agents_order to contain node-1 and node-2, got: %s", output)
+		if !strings.Contains(output, `<input type="hidden" name="agents_order" value="node-1">`) ||
+			!strings.Contains(output, `<input type="hidden" name="agents_order" value="node-2">`) {
+			t.Errorf("Expected pre-populated agents_order array inputs for node-1 and node-2, got: %s", output)
 		}
 	})
 

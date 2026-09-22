@@ -5,7 +5,6 @@ import (
 	"certainstats/internal/minify"
 	"certainstats/internal/store"
 	"certainstats/web"
-	"encoding/json"
 	"fmt"
 	"html/template"
 	"io"
@@ -174,21 +173,6 @@ func NewRenderer() (*TemplateRenderer, error) {
 				}
 			}
 			return false
-		},
-		"jsonAgentsOrder": func(agents any) string {
-			var ids []string
-			if list, ok := agents.([]store.PublicAgentIdentity); ok {
-				for _, a := range list {
-					if a.AgentID != "" {
-						ids = append(ids, a.AgentID)
-					}
-				}
-			}
-			if ids == nil {
-				ids = []string{}
-			}
-			b, _ := json.Marshal(ids)
-			return string(b)
 		},
 	}
 

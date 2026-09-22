@@ -112,12 +112,23 @@
   }
 
   function syncOrderInput() {
-    const orderInput = document.getElementById('agents-order-input');
-    if (orderInput) {
-      orderInput.value = JSON.stringify(selectedAgentsOrder);
+    const container = document.getElementById('agents-order-container');
+    if (container) {
+      container.innerHTML = '';
+      selectedAgentsOrder.forEach(function(agentId) {
+        if (agentId && agentId.trim()) {
+          const input = document.createElement('input');
+          input.type = 'hidden';
+          input.name = 'agents_order';
+          input.value = agentId.trim();
+          container.appendChild(input);
+        }
+      });
     }
     const draggedInput = document.getElementById('is-dragged-input');
     if (draggedInput) draggedInput.value = isDragged ? '1' : '0';
+    window.selectedAgentsOrder = selectedAgentsOrder;
+    window.agents_order = selectedAgentsOrder;
   }
 
   function updateReorderSection() {
@@ -202,7 +213,8 @@
 
   function init(options) {
     options = options || {};
-    selectedAgentsOrder = (options.selectedAgentsOrder || []).filter(function(id) {
+    const initialOrder = options.selectedAgentsOrder || options.agents_order || options.agentsOrder || options.agents || [];
+    selectedAgentsOrder = initialOrder.filter(function(id) {
       return typeof id === 'string' && id.trim().length > 0;
     });
     isDragged = !!options.isDragged;
@@ -219,7 +231,7 @@
 
     updateReorderSection();
 
-    // Hook form submit to ensure all currently checked agents are synced to agents-order-input
+    // Hook form submit to ensure all currently checked agents are synced to agents-order-container
     const form = document.getElementById('dashboard-form');
     if (form) {
       form.addEventListener('submit', function() {
@@ -259,7 +271,10 @@
     onAliasChange: onAliasChange,
     updateReorderSection: updateReorderSection,
     resetToAlphabetical: resetToAlphabetical,
-    confirmDeleteDashboard: confirmDeleteDashboard
+    confirmDeleteDashboard: confirmDeleteDashboard,
+    get selectedAgentsOrder() { return selectedAgentsOrder; },
+    get agents_order() { return selectedAgentsOrder; },
+    get agents() { return selectedAgentsOrder; }
   };
 
   // Backwards compatibility globals
@@ -271,4 +286,6 @@
   window.updateReorderSection = updateReorderSection;
   window.resetToAlphabetical = resetToAlphabetical;
   window.confirmDeleteDashboard = confirmDeleteDashboard;
+  window.selectedAgentsOrder = selectedAgentsOrder;
+  window.agents_order = selectedAgentsOrder;
 })();
