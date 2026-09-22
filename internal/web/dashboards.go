@@ -8,6 +8,7 @@ import (
 	"certainstats/internal/store"
 	"bytes"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -140,29 +141,7 @@ func (h *WebHandler) DashboardCreateHandler(w http.ResponseWriter, r *http.Reque
 		}
 	}
 
-	agentsOrderValues := r.Form["agents_order"]
-	if len(agentsOrderValues) == 0 {
-		agentsOrderValues = r.Form["agents_order[]"]
-	}
-
-	var orderedAgentIDs []string
-	seen := make(map[string]bool)
-	for _, raw := range agentsOrderValues {
-		for _, aid := range strings.Split(raw, ",") {
-			aid = strings.TrimSpace(aid)
-			if aid != "" && selectedAgentsMap[aid] && !seen[aid] {
-				orderedAgentIDs = append(orderedAgentIDs, aid)
-				seen[aid] = true
-			}
-		}
-	}
-	for _, aid := range r.Form["agents"] {
-		aid = strings.TrimSpace(aid)
-		if aid != "" && selectedAgentsMap[aid] && !seen[aid] {
-			orderedAgentIDs = append(orderedAgentIDs, aid)
-			seen[aid] = true
-		}
-	}
+	orderedAgentIDs := parseAgentsOrder(r, selectedAgentsMap)
 
 	for i, agentID := range orderedAgentIDs {
 		alias := strings.TrimSpace(r.FormValue("alias_" + agentID))
@@ -251,29 +230,7 @@ func (h *WebHandler) DashboardUpdateHandler(w http.ResponseWriter, r *http.Reque
 		}
 	}
 
-	agentsOrderValues := r.Form["agents_order"]
-	if len(agentsOrderValues) == 0 {
-		agentsOrderValues = r.Form["agents_order[]"]
-	}
-
-	var orderedAgentIDs []string
-	seen := make(map[string]bool)
-	for _, raw := range agentsOrderValues {
-		for _, aid := range strings.Split(raw, ",") {
-			aid = strings.TrimSpace(aid)
-			if aid != "" && selectedAgentsMap[aid] && !seen[aid] {
-				orderedAgentIDs = append(orderedAgentIDs, aid)
-				seen[aid] = true
-			}
-		}
-	}
-	for _, aid := range r.Form["agents"] {
-		aid = strings.TrimSpace(aid)
-		if aid != "" && selectedAgentsMap[aid] && !seen[aid] {
-			orderedAgentIDs = append(orderedAgentIDs, aid)
-			seen[aid] = true
-		}
-	}
+	orderedAgentIDs := parseAgentsOrder(r, selectedAgentsMap)
 
 	for i, agentID := range orderedAgentIDs {
 		alias := strings.TrimSpace(r.FormValue("alias_" + agentID))
@@ -410,4 +367,53 @@ func (h *WebHandler) PublicDashboardHandler(w http.ResponseWriter, r *http.Reque
 	ctx.DashboardHTMLCache.Store(cacheKey, entry)
 
 	entry.Serve(w, r, "text/html; charset=utf-8", http.StatusOK)
+}
+
+func parseAgentsOrder(r *http.Request, selectedAgentsMap map[string]bool) []string {
+	var orderedAgentIDs []string
+	seen := make(map[string]bool)
+
+	parseItem := func(raw string) {
+		raw = strings.TrimSpace(raw)
+		if raw == "" {
+			return
+		}
+		var jsonArr []string
+		if err := json.Unmarshal([]byte(raw), &jsonArr); err == nil {
+			for _, aid := range jsonArr {
+				aid = strings.TrimSpace(aid)
+				if aid != "" && selectedAgentsMap[aid] && !seen[aid] {
+					orderedAgentIDs = append(orderedAgentIDs, aid)
+					seen[aid] = true
+				}
+			}
+			return
+		}
+		for _, aid := range strings.Split(raw, ",") {
+			aid = strings.TrimSpace(aid)
+			if aid != "" && selectedAgentsMap[aid] && !seen[aid] {
+				orderedAgentIDs = append(orderedAgentIDs, aid)
+				seen[aid] = true
+			}
+		}
+	}
+
+	for _, raw := range r.Form["agents_order"] {
+		parseItem(raw)
+	}
+	if len(orderedAgentIDs) == 0 {
+		for _, raw := range r.Form["agents_order[]"] {
+			parseItem(raw)
+		}
+	}
+
+	for _, aid := range r.Form["agents"] {
+		aid = strings.TrimSpace(aid)
+		if aid != "" && selectedAgentsMap[aid] && !seen[aid] {
+			orderedAgentIDs = append(orderedAgentIDs, aid)
+			seen[aid] = true
+		}
+	}
+
+	return orderedAgentIDs
 }

@@ -28,11 +28,7 @@
     {{if not .IsCreate}}
     <input type="hidden" name="id" value="{{.Dashboard.DashboardID}}">
     {{end}}
-    <div id="agents-order-container">
-      {{range .DashboardAgents}}
-      <input type="hidden" name="agents_order" value="{{.AgentID}}">
-      {{end}}
-    </div>
+    <input type="hidden" id="agents-order-input" name="agents_order" value='{{jsonAgentsOrder .DashboardAgents}}'>
     <input type="hidden" id="is-dragged-input" name="is_dragged" value="{{if or .IsDragged (hasSortKey .DashboardAgents)}}1{{else}}0{{end}}">
 
     <!-- 1. GENERAL -->
