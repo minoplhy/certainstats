@@ -112,12 +112,11 @@
     if (!list) return;
     const items = Array.from(list.querySelectorAll('.reorder-item'));
     const newOrder = items.map(el => el.getAttribute('data-agent-id')).filter(Boolean);
-    if (newOrder.length > 0) {
+    if (newOrder.length > 0 && newOrder.join(',') !== selectedAgentsOrder.join(',')) {
       selectedAgentsOrder = newOrder;
       isDragged = true;
-      syncOrderInput();
-      const btnReset = document.getElementById('btn-reset-order');
-      if (btnReset) btnReset.style.display = 'inline-block';
+      updateReorderSection(); // re-render so badges and move-button states match the new order
+      return;
     }
     updateOrderBadges();
   }
@@ -183,6 +182,21 @@
       }
     });
 
+    list.addEventListener('click', function(e) {
+      const btn = e.target.closest('[data-move]');
+      if (!btn) return;
+      const item = btn.closest('.reorder-item');
+      const from = selectedAgentsOrder.indexOf(item.getAttribute('data-agent-id'));
+      const to = from + parseInt(btn.getAttribute('data-move'), 10);
+      if (from < 0 || to < 0 || to >= selectedAgentsOrder.length) return;
+      const moved = selectedAgentsOrder.splice(from, 1)[0];
+      selectedAgentsOrder.splice(to, 0, moved);
+      isDragged = true;
+      updateReorderSection();
+      const again = list.querySelector('.reorder-item[data-agent-id="' + CSS.escape(moved) + '"] [data-move="' + btn.getAttribute('data-move') + '"]');
+      if (again && !again.disabled) again.focus();
+    });
+
     list.addEventListener('drop', function(e) {
       e.preventDefault();
       if (draggedItem) {
@@ -218,7 +232,7 @@
     }
 
     reorderSec.style.display = 'block';
-    if (btnReset) btnReset.style.display = isDragged ? 'inline-block' : 'none';
+    if (btnReset) btnReset.style.display = isDragged ? 'inline-flex' : 'none';
 
     reorderList.innerHTML = '';
     selectedAgentsOrder.forEach((agentId, index) => {
@@ -234,12 +248,16 @@
       item.setAttribute('data-index', index);
 
       item.innerHTML = `
-        <span style="color: var(--text-muted); cursor: grab; font-size: 14px;">⋮⋮</span>
-        <span class="reorder-badge" style="font-size: 10px; font-weight: 700; background: var(--bg-secondary); padding: 2px 6px; border-radius: 4px; color: var(--text-muted); font-family: var(--font-mono);">#${index + 1}</span>
-        <div style="flex: 1; display: flex; justify-content: space-between; align-items: center;">
-          <span style="font-size: 12px; font-weight: 600; color: var(--text-primary);">${escapeHtml(alias)}</span>
-          <span style="font-size: 10px; color: var(--text-muted); font-family: var(--font-mono);">${escapeHtml(agentId)}</span>
-        </div>
+        <svg class="reorder-grip" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg>
+        <span class="reorder-badge">#${index + 1}</span>
+        <span class="reorder-name">
+          <strong>${escapeHtml(alias)}</strong>
+          <span class="mono">${escapeHtml(agentId)}</span>
+        </span>
+        <span class="reorder-moves">
+          <button type="button" class="btn btn-ghost btn-sm" data-move="-1" aria-label="Move ${escapeHtml(alias)} up"${index === 0 ? ' disabled' : ''}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 15l6-6 6 6"/></svg></button>
+          <button type="button" class="btn btn-ghost btn-sm" data-move="1" aria-label="Move ${escapeHtml(alias)} down"${index === selectedAgentsOrder.length - 1 ? ' disabled' : ''}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button>
+        </span>
       `;
 
       setupDragEvents(item);

@@ -1,22 +1,17 @@
 {{define "content"}}
-<div class="page-header" style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 16px;">
-  <div>
-    <h1 class="page-title">Alert & Incident Center</h1>
-    <p style="color: var(--text-muted); font-size: 13px;">Configure rule thresholds, webhook destinations, notification targets, and review incident timelines.</p>
+<section class="hero">
+  <div class="hero-eyebrow"><span>Alerts</span></div>
+  <h1 class="hero-title">Know when a server needs you.</h1>
+  <p class="page-subtitle">Rules watch your servers and send a webhook when something goes wrong.</p>
+  <div class="hero-actions">
+    <button type="button" class="btn btn-primary" data-open-modal="new-alert-modal">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+      New rule
+    </button>
+    <button type="button" class="btn btn-secondary" data-open-modal="new-target-modal">New target</button>
+    <button type="button" class="btn btn-ghost" data-open-modal="template-guide-modal">Template variables</button>
   </div>
-
-  <div style="display: flex; gap: 10px; flex-wrap: wrap;">
-    <button type="button" class="btn btn-secondary" onclick="document.getElementById('template-guide-modal').style.display='block'">
-      Payload Template Guide
-    </button>
-    <button type="button" class="btn btn-secondary" onclick="document.getElementById('new-target-modal').style.display='block'">
-      + Notification Target
-    </button>
-    <button type="button" class="btn btn-primary" onclick="document.getElementById('new-alert-modal').style.display='block'">
-      + Create Alert Rule
-    </button>
-  </div>
-</div>
+</section>
 
 {{template "alerts_incidents_banner" .}}
 {{template "alerts_rules_table" .}}

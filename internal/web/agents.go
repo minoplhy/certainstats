@@ -24,7 +24,18 @@ func (h *WebHandler) AgentsListHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	pd := h.newPageData(r, "Agent Hub", "agents", map[string]any{"Agents": agents})
+	online := 0
+	for _, a := range agents {
+		if a.IsOnline {
+			online++
+		}
+	}
+
+	pd := h.newPageData(r, "Agent Hub", "agents", map[string]any{
+		"Agents":       agents,
+		"OnlineCount":  online,
+		"OfflineCount": len(agents) - online,
+	})
 	h.Renderer.RenderHTTP(w, http.StatusOK, "agents_list.html", pd)
 }
 

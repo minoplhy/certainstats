@@ -1,77 +1,55 @@
 {{define "agents_grid_view"}}
-<!-- Grid View Container -->
 <div id="agents-grid-container" class="grid-cards">
   {{range .Agents}}
-  <div class="card agent-card-item" data-agent-id="{{.AgentID}}" data-agent-name="{{.Nickname}}" data-cpu-model="{{.CpuModel}}" onclick="handleAgentItemClick(event, '{{.AgentID}}');" style="cursor: pointer;">
+  <article class="card agent-card-item{{if not .IsOnline}} is-offline{{end}}" data-agent-id="{{.AgentID}}" data-agent-name="{{.Nickname}}" data-cpu-model="{{.CpuModel}}" onclick="handleAgentItemClick(event, '{{.AgentID}}');">
     <div class="agent-card-header">
-      <a href="{{$.PanelPath}}/{{.AgentID}}" class="agent-name" onclick="handleAgentItemClick(event, '{{.AgentID}}');">
-        <span class="status-dot {{if .IsOnline}}online{{else}}offline{{end}}" id="dot-{{.AgentID}}"></span>
-        <span>{{.Nickname}}</span>
-      </a>
-      <span class="badge {{if .IsOnline}}badge-online{{else}}badge-offline{{end}}" id="badge-{{.AgentID}}">
-        {{if .IsOnline}}Online{{else}}Offline{{end}}
-      </span>
+      <div class="agent-card-title">
+        <a href="{{$.PanelPath}}/{{.AgentID}}" class="agent-name">
+          <span class="status-dot {{if .IsOnline}}online{{else}}offline{{end}}" id="dot-{{.AgentID}}"></span>
+          <span>{{.Nickname}}</span>
+        </a>
+        <span class="agent-card-sub">{{if .CpuModel}}{{.CpuModel}}{{else}}Waiting for first report{{end}} · {{.AgentType}}</span>
+      </div>
+      <span class="badge {{if .IsOnline}}badge-online{{else}}badge-offline{{end}}" id="badge-{{.AgentID}}">{{if .IsOnline}}Online{{else}}Offline{{end}}</span>
     </div>
 
-    <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 12px;" class="detail-only-field">
-      {{if .CpuModel}}{{.CpuModel}}{{else}}Agent ID: <span class="mono">{{.AgentID}}</span>{{end}}
-    </div>
-
-    <!-- CPU Stacked Bar (Usr, IO, Steal) -->
-    <div class="usage-bar-group">
-      <div class="usage-bar-label">
-        <span class="title">CPU</span>
-        <span class="value" id="val-cpu-{{.AgentID}}">0.0%</span>
-      </div>
-      <div class="usage-bar-track" id="track-cpu-{{.AgentID}}" data-tooltip-header="CPU Utilization" data-tooltip-rows='[{"label":"Used","val":"0.0%","color":"#3b82f6"},{"label":"IO Wait","val":"0.0%","color":"#fb923c"},{"label":"Steal","val":"0.0%","color":"#ef4444"}]'>
-        <div class="usage-segment seg-cpu-usr" id="seg-cpu-usr-{{.AgentID}}" style="width: 0%;"></div>
-        <div class="usage-segment seg-cpu-io" id="seg-cpu-io-{{.AgentID}}" style="width: 0%;"></div>
-        <div class="usage-segment seg-cpu-stl" id="seg-cpu-stl-{{.AgentID}}" style="width: 0%;"></div>
-      </div>
-    </div>
-
-    <!-- RAM Stacked Bar (Used, Swap) -->
-    <div class="usage-bar-group">
-      <div class="usage-bar-label">
-        <span class="title">RAM</span>
-        <span class="value" id="val-ram-{{.AgentID}}">0 B / {{formatBytes .RamSize}}</span>
-      </div>
-      <div class="usage-bar-track" id="track-ram-{{.AgentID}}" data-tooltip-header="Memory Usage" data-tooltip-rows='[{"label":"RAM Used","val":"0 B","color":"#14b8a6"},{"label":"Swap Used","val":"0 B","color":"#4b5563"}]'>
-        <div class="usage-segment seg-ram-used" id="seg-ram-used-{{.AgentID}}" style="width: 0%;"></div>
-        <div class="usage-segment seg-ram-swap" id="seg-ram-swap-{{.AgentID}}" style="width: 0%;"></div>
-      </div>
-    </div>
-
-    <!-- Disk Bars (Dynamic Multi-Disk) -->
-    <div id="disk-bars-group-{{.AgentID}}">
-      <div class="usage-bar-group">
-        <div class="usage-bar-label">
-          <span class="title">DISK</span>
-          <span class="value" id="val-disk-{{.AgentID}}">0 B / {{formatBytes .DiskSize}}</span>
+    <div class="agent-metrics">
+      <div class="agent-metric">
+        <span class="agent-metric-label">CPU</span>
+        <span class="agent-metric-value" id="val-cpu-{{.AgentID}}">–</span>
+        <span class="agent-metric-sub">{{if .CpuCores}}{{.CpuCores}} vCPU{{else}}&nbsp;{{end}}</span>
+        <div class="usage-bar-track" id="track-cpu-{{.AgentID}}" data-tooltip-header="CPU" data-tooltip-rows='[{"label":"Used","val":"0.0%","color":"var(--s1)"},{"label":"IO wait","val":"0.0%","color":"var(--s2)"},{"label":"Steal","val":"0.0%","color":"var(--s3)"}]'>
+          <div class="usage-segment seg-cpu-usr" id="seg-cpu-usr-{{.AgentID}}"></div>
+          <div class="usage-segment seg-cpu-io" id="seg-cpu-io-{{.AgentID}}"></div>
+          <div class="usage-segment seg-cpu-stl" id="seg-cpu-stl-{{.AgentID}}"></div>
         </div>
+      </div>
+      <div class="agent-metric">
+        <span class="agent-metric-label">Memory</span>
+        <span class="agent-metric-value" id="pct-ram-{{.AgentID}}">–</span>
+        <span class="agent-metric-sub" id="val-ram-{{.AgentID}}">of {{formatBytes .RamSize}}</span>
+        <div class="usage-bar-track" id="track-ram-{{.AgentID}}" data-tooltip-header="Memory" data-tooltip-rows='[{"label":"RAM used","val":"0 B","color":"var(--s4)"},{"label":"Swap used","val":"0 B","color":"var(--s5)"}]'>
+          <div class="usage-segment seg-ram-used" id="seg-ram-used-{{.AgentID}}"></div>
+          <div class="usage-segment seg-ram-swap" id="seg-ram-swap-{{.AgentID}}"></div>
+        </div>
+      </div>
+      <div class="agent-metric" id="disk-bars-group-{{.AgentID}}">
+        <span class="agent-metric-label">Disk</span>
+        <span class="agent-metric-value" id="pct-disk-{{.AgentID}}">–</span>
+        <span class="agent-metric-sub" id="val-disk-{{.AgentID}}">of {{formatBytes .DiskSize}}</span>
         <div class="usage-bar-track" id="track-disk-{{.AgentID}}">
-          <div class="usage-segment seg-disk" id="seg-disk-{{.AgentID}}" style="width: 0%;"></div>
+          <div class="usage-segment seg-disk" id="seg-disk-{{.AgentID}}"></div>
         </div>
       </div>
     </div>
 
-    <!-- Network Bar (RX / TX) -->
-    <div class="usage-bar-group">
-      <div class="usage-bar-label">
-        <span class="title">NETWORK</span>
-        <span class="value" id="val-net-{{.AgentID}}">↓ 0 B/s / ↑ 0 B/s</span>
-      </div>
-      <div class="usage-bar-track" id="track-net-{{.AgentID}}" data-tooltip-header="Network Rate" data-tooltip-rows='[{"label":"Download (RX)","val":"0 B/s","color":"#1e40af"},{"label":"Upload (TX)","val":"0 B/s","color":"#7e22ce"}]'>
-        <div class="usage-segment seg-net-rx" id="seg-net-rx-{{.AgentID}}" style="width: 0%;"></div>
-        <div class="usage-segment seg-net-tx" id="seg-net-tx-{{.AgentID}}" style="width: 0%;"></div>
-      </div>
-    </div>
+    <canvas class="agent-spark" id="spark-{{.AgentID}}" data-agent-id="{{.AgentID}}" role="img" aria-label="CPU over the last 24 hours"></canvas>
 
-    <div style="display: flex; justify-content: space-between; font-size: 11px; color: var(--text-muted); margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--border-color);">
-      <span>Driver: <strong class="mono" style="color: var(--text-secondary);">{{.AgentType}}</strong></span>
-      <span id="uptime-{{.AgentID}}">Uptime: <strong class="mono" style="color: var(--text-secondary);">{{formatUptime .Uptime}}</strong></span>
+    <div class="agent-card-foot">
+      <span id="val-net-{{.AgentID}}">↓ 0 B/s · ↑ 0 B/s</span>
+      <span id="uptime-{{.AgentID}}">{{if .IsOnline}}Up {{formatUptime .Uptime}}{{else}}Offline{{end}}</span>
     </div>
-  </div>
+  </article>
   {{end}}
 </div>
 {{end}}

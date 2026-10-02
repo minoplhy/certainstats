@@ -3,6 +3,28 @@
 (function () {
   'use strict';
 
+  const Modal = {
+    open: function (target) {
+      const el = typeof target === 'string' ? document.getElementById(target) : target;
+      if (!el) return;
+      if (el.tagName === 'DIALOG') {
+        if (!el.open) el.showModal();
+      } else {
+        el.style.display = 'block';
+      }
+    },
+    close: function (target) {
+      const el = typeof target === 'string' ? document.getElementById(target) : target;
+      if (!el) return;
+      if (el.tagName === 'DIALOG') {
+        if (el.open) el.close();
+      } else {
+        el.style.display = 'none';
+      }
+    }
+  };
+  window.CertainStatsModal = Modal;
+
   function onReady(fn) {
     if (document.readyState !== 'loading') {
       fn();
@@ -141,6 +163,23 @@
     },
 
     // Cluster Stats Calculation & DOM Rendering (4 Dual-Metric Cards)
+    // Storage partition card used by both the admin and public detail views.
+    partitionCardHtml: function (path, used, total, readBytes, writeBytes, opts) {
+      opts = opts || {};
+      const fmt = window.CertainStatsChart.formatBytes;
+      const pct = total > 0 ? (used / total) * 100 : 0;
+      const esc = v => String(v).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+      const idAttr = (suffix) => opts.idPrefix ? ' id="' + opts.idPrefix + suffix + '"' : '';
+      const showIO = opts.showIO !== false;
+      return '<div class="partition-card">' +
+        '<div class="partition-head"><span class="partition-path mono">' + esc(path) + '</span>' +
+        '<span class="partition-pct mono"' + idAttr('pct') + '>' + (pct > 0 ? pct.toFixed(1) + '%' : '–') + '</span></div>' +
+        '<div class="partition-val mono"' + idAttr('val') + '>' + fmt(used) + (total ? ' <span class="muted">of ' + fmt(total) + '</span>' : '') + '</div>' +
+        '<div class="hw-card-progress-track"><div class="hw-card-progress-fill seg-disk' + (pct >= 90 ? ' is-high' : '') + '"' + idAttr('bar') + ' style="width:' + Math.min(pct, 100).toFixed(1) + '%"></div></div>' +
+        (showIO ? '<div class="partition-io mono"><span>Read ' + fmt(readBytes || 0) + '</span><span>Written ' + fmt(writeBytes || 0) + '</span></div>' : '') +
+        '</div>';
+    },
+
     renderClusterStats: function (prefix, agents, liveMetrics) {
       let liveRxBps = 0, liveTxBps = 0;
       let liveDiskReadBps = 0, liveDiskWriteBps = 0;
@@ -186,17 +225,37 @@
       // Update Public Header Status
       const overallDot = document.getElementById('public-overall-status-dot');
       const overallText = document.getElementById('public-overall-status-text');
+      const total = agents.length;
+      const offline = total - onlineCount;
       if (overallDot && overallText) {
-        if (agents.length === 0) {
+        if (total === 0) {
           overallDot.className = 'status-dot';
-          overallText.textContent = 'No Nodes Configured';
-        } else if (onlineCount === agents.length) {
+          overallText.textContent = 'No servers yet';
+        } else if (offline === 0) {
           overallDot.className = 'status-dot online';
-          overallText.textContent = 'Operational';
+          overallText.textContent = 'All systems operational';
         } else {
           overallDot.className = 'status-dot offline';
-          overallText.textContent = 'Degraded Performance';
+          overallText.textContent = onlineCount === 0 ? 'Major outage' : 'Partial outage';
         }
+      }
+
+      // Public status banner (mirrors the server-rendered text in public_dashboard.html)
+      const banner = document.getElementById('public-status-banner');
+      if (banner && total > 0) {
+        const bannerText = document.getElementById('public-status-banner-text');
+        const bannerDot = document.getElementById('public-status-banner-dot');
+        let cls = 'is-ok', text = 'All systems operational';
+        if (offline > 0 && onlineCount === 0) {
+          cls = 'is-bad';
+          text = 'Major outage: all ' + total + ' servers offline';
+        } else if (offline > 0) {
+          cls = 'is-warn';
+          text = 'Partial outage: ' + offline + ' of ' + total + (total === 1 ? ' server' : ' servers') + ' offline';
+        }
+        banner.className = 'banner ' + cls;
+        if (bannerText) bannerText.textContent = text;
+        if (bannerDot) bannerDot.className = 'status-dot ' + (offline === 0 ? 'online' : 'offline');
       }
 
       // Update Card 1: TOTAL BANDWIDTH (Live Rate)
@@ -246,6 +305,12 @@
         }
       }
 
+      function hidePickerDropdown(dropdown) {
+        dropdown.style.display = 'none';
+        const trigger = document.getElementById('time-picker-trigger');
+        if (trigger) trigger.setAttribute('aria-expanded', 'false');
+      }
+
       function toDatetimeLocal(d) {
         const ten = (i) => (i < 10 ? '0' : '') + i;
         return `${d.getFullYear()}-${ten(d.getMonth() + 1)}-${ten(d.getDate())}T${ten(d.getHours())}:${ten(d.getMinutes())}`;
@@ -261,35 +326,32 @@
                 </button>
               `).join('')}
             </div>
-            <div style="position: relative; display: inline-block; flex-shrink: 0;">
-              <button type="button" id="time-picker-trigger" class="btn btn-secondary btn-sm" style="display: flex; align-items: center; gap: 6px; font-weight: 700; white-space: nowrap; ${customRange ? 'border-color: var(--accent-primary); color: var(--accent-primary);' : ''}">
-                <span id="time-picker-label">${customRange ? 'Custom Range' : 'Custom'}</span>
-                <span style="font-size: 10px;">▼</span>
+            <div class="time-picker">
+              <button type="button" id="time-picker-trigger" class="btn btn-secondary btn-sm${customRange ? ' is-active' : ''}" aria-haspopup="true" aria-expanded="false">
+                <span id="time-picker-label">${customRange ? 'Custom range' : 'Custom'}</span>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
               </button>
               <div id="time-picker-dropdown" class="time-picker-dropdown-panel" style="display: none;">
-                <div style="font-size: 10px; font-weight: 800; text-transform: uppercase; color: var(--text-muted); margin-bottom: 8px;">Quick Presets</div>
-                <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 14px;">
+                <div class="picker-label">Quick ranges</div>
+                <div class="picker-grid">
                   ${ranges.map(r => `
-                    <button type="button" class="btn btn-secondary btn-sm dropdown-range-btn" data-val="${r.value}" style="font-size: 11px; padding: 5px 2px; text-align: center; ${!customRange && activeHours === r.value ? 'border-color: var(--accent-primary); color: var(--accent-primary); font-weight: 800;' : ''}">
-                      ${r.label}
-                    </button>
+                    <button type="button" class="btn btn-secondary btn-sm dropdown-range-btn${!customRange && activeHours === r.value ? ' is-active' : ''}" data-val="${r.value}">${r.label}</button>
                   `).join('')}
                 </div>
-                <div style="height: 1px; background: var(--border-color); margin-bottom: 12px;"></div>
-                <div style="font-size: 10px; font-weight: 800; text-transform: uppercase; color: var(--text-muted); margin-bottom: 8px;">Custom Date/Time Range</div>
-                <div style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px;">
-                  <div>
-                    <div style="font-size: 10px; color: var(--text-muted); margin-bottom: 2px;">Start Time</div>
-                    <input type="datetime-local" id="custom-start-input" class="form-input" style="font-size: 11px; padding: 4px 6px; width: 100%;">
-                  </div>
-                  <div>
-                    <div style="font-size: 10px; color: var(--text-muted); margin-bottom: 2px;">End Time</div>
-                    <input type="datetime-local" id="custom-end-input" class="form-input" style="font-size: 11px; padding: 4px 6px; width: 100%;">
-                  </div>
+                <div class="picker-label">Custom range</div>
+                <div class="picker-fields">
+                  <label class="picker-field">
+                    <span>Start</span>
+                    <input type="datetime-local" id="custom-start-input" class="form-input form-input-sm">
+                  </label>
+                  <label class="picker-field">
+                    <span>End</span>
+                    <input type="datetime-local" id="custom-end-input" class="form-input form-input-sm">
+                  </label>
                 </div>
-                <div style="display: flex; justify-content: flex-end; gap: 8px;">
-                  ${customRange ? `<button type="button" id="clear-custom-range" class="btn btn-secondary btn-sm" style="font-size: 11px;">Reset</button>` : ''}
-                  <button type="button" id="apply-custom-range" class="btn btn-primary btn-sm" style="font-size: 11px;">Apply</button>
+                <div class="picker-actions">
+                  ${customRange ? `<button type="button" id="clear-custom-range" class="btn btn-secondary btn-sm">Reset</button>` : ''}
+                  <button type="button" id="apply-custom-range" class="btn btn-primary btn-sm">Apply</button>
                 </div>
               </div>
             </div>
@@ -324,6 +386,7 @@
             const isHidden = dropdown.style.display === 'none';
             if (isHidden) {
               dropdown.style.display = 'block';
+              trigger.setAttribute('aria-expanded', 'true');
               // Check collision with left/right viewport boundaries
               const triggerRect = trigger.getBoundingClientRect();
               const dropdownWidth = dropdown.offsetWidth || 290;
@@ -335,14 +398,14 @@
                 dropdown.style.left = 'auto';
               }
             } else {
-              dropdown.style.display = 'none';
+              hidePickerDropdown(dropdown);
             }
           };
           dropdown.onclick = function (e) { e.stopPropagation(); };
         }
 
         document.addEventListener('click', function () {
-          if (dropdown) dropdown.style.display = 'none';
+          if (dropdown) hidePickerDropdown(dropdown);
         });
 
         container.querySelectorAll('.quick-range-pill, .dropdown-range-btn').forEach(btn => {
@@ -353,7 +416,7 @@
             activeHours = val;
             customRange = null;
             localStorage.setItem(storageKey, val.toString());
-            if (dropdown) dropdown.style.display = 'none';
+            if (dropdown) hidePickerDropdown(dropdown);
             render();
             onApply({ hours: val, customRange: null });
           };
@@ -370,7 +433,7 @@
               return;
             }
             customRange = { start: startMs, end: endMs };
-            if (dropdown) dropdown.style.display = 'none';
+            if (dropdown) hidePickerDropdown(dropdown);
             render();
             onApply({ hours: activeHours, customRange: customRange });
           };
@@ -380,7 +443,7 @@
         if (clearBtn) {
           clearBtn.onclick = function () {
             customRange = null;
-            if (dropdown) dropdown.style.display = 'none';
+            if (dropdown) hidePickerDropdown(dropdown);
             render();
             onApply({ hours: activeHours, customRange: null });
           };
@@ -645,11 +708,8 @@
           rows.forEach(r => {
             html += `
               <div class="tooltip-row">
-                <div style="display: flex; align-items: center; gap: 6px;">
-                  <span class="tooltip-dot" style="background: ${r.color};"></span>
-                  <span style="color: var(--text-secondary);">${r.label}</span>
-                </div>
-                <strong class="mono" style="color: var(--text-primary);">${r.val}</strong>
+                <span class="tooltip-label"><span class="tooltip-dot" style="background: ${r.color};"></span>${r.label}</span>
+                <strong>${r.val}</strong>
               </div>
             `;
           });
@@ -683,14 +743,14 @@
       const nickname = (typeof opts === 'object' && opts.nickname) ? opts.nickname : agentId;
 
       const titleEl = document.getElementById('reinstall-modal-title');
-      if (titleEl) titleEl.innerText = 'Installation Instructions — ' + nickname;
+      if (titleEl) titleEl.textContent = 'Install ' + nickname;
 
       const container = document.getElementById('reinstall-instructions-container');
       if (container && window.CertainStatsProvisionRenderer) {
         window.CertainStatsProvisionRenderer.loadInstallInstructions(agentId, container);
       }
 
-      modal.style.display = 'block';
+      Modal.open(modal);
     },
 
     openUninstallModal: function (opts) {
@@ -701,31 +761,36 @@
       const nickname = (typeof opts === 'object' && opts.nickname) ? opts.nickname : agentId;
 
       const titleEl = document.getElementById('uninstall-modal-title');
-      if (titleEl) titleEl.innerText = 'Uninstall Instructions — ' + nickname;
+      if (titleEl) titleEl.textContent = 'Uninstall ' + nickname;
 
       const container = document.getElementById('uninstall-instructions-container');
       if (container && window.CertainStatsProvisionRenderer) {
         window.CertainStatsProvisionRenderer.loadUninstallInstructions(agentId, container);
       }
 
-      modal.style.display = 'block';
+      Modal.open(modal);
     },
 
+    // Modals are native <dialog class="modal"> elements: Esc and focus trapping come from the browser.
     initModalBackdropHandlers: function () {
       document.addEventListener('click', function (e) {
-        const modal = e.target.closest('.modal-overlay, [id$="-modal"], #add-agent-modal');
-        if (modal && e.target === modal) {
-          modal.style.display = 'none';
+        const opener = e.target.closest('[data-open-modal]');
+        if (opener) {
+          e.preventDefault();
+          Modal.open(opener.getAttribute('data-open-modal'));
+          return;
         }
-      });
-
-      document.addEventListener('keydown', function (e) {
-        if (e.key === 'Escape' || e.key === 'Esc') {
-          document.querySelectorAll('.modal-overlay, [id$="-modal"], #add-agent-modal').forEach(modal => {
-            if (modal.style.display !== 'none') {
-              modal.style.display = 'none';
-            }
-          });
+        const closer = e.target.closest('[data-close-modal]');
+        if (closer) {
+          e.preventDefault();
+          Modal.close(closer.getAttribute('data-close-modal') || closer.closest('dialog, .modal-overlay'));
+          return;
+        }
+        // Backdrop click: the event target is the <dialog> itself, outside its content box.
+        if (e.target.tagName === 'DIALOG' && e.target.classList.contains('modal')) {
+          const r = e.target.getBoundingClientRect();
+          const inside = e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom;
+          if (!inside) Modal.close(e.target);
         }
       });
     }

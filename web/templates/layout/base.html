@@ -1,57 +1,43 @@
 {{define "base"}}
 <!DOCTYPE html>
-<html lang="en" data-theme="dark">
+<html lang="en" data-theme="light">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{{if .Title}}{{.Title}} — {{end}}CertainStats</title>
-  <script>(function(){try{var t=localStorage.getItem('certainstats_theme')||'dark';document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
+  {{template "theme_bootstrap"}}
+  <link rel="preload" href="{{.StaticPath}}/fonts/figtree-latin.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="{{.StaticPath}}/{{asset "css/styles.css"}}" integrity="{{integrity "css/styles.css"}}">
   <script src="{{.StaticPath}}/{{asset "js/chart.js"}}" integrity="{{integrity "js/chart.js"}}"></script>
   <script src="{{.StaticPath}}/{{asset "js/telemetry.js"}}" integrity="{{integrity "js/telemetry.js"}}"></script>
   <script src="{{.StaticPath}}/{{asset "js/provision_renderer.js"}}" integrity="{{integrity "js/provision_renderer.js"}}"></script>
 </head>
 <body data-panel-path="{{.PanelPath}}" data-static-path="{{.StaticPath}}">
+  <a class="skip-link" href="#main">Skip to content</a>
   <header class="navbar admin-navbar">
     <div class="navbar-container">
       <div class="nav-left">
-        <a href="{{.PanelPath}}" class="nav-brand">
-          <div class="logo-icon">
-            <span>C</span>
-          </div>
+        <a href="{{.PanelPath}}/" class="nav-brand">
+          {{template "logo_mark"}}
           <span class="brand-title">CertainStats</span>
         </a>
 
         {{if .Authenticated}}
-        <nav class="nav-links mobile-hide">
-          <a href="{{.PanelPath}}" class="nav-link {{if eq .ActiveNav "agents"}}active{{end}}">
-            Agent Hub
-          </a>
-          <a href="{{.PanelPath}}/dashboards" class="nav-link {{if eq .ActiveNav "dashboards"}}active{{end}}">
-            Dashboards
-          </a>
-          <a href="{{.PanelPath}}/alerts" class="nav-link {{if eq .ActiveNav "alerts"}}active{{end}}">
-            Alerts
-          </a>
-          <a href="{{.PanelPath}}/agents/management" class="nav-link {{if eq .ActiveNav "management"}}active{{end}}">
-            Management
-          </a>
-          <a href="{{.PanelPath}}/settings" class="nav-link {{if eq .ActiveNav "settings"}}active{{end}}">
-            Settings
-          </a>
+        <nav class="nav-links mobile-hide" aria-label="Main">
+          <a href="{{.PanelPath}}/" class="nav-link"{{if eq .ActiveNav "agents"}} aria-current="page"{{end}}>Agent Hub</a>
+          <a href="{{.PanelPath}}/dashboards" class="nav-link"{{if eq .ActiveNav "dashboards"}} aria-current="page"{{end}}>Dashboards</a>
+          <a href="{{.PanelPath}}/alerts" class="nav-link"{{if eq .ActiveNav "alerts"}} aria-current="page"{{end}}>Alerts</a>
+          <a href="{{.PanelPath}}/agents/management" class="nav-link"{{if eq .ActiveNav "management"}} aria-current="page"{{end}}>Management</a>
+          <a href="{{.PanelPath}}/settings" class="nav-link"{{if eq .ActiveNav "settings"}} aria-current="page"{{end}}>Settings</a>
         </nav>
         {{end}}
       </div>
 
       <div class="nav-right">
-        <button id="theme-toggle" class="btn btn-secondary btn-sm" type="button" title="Toggle Theme">
-          Theme
-        </button>
-
+        {{template "theme_toggle"}}
         {{if .Authenticated}}
-        <div class="nav-divider"></div>
-        <form action="{{.PanelPath}}/logout" method="POST" style="display:inline; margin: 0;">
-          <button type="submit" class="btn btn-danger btn-sm">Logout</button>
+        <form action="{{.PanelPath}}/logout" method="POST">
+          <button type="submit" class="btn btn-secondary btn-sm">Log out</button>
         </form>
         {{end}}
       </div>
@@ -59,35 +45,24 @@
   </header>
 
   {{if .Authenticated}}
-  <!-- MOBILE SECONDARY TAB BAR -->
-  <div class="mobile-subnav mobile-only">
-    <a href="{{.PanelPath}}" class="subnav-link {{if eq .ActiveNav "agents"}}active{{end}}">
-      Agent Hub
-    </a>
-    <a href="{{.PanelPath}}/dashboards" class="subnav-link {{if eq .ActiveNav "dashboards"}}active{{end}}">
-      Dashboards
-    </a>
-    <a href="{{.PanelPath}}/alerts" class="subnav-link {{if eq .ActiveNav "alerts"}}active{{end}}">
-      Alerts
-    </a>
-    <a href="{{.PanelPath}}/agents/management" class="subnav-link {{if eq .ActiveNav "management"}}active{{end}}">
-      Management
-    </a>
-    <a href="{{.PanelPath}}/settings" class="subnav-link {{if eq .ActiveNav "settings"}}active{{end}}">
-      Settings
-    </a>
-  </div>
+  <nav class="mobile-subnav mobile-only" aria-label="Main">
+    <a href="{{.PanelPath}}/" class="subnav-link"{{if eq .ActiveNav "agents"}} aria-current="page"{{end}}>Agent Hub</a>
+    <a href="{{.PanelPath}}/dashboards" class="subnav-link"{{if eq .ActiveNav "dashboards"}} aria-current="page"{{end}}>Dashboards</a>
+    <a href="{{.PanelPath}}/alerts" class="subnav-link"{{if eq .ActiveNav "alerts"}} aria-current="page"{{end}}>Alerts</a>
+    <a href="{{.PanelPath}}/agents/management" class="subnav-link"{{if eq .ActiveNav "management"}} aria-current="page"{{end}}>Management</a>
+    <a href="{{.PanelPath}}/settings" class="subnav-link"{{if eq .ActiveNav "settings"}} aria-current="page"{{end}}>Settings</a>
+  </nav>
   {{end}}
 
-  <main class="container">
+  <main id="main" class="container">
     {{if .FlashSuccess}}
-    <div class="flash flash-success">
+    <div class="flash flash-success" role="status">
       <span>{{.FlashSuccess}}</span>
     </div>
     {{end}}
 
     {{if .FlashError}}
-    <div class="flash flash-error">
+    <div class="flash flash-error" role="alert">
       <span>{{.FlashError}}</span>
     </div>
     {{end}}
@@ -97,11 +72,11 @@
 
   <footer class="footer">
     <div class="footer-content">
-      <span>CertainStats &copy; {{.Year}} — Self-Hosted Server Monitoring Platform</span>
-      <span class="footer-stats">Render Time: {{.RenderTime}}</span>
+      <span>CertainStats &copy; {{.Year}} · Self-hosted server monitoring</span>
+      <span class="footer-stats">Rendered in {{.RenderTime}}</span>
     </div>
   </footer>
 
-  <div id="toast-container"></div>
+  <div id="toast-container" aria-live="polite"></div>
 </body>
 </html>{{end}}

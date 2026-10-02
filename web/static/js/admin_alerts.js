@@ -13,7 +13,7 @@
     if (val === 'agent_down') {
       if (threshRow) threshRow.style.display = 'none';
     } else {
-      if (threshRow) threshRow.style.display = 'grid';
+      if (threshRow) threshRow.style.display = '';
       if (unitSpan) {
         if (['net_rx', 'net_tx', 'disk_read', 'disk_write'].includes(val)) {
           unitSpan.textContent = '(KB/s)';
@@ -30,11 +30,11 @@
     const directGroup = document.getElementById(prefix + '-direct-dest-group');
 
     if (val === 'preset') {
-      if (presetGroup) presetGroup.style.display = 'block';
+      if (presetGroup) presetGroup.style.display = '';
       if (directGroup) directGroup.style.display = 'none';
     } else {
       if (presetGroup) presetGroup.style.display = 'none';
-      if (directGroup) directGroup.style.display = 'block';
+      if (directGroup) directGroup.style.display = '';
     }
   }
 
@@ -48,8 +48,12 @@
     });
   }
 
+  function esc(v) {
+    return String(v == null ? '' : v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+  }
+
   function formatDuration(triggeredAt, resolvedAt) {
-    if (!resolvedAt) return '<span style="color: #ef4444; font-weight: 600;">● Ongoing</span>';
+    if (!resolvedAt) return '<span class="history-status-ongoing">Ongoing</span>';
     const diffMs = new Date(resolvedAt).getTime() - new Date(triggeredAt).getTime();
     if (diffMs <= 0) return '< 1s';
     const sec = Math.floor(diffMs / 1000);
@@ -64,7 +68,7 @@
 
   function formatBreachVal(item) {
     const type = item.trigger ? item.trigger.type : '';
-    if (type === 'agent_down') return '<span style="color: var(--text-muted);">Offline</span>';
+    if (type === 'agent_down') return '<span class="muted">Offline</span>';
     if (['net_rx', 'net_tx', 'disk_read', 'disk_write'].includes(type)) {
       return `${(item.trigger_value || 0).toLocaleString()} KB/s`;
     }
@@ -81,7 +85,7 @@
       .catch(() => {
         const tbody = document.getElementById('history-tbody');
         if (tbody) {
-          tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: var(--text-muted); padding: 24px;">No incident records found.</td></tr>`;
+          tbody.innerHTML = '<tr><td colspan="6" class="table-empty">Could not load incident history. Reload the page to try again.</td></tr>';
         }
       });
   }
@@ -106,16 +110,16 @@
     const banner = document.getElementById('active-incidents-banner');
     if (banner) {
       if (firingCount > 0) {
-        banner.style.display = 'block';
+        banner.style.display = 'flex';
         const countLabel = document.getElementById('incidents-count-label');
-        if (countLabel) countLabel.textContent = `${firingCount} Active Firing Incident${firingCount > 1 ? 's' : ''}`;
+        if (countLabel) countLabel.textContent = firingCount === 1 ? '1 incident is firing' : `${firingCount} incidents are firing`;
       } else {
         banner.style.display = 'none';
       }
     }
 
     if (filtered.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: var(--text-muted); padding: 24px;">No incidents matching current criteria.</td></tr>`;
+      tbody.innerHTML = '<tr><td colspan="6" class="table-empty">' + (incidentHistory.length ? 'No incidents match this filter.' : 'No incidents yet.') + '</td></tr>';
       return;
     }
 
@@ -125,27 +129,28 @@
       const breachVal = formatBreachVal(item);
       const duration = formatDuration(item.triggered_at, item.resolved_at);
 
+      let notice;
+      if (item.notified_status === 'failed') {
+        notice = `<button type="button" class="btn btn-danger btn-sm retry-btn" data-id="${esc(item.history_id)}" title="${esc(item.error_message || 'Notification failed')}">Retry</button>`;
+      } else if (item.notified_status === 'pending') {
+        notice = '<span class="muted">Sending…</span>';
+      } else {
+        notice = '<span class="history-delivered">Delivered</span>';
+      }
+
       return `
         <tr>
-          <td style="font-size: 12px;">${trigTime}</td>
+          <td>${esc(trigTime)}</td>
           <td>
-            <strong style="color: var(--text-primary);">${item.alert_nickname || 'Rule'}</strong>
-            <span style="font-size: 11px; color: var(--text-muted);">(${item.agent_nickname || item.agent_id || 'Node'})</span>
-          </td>
-          <td class="mono" style="font-size: 12px;">${breachVal}</td>
-          <td style="font-size: 12px;">${duration}</td>
-          <td>
-            <span class="badge ${isFiring ? 'badge-offline' : 'badge-online'}">
-              ${isFiring ? 'Firing' : 'Resolved'}
+            <span class="history-rule">
+              <span class="table-node-name">${esc(item.alert_nickname || 'Rule')}</span>
+              <span class="muted">${esc(item.agent_nickname || item.agent_id || 'Server')}</span>
             </span>
           </td>
-          <td>
-            ${item.notified_status === 'failed' ? `
-              <button type="button" class="btn btn-danger btn-sm retry-btn" data-id="${item.history_id}" title="${item.error_message || 'Notification failed'}" style="font-size: 10px; padding: 2px 6px;">
-                Retry
-              </button>
-            ` : `<span style="font-size: 11px; color: var(--status-online);">✓ Delivered</span>`}
-          </td>
+          <td class="mono">${breachVal}</td>
+          <td>${duration}</td>
+          <td><span class="badge ${isFiring ? 'badge-offline' : 'badge-online'}">${isFiring ? 'Firing' : 'Resolved'}</span></td>
+          <td>${notice}</td>
         </tr>
       `;
     }).join('');
@@ -313,7 +318,7 @@
             if (pill) pill.classList.toggle('active', isMatched);
           });
 
-          document.getElementById('edit-alert-modal').style.display = 'block';
+          window.CertainStatsModal.open('edit-alert-modal');
         };
       });
 
@@ -332,7 +337,7 @@
           document.getElementById('edit-target-destination').value = destination;
           document.getElementById('edit-target-payload').value = payload;
 
-          document.getElementById('edit-target-modal').style.display = 'block';
+          window.CertainStatsModal.open('edit-target-modal');
         };
       });
     });

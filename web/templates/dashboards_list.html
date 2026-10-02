@@ -1,47 +1,42 @@
 {{define "content"}}
-<div class="page-header" style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 16px;">
-  <div>
-    <h1 class="page-title">Public Dashboards & Status Pages</h1>
-    <p style="color: var(--text-muted); font-size: 13px;">Create and manage public, unauthenticated status pages with granular metric access control matrices.</p>
+<section class="hero">
+  <div class="hero-eyebrow"><span>Status pages</span><span aria-hidden="true">·</span><span>{{len .Dashboards}} {{if eq (len .Dashboards) 1}}page{{else}}pages{{end}}</span></div>
+  <h1 class="hero-title">Share live server status without giving out a login.</h1>
+  <p class="page-subtitle">Each page shows the servers and metrics you choose. Anyone with the link can view it.</p>
+  <div class="hero-actions">
+    <a href="{{$.PanelPath}}/dashboard/create" class="btn btn-primary">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+      New status page
+    </a>
   </div>
-
-  <a href="{{$.PanelPath}}/dashboard/create" class="btn btn-primary">
-    + Create Public Dashboard
-  </a>
-</div>
+</section>
 
 {{if not .Dashboards}}
-<div class="card" style="text-align: center; padding: 48px;">
-  <h3 style="margin-bottom: 8px;">No Public Dashboards</h3>
-  <p style="color: var(--text-muted); margin-bottom: 20px;">Share curated agent metrics publicly with fine-grained access control rules.</p>
-  <a href="{{$.PanelPath}}/dashboard/create" class="btn btn-primary">
-    Create Public Dashboard
-  </a>
+<div class="empty-state">
+  <h2 class="empty-state-title">No status pages yet</h2>
+  <p>Create one to share selected servers and metrics publicly.</p>
+  <a href="{{$.PanelPath}}/dashboard/create" class="btn btn-primary">New status page</a>
 </div>
 {{else}}
 <div class="table-responsive">
   <table class="table">
     <thead>
       <tr>
-        <th>Title</th>
-        <th>Public URL Slug</th>
-        <th>Max History Days</th>
-        <th>Actions</th>
+        <th>Page</th>
+        <th>Public address</th>
+        <th>History</th>
+        <th><span class="sr-only">Actions</span></th>
       </tr>
     </thead>
     <tbody>
       {{range .Dashboards}}
+      {{$href := ""}}{{if eq $.PublicPath "/"}}{{$href = printf "/dashboard/%s" .Slug}}{{else}}{{$href = printf "%s/%s" $.PublicPath .Slug}}{{end}}
       <tr>
-        <td><strong>{{.Title}}</strong></td>
-        <td class="mono">
-          <a href="{{if eq $.PublicPath "/"}}/dashboard/{{.Slug}}{{else}}{{$.PublicPath}}/{{.Slug}}{{end}}" target="_blank" style="color: var(--accent-primary); text-decoration: none; display: inline-flex; align-items: center; gap: 4px;">
-            <span>/dashboard/{{.Slug}}</span>
-            <span style="font-size: 12px;">↗</span>
-          </a>
-        </td>
-        <td>{{if (index .AccessRules "public")}}{{(index .AccessRules "public").MaxDays}}{{else}}7{{end}} Days</td>
+        <td><a class="table-node-name table-link" href="{{$.PanelPath}}/dashboard/{{.DashboardID}}">{{.Title}}</a></td>
+        <td class="mono"><a class="table-link-muted" href="{{$href}}" target="_blank" rel="noopener">{{$href}} &nearr;</a></td>
+        <td>{{if (index .AccessRules "public")}}{{(index .AccessRules "public").MaxDays}}{{else}}7{{end}} days</td>
         <td>
-          <div style="display: flex; gap: 6px;">
+          <div class="table-actions">
             <a href="{{$.PanelPath}}/dashboard/{{.DashboardID}}" class="btn btn-secondary btn-sm">Edit</a>
             <button type="button" class="btn btn-danger btn-sm" onclick="deleteDashboard('{{.DashboardID}}', '{{.Title}}')">Delete</button>
           </div>

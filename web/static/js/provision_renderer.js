@@ -202,7 +202,7 @@
     if (!container) return;
     container.innerHTML = '';
     if (!Array.isArray(messages) || messages.length === 0) {
-      container.innerHTML = '<p style="color: var(--text-muted); font-size: 13px;">No instructions available.</p>';
+      container.innerHTML = '<p class="muted">No instructions available for this agent.</p>';
       return;
     }
 
@@ -222,7 +222,7 @@
   function loadInstallInstructions(agentId, containerEl) {
     if (!containerEl) return;
     containerEl.innerHTML = `
-      <div style="text-align: center; padding: 32px; color: var(--text-muted); font-size: 13px;">
+      <div class="loading-state">
         Fetching installation instructions...
       </div>`;
 
@@ -253,7 +253,7 @@
   function loadUninstallInstructions(agentId, containerEl) {
     if (!containerEl) return;
     containerEl.innerHTML = `
-      <div style="text-align: center; padding: 32px; color: var(--text-muted); font-size: 13px;">
+      <div class="loading-state">
         Fetching uninstall instructions...
       </div>`;
 
@@ -307,8 +307,10 @@
 
   function selectProvisionDriver(el, type) {
     selectedProvisionType = type;
-    document.querySelectorAll('.driver-select-card').forEach(c => c.classList.remove('selected'));
-    if (el) el.classList.add('selected');
+    document.querySelectorAll('.driver-select-card').forEach(c => {
+      c.classList.toggle('selected', c === el);
+      c.setAttribute('aria-checked', String(c === el));
+    });
   }
 
   function submitProvisionAgent() {
@@ -318,14 +320,14 @@
 
     if (btn) {
       btn.disabled = true;
-      btn.textContent = 'Provisioning...';
+      btn.textContent = 'Creating…';
     }
 
     provisionAgent(selectedProvisionType, nickname)
       .then(data => {
         if (btn) {
           btn.disabled = false;
-          btn.textContent = 'Provision';
+          btn.textContent = 'Create agent';
         }
 
         const stepSelect = document.getElementById('provision-step-select');
@@ -333,24 +335,23 @@
         const resTitle = document.getElementById('provision-result-title');
         const container = document.getElementById('provision-instructions-container');
 
-        if (resTitle) resTitle.textContent = 'Agent Provisioned — ' + (data.nickname || data.agent_id);
-        if (stepSelect) stepSelect.style.display = 'none';
-        if (stepInst) stepInst.style.display = 'block';
+        if (resTitle) resTitle.textContent = 'Created ' + (data.nickname || data.agent_id);
+        if (stepSelect) stepSelect.hidden = true;
+        if (stepInst) stepInst.hidden = false;
 
         renderInstructions(container, data.messages, 'prov');
       })
       .catch(err => {
         if (btn) {
           btn.disabled = false;
-          btn.textContent = 'Provision';
+          btn.textContent = 'Create agent';
         }
-        alert('Failed to provision agent: ' + err.message);
+        alert('Could not create the agent: ' + err.message);
       });
   }
 
   function finishProvisioning() {
-    const modal = document.getElementById('add-agent-modal');
-    if (modal) modal.style.display = 'none';
+    window.CertainStatsModal.close('add-agent-modal');
     window.location.reload();
   }
 

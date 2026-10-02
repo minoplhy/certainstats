@@ -1,10 +1,9 @@
 {{define "content"}}
-<div class="page-header">
-  <div>
-    <h1 class="page-title">Account & Security Settings</h1>
-    <p style="color: var(--text-muted); font-size: 13px;">Manage administrator password, examine active browser sessions, and revoke unrecognized devices.</p>
-  </div>
-</div>
+<section class="hero">
+  <div class="hero-eyebrow"><span>Settings</span></div>
+  <h1 class="hero-title">Account and sessions</h1>
+  <p class="page-subtitle">Change your password and sign out devices you don't recognize.</p>
+</section>
 
 <div class="settings-grid">
   {{template "settings_password_form" .}}

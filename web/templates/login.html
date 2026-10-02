@@ -1,29 +1,29 @@
 {{define "content"}}
-<div style="max-width: 400px; margin: 60px auto;">
-  <div class="card">
-    <div style="text-align: center; margin-bottom: 24px;">
-      <span class="logo-icon" style="width: 40px; height: 40px; font-size: 20px; margin: 0 auto 12px;">C</span>
-      <h1 class="page-title" style="justify-content: center;">Sign In</h1>
-      <p style="color: var(--text-muted); font-size: 13px;">Welcome back to CertainStats</p>
+<div class="auth-shell">
+  <div class="auth-card">
+    <div class="auth-head">
+      {{template "logo_mark"}}
+      <h1 class="auth-title">Sign in</h1>
+      <p class="muted">Welcome back to CertainStats.</p>
     </div>
 
-    <form action="{{.PanelPath}}/login" method="POST">
+    <form class="card auth-form" action="{{.PanelPath}}/login" method="POST">
       <div class="form-group">
         <label class="form-label" for="username">Username</label>
-        <input type="text" id="username" name="username" class="form-input" required autofocus placeholder="username">
+        <input type="text" id="username" name="username" class="form-input" required autofocus autocomplete="username">
       </div>
 
       <div class="form-group">
         <label class="form-label" for="password">Password</label>
-        <input type="password" id="password" name="password" class="form-input" required placeholder="••••••••">
+        <input type="password" id="password" name="password" class="form-input" required autocomplete="current-password">
       </div>
 
-      <div class="form-group" style="display: flex; align-items: center; gap: 8px; margin-top: 12px; margin-bottom: 16px;">
-        <input type="checkbox" id="remember" name="remember" value="true" style="cursor: pointer;">
-        <label for="remember" style="font-size: 13px; color: var(--text-muted); cursor: pointer; user-select: none; margin-bottom: 0;">Remember me</label>
-      </div>
+      <label class="checkbox-row" for="remember">
+        <input type="checkbox" id="remember" name="remember" value="true">
+        <span>Keep me signed in for 30 days</span>
+      </label>
 
-      <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 10px;">Sign In</button>
+      <button type="submit" class="btn btn-primary btn-block">Sign in</button>
     </form>
   </div>
 </div>

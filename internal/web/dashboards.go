@@ -343,17 +343,26 @@ func (h *WebHandler) PublicDashboardHandler(w http.ResponseWriter, r *http.Reque
 		pubStaticPath = "/static"
 	}
 
+	online := 0
+	for _, a := range pubAgents {
+		if a.IsOnline != nil && *a.IsOnline {
+			online++
+		}
+	}
+
 	pd := PageData{
 		Title:      dash.Title,
 		PublicPath: h.PublicPath,
 		StaticPath: pubStaticPath,
 		Year:       time.Now().Year(),
 		Data: map[string]any{
-			"Dashboard":   dash,
-			"Agents":      pubAgents,
-			"AccessRules": rule,
-			"StaticPath":  pubStaticPath,
-			"PublicPath":  h.PublicPath,
+			"Dashboard":    dash,
+			"Agents":       pubAgents,
+			"OnlineCount":  online,
+			"OfflineCount": len(pubAgents) - online,
+			"AccessRules":  rule,
+			"StaticPath":   pubStaticPath,
+			"PublicPath":   h.PublicPath,
 		},
 	}
 

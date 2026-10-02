@@ -1,13 +1,14 @@
 {{define "public_toolbar"}}
-<!-- Toolbar -->
 <div class="toolbar-bar">
-  <div class="toolbar-search">
-    <input type="text" id="public-search-input" placeholder="Find monitor by name..." oninput="filterPublicMonitors()">
-  </div>
-
-  <div class="toolbar-group">
-    <button type="button" class="toolbar-btn active" id="btn-pub-grid" onclick="setPublicViewMode('grid')">Grid</button>
-    <button type="button" class="toolbar-btn" id="btn-pub-list" onclick="setPublicViewMode('list')">List</button>
+  <label class="toolbar-search">
+    <span class="sr-only">Search servers</span>
+    <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+    <input type="search" id="public-search-input" placeholder="Search servers" oninput="filterPublicMonitors()">
+  </label>
+  <span class="toolbar-spacer"></span>
+  <div class="toolbar-group" role="group" aria-label="View">
+    <button type="button" class="toolbar-btn active" id="btn-pub-list" onclick="setPublicViewMode('list')">Rows</button>
+    <button type="button" class="toolbar-btn" id="btn-pub-grid" onclick="setPublicViewMode('grid')">Cards</button>
   </div>
 </div>
 {{end}}

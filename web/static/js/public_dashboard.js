@@ -62,17 +62,12 @@
     const btnGrid = document.getElementById('btn-pub-grid');
     const btnList = document.getElementById('btn-pub-list');
 
-    if (mode === 'list') {
-      if (gridContainer) gridContainer.style.display = 'none';
-      if (listContainer) listContainer.style.display = 'block';
-      if (btnGrid) btnGrid.classList.remove('active');
-      if (btnList) btnList.classList.add('active');
-    } else {
-      if (gridContainer) gridContainer.style.display = 'grid';
-      if (listContainer) listContainer.style.display = 'none';
-      if (btnGrid) btnGrid.classList.add('active');
-      if (btnList) btnList.classList.remove('active');
-    }
+    const isList = mode !== 'grid';
+    if (gridContainer) gridContainer.hidden = isList;
+    if (listContainer) listContainer.hidden = !isList;
+    if (btnGrid) { btnGrid.classList.toggle('active', !isList); btnGrid.setAttribute('aria-pressed', String(!isList)); }
+    if (btnList) { btnList.classList.toggle('active', isList); btnList.setAttribute('aria-pressed', String(isList)); }
+    try { localStorage.setItem('certainstats_public_view_mode', isList ? 'list' : 'grid'); } catch (e) {}
   }
 
   function filterPublicMonitors() {
@@ -96,6 +91,7 @@
     const inpageDisksGrid = document.getElementById('pub-inpage-disks-grid');
     if (inpageDisksGrid && pubAllowedMetrics.includes('agent_disk_used')) {
       const disks = (agent.disks && agent.disks.length > 0) ? agent.disks : [];
+      const showIO = pubAllowedMetrics.includes('agent_disk_read_bytes') || pubAllowedMetrics.includes('agent_disk_write_bytes');
       let disksHtml = '';
       if (disks && disks.length > 0) {
         disks.forEach(d => {
@@ -103,48 +99,12 @@
           const snapDisk = (snap && snap.disks) ? snap.disks.find(x => x.path === path) : null;
           const used = snapDisk ? snapDisk.used_bytes : (d.used_bytes || 0);
           const total = d.total_bytes || (snapDisk ? snapDisk.total_bytes : 0) || 0;
-          const pct = total > 0 ? (used / total) * 100 : 0;
-          disksHtml += `
-            <div class="hw-card">
-              <div class="hw-card-header">
-                <span>⛁ ${path}</span>
-                <span class="mono" style="color: var(--text-secondary); font-weight: 600;">${pct > 0 ? pct.toFixed(1) + '%' : '-'}</span>
-              </div>
-              <div class="hw-card-val-row">
-                <span class="hw-card-val">${window.CertainStatsChart.formatBytes(used)}</span>
-                <span class="hw-card-unit">${total ? ' / ' + window.CertainStatsChart.formatBytes(total) : ''}</span>
-              </div>
-              <div class="hw-card-progress-track">
-                <div class="hw-card-progress-fill seg-disk" style="width: ${Math.min(pct, 100)}%;"></div>
-              </div>
-              <div style="display: flex; justify-content: space-between; align-items: center; font-size: 12px; margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--border-color);">
-                <span style="color: var(--text-secondary); font-weight: 600;">Total:</span>
-                <span class="mono" style="font-size: 12px; font-weight: 600; color: var(--text-primary);">R: ${window.CertainStatsChart.formatBytes(d.read_bytes || 0)} <span style="color: var(--border-color); margin: 0 4px;">/</span> W: ${window.CertainStatsChart.formatBytes(d.write_bytes || 0)}</span>
-              </div>
-            </div>`;
+          disksHtml += window.CertainStatsTelemetry.partitionCardHtml(path, used, total, d.read_bytes || 0, d.write_bytes || 0, { showIO: showIO });
         });
       } else {
         const diskUsed = snap ? (snap.disk_used_bytes || 0) : 0;
         const diskTotal = agent.disk_size || (snap ? snap.disk_total_bytes : 0) || 0;
-        const pct = diskTotal > 0 ? (diskUsed / diskTotal) * 100 : 0;
-        disksHtml += `
-          <div class="hw-card">
-            <div class="hw-card-header">
-              <span>⛁ /</span>
-              <span class="mono" style="color: var(--text-secondary); font-weight: 600;">${pct > 0 ? pct.toFixed(1) + '%' : '-'}</span>
-            </div>
-            <div class="hw-card-val-row">
-              <span class="hw-card-val">${window.CertainStatsChart.formatBytes(diskUsed)}</span>
-              <span class="hw-card-unit">${diskTotal ? ' / ' + window.CertainStatsChart.formatBytes(diskTotal) : ''}</span>
-            </div>
-            <div class="hw-card-progress-track">
-              <div class="hw-card-progress-fill seg-disk" style="width: ${Math.min(pct, 100)}%;"></div>
-            </div>
-            <div style="display: flex; justify-content: space-between; align-items: center; font-size: 12px; margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--border-color);">
-              <span style="color: var(--text-secondary); font-weight: 600;">Total:</span>
-              <span class="mono" style="font-size: 12px; font-weight: 600; color: var(--text-primary);">R: ${window.CertainStatsChart.formatBytes(agent.total_disk_read_bytes || 0)} <span style="color: var(--border-color); margin: 0 4px;">/</span> W: ${window.CertainStatsChart.formatBytes(agent.total_disk_write_bytes || 0)}</span>
-            </div>
-          </div>`;
+        disksHtml += window.CertainStatsTelemetry.partitionCardHtml('/', diskUsed, diskTotal, agent.total_disk_read_bytes || 0, agent.total_disk_write_bytes || 0, { showIO: showIO });
       }
       inpageDisksGrid.innerHTML = disksHtml;
     }
@@ -163,6 +123,12 @@
       if (inpageRam && pubAllowedMetrics.includes('agent_ram_used')) inpageRam.style.width = Math.min(ramPct, 100) + '%';
       if (inpageDisk && diskPct > 0 && pubAllowedMetrics.includes('agent_disk_used')) inpageDisk.style.width = Math.min(diskPct, 100) + '%';
       if (inpageSwap && swapPct > 0 && pubAllowedMetrics.includes('agent_swap_used')) inpageSwap.style.width = Math.min(swapPct, 100) + '%';
+
+      const fmt = window.CertainStatsChart.formatBytes;
+      const tileCpu = document.getElementById('pub-inpage-tile-cpu'); if (tileCpu) tileCpu.textContent = snap.cpu_usage_percent.toFixed(1) + '%';
+      const tileRam = document.getElementById('pub-inpage-tile-ram'); if (tileRam) tileRam.textContent = fmt(snap.ram_used_bytes);
+      const tileDisk = document.getElementById('pub-inpage-tile-disk'); if (tileDisk) tileDisk.textContent = snap.disk_used_bytes > 0 ? fmt(snap.disk_used_bytes) : '–';
+      const tileSwap = document.getElementById('pub-inpage-tile-swap'); if (tileSwap) tileSwap.textContent = fmt(snap.ram_swap_used_bytes);
 
       const inpageCpuUsr = document.getElementById('pub-inpage-live-cpu-usr'); if (inpageCpuUsr && pubAllowedMetrics.includes('agent_cpu_usage')) inpageCpuUsr.textContent = snap.cpu_usage_percent.toFixed(1) + '%';
       const inpageCpuIo = document.getElementById('pub-inpage-live-cpu-io'); if (inpageCpuIo && pubAllowedMetrics.includes('agent_cpu_iowait')) inpageCpuIo.textContent = snap.cpu_iowait_percent.toFixed(1) + '%';
@@ -224,7 +190,7 @@
       renderPubInpageLiveState(pubId);
 
       const odoNet = document.getElementById('pub-inpage-odo-net');
-      if (odoNet) odoNet.innerHTML = '<span>↓ ' + window.CertainStatsChart.formatBytes(agent.total_rx_bytes || 0) + '</span> / <span>↑ ' + window.CertainStatsChart.formatBytes(agent.total_tx_bytes || 0) + '</span>';
+      if (odoNet) odoNet.innerHTML = '<span>↓ ' + window.CertainStatsChart.formatBytes(agent.total_rx_bytes || 0) + '</span><span>↑ ' + window.CertainStatsChart.formatBytes(agent.total_tx_bytes || 0) + '</span>';
 
       let totalDiskRead = agent.total_disk_read_bytes || 0;
       let totalDiskWrite = agent.total_disk_write_bytes || 0;
@@ -235,7 +201,7 @@
         });
       }
       const odoDisk = document.getElementById('pub-inpage-odo-disk');
-      if (odoDisk) odoDisk.innerHTML = '<span>R: ' + window.CertainStatsChart.formatBytes(totalDiskRead) + '</span> / <span>W: ' + window.CertainStatsChart.formatBytes(totalDiskWrite) + '</span>';
+      if (odoDisk) odoDisk.innerHTML = '<span>R ' + window.CertainStatsChart.formatBytes(totalDiskRead) + '</span><span>W ' + window.CertainStatsChart.formatBytes(totalDiskWrite) + '</span>';
     }
 
     // 1. Fetch CPU (Usr, IO, Steal)
@@ -258,13 +224,13 @@
 
         const seriesList = [];
         if (pubAllowedMetrics.includes('agent_cpu_usage')) {
-          seriesList.push({ label: 'Usr', color: '#6366f1', fill: true, data: ptsUsr.map(p => ({ timestamp: p[0], value: p[1] })) });
+          seriesList.push({ label: 'Usr', color: 'var(--s1)', fill: true, data: ptsUsr.map(p => ({ timestamp: p[0], value: p[1] })) });
         }
         if (pubAllowedMetrics.includes('agent_cpu_iowait')) {
-          seriesList.push({ label: 'IO', color: '#94a3b8', fill: false, data: ptsIO.map(p => ({ timestamp: p[0], value: p[1] })) });
+          seriesList.push({ label: 'IO', color: 'var(--s2)', fill: false, data: ptsIO.map(p => ({ timestamp: p[0], value: p[1] })) });
         }
         if (pubAllowedMetrics.includes('agent_cpu_steal')) {
-          seriesList.push({ label: 'Stl', color: '#ef4444', fill: false, data: ptsStl.map(p => ({ timestamp: p[0], value: p[1] })) });
+          seriesList.push({ label: 'Stl', color: 'var(--s3)', fill: false, data: ptsStl.map(p => ({ timestamp: p[0], value: p[1] })) });
         }
 
         if (!pubInpageCpuChart) {
@@ -300,10 +266,10 @@
 
         const seriesList = [];
         if (pubAllowedMetrics.includes('agent_ram_used')) {
-          seriesList.push({ label: 'RAM', color: '#14b8a6', fill: false, data: ptsRam.map(p => ({ timestamp: p[0], value: p[1] })) });
+          seriesList.push({ label: 'RAM', color: 'var(--s4)', fill: false, data: ptsRam.map(p => ({ timestamp: p[0], value: p[1] })) });
         }
         if (pubAllowedMetrics.includes('agent_swap_used')) {
-          seriesList.push({ label: 'Swap', color: '#94a3b8', fill: false, data: ptsSwap.map(p => ({ timestamp: p[0], value: p[1] })) });
+          seriesList.push({ label: 'Swap', color: 'var(--s5)', fill: false, data: ptsSwap.map(p => ({ timestamp: p[0], value: p[1] })) });
         }
 
         if (!pubInpageRamChart) {
@@ -339,10 +305,10 @@
 
         const seriesList = [];
         if (pubAllowedMetrics.includes('agent_rx_bytes')) {
-          seriesList.push({ label: 'RX', color: '#1e40af', fill: false, data: rateRx.map(p => ({ timestamp: p[0], value: p[1] })) });
+          seriesList.push({ label: 'RX', color: 'var(--rx)', fill: false, data: rateRx.map(p => ({ timestamp: p[0], value: p[1] })) });
         }
         if (pubAllowedMetrics.includes('agent_tx_bytes')) {
-          seriesList.push({ label: 'TX', color: '#7e22ce', fill: false, data: rateTx.map(p => ({ timestamp: p[0], value: p[1] })) });
+          seriesList.push({ label: 'TX', color: 'var(--tx)', fill: false, data: rateTx.map(p => ({ timestamp: p[0], value: p[1] })) });
         }
 
         if (!pubInpageNetChart) {
@@ -393,29 +359,27 @@
           let html = '';
           paths.forEach(p => {
             const safe = safeId(p);
+            const showUsage = pubAllowedMetrics.includes('agent_disk_used');
+            const showIO = pubAllowedMetrics.includes('agent_disk_read_bytes') || pubAllowedMetrics.includes('agent_disk_write_bytes');
             html += `
-              <div class="card" id="pub-inpage-disk-card-usage-${safe}" style="${pubAllowedMetrics.includes('agent_disk_used') ? '' : 'display:none;'}">
+              <div class="chart-card" id="pub-inpage-disk-card-usage-${safe}"${showUsage ? '' : ' hidden'}>
                 <div class="chart-header-row">
-                  <h3 class="chart-header-title">Disk Usage (${p})</h3>
+                  <h3 class="chart-header-title">Disk usage <span class="muted mono">${p}</span></h3>
                   <div class="chart-legend-pills">
-                    <span class="chart-legend-item"><span class="chart-legend-dot" style="background-color: #8b5cf6;"></span>Used: <span class="chart-legend-val" id="pub-inpage-live-disk-used-${safe}">0 B</span></span>
+                    <span class="chart-legend-item"><span class="chart-legend-dot sw-s1"></span>Used <span class="chart-legend-val" id="pub-inpage-live-disk-used-${safe}">0 B</span></span>
                   </div>
                 </div>
-                <div class="chart-container" style="height: 220px;">
-                  <canvas id="pub-inpage-chart-disk-${safe}" class="chart-canvas"></canvas>
-                </div>
+                <div class="chart-container"><canvas id="pub-inpage-chart-disk-${safe}" class="chart-canvas"></canvas></div>
               </div>
-              <div class="card" id="pub-inpage-disk-card-io-${safe}" style="${(pubAllowedMetrics.includes('agent_disk_read_bytes') || pubAllowedMetrics.includes('agent_disk_write_bytes')) ? '' : 'display:none;'}">
+              <div class="chart-card" id="pub-inpage-disk-card-io-${safe}"${showIO ? '' : ' hidden'}>
                 <div class="chart-header-row">
-                  <h3 class="chart-header-title">Disk I/O Rate (${p})</h3>
+                  <h3 class="chart-header-title">Disk I/O <span class="muted mono">${p}</span></h3>
                   <div class="chart-legend-pills">
-                    ${pubAllowedMetrics.includes('agent_disk_read_bytes') ? `<span class="chart-legend-item"><span class="chart-legend-dot" style="background-color: #fb923c;"></span>Read: <span class="chart-legend-val" id="pub-inpage-live-disk-read-${safe}">0 B/s</span></span>` : ''}
-                    ${pubAllowedMetrics.includes('agent_disk_write_bytes') ? `<span class="chart-legend-item"><span class="chart-legend-dot" style="background-color: #ef4444;"></span>Write: <span class="chart-legend-val" id="pub-inpage-live-disk-write-${safe}">0 B/s</span></span>` : ''}
+                    ${pubAllowedMetrics.includes('agent_disk_read_bytes') ? `<span class="chart-legend-item"><span class="chart-legend-dot sw-s2"></span>Read <span class="chart-legend-val" id="pub-inpage-live-disk-read-${safe}">0 B/s</span></span>` : ''}
+                    ${pubAllowedMetrics.includes('agent_disk_write_bytes') ? `<span class="chart-legend-item"><span class="chart-legend-dot sw-s3"></span>Write <span class="chart-legend-val" id="pub-inpage-live-disk-write-${safe}">0 B/s</span></span>` : ''}
                   </div>
                 </div>
-                <div class="chart-container" style="height: 220px;">
-                  <canvas id="pub-inpage-chart-disk-io-${safe}" class="chart-canvas"></canvas>
-                </div>
+                <div class="chart-container"><canvas id="pub-inpage-chart-disk-io-${safe}" class="chart-canvas"></canvas></div>
               </div>`;
           });
           container.innerHTML = html;
@@ -441,15 +405,15 @@
 
           const usageSeries = [];
           if (pubAllowedMetrics.includes('agent_disk_used')) {
-            usageSeries.push({ label: 'Used', color: '#8b5cf6', fill: true, data: ptsUsed.map(pt => ({ timestamp: pt[0], value: pt[1] })) });
+            usageSeries.push({ label: 'Used', color: 'var(--s1)', fill: true, data: ptsUsed.map(pt => ({ timestamp: pt[0], value: pt[1] })) });
           }
 
           const ioSeries = [];
           if (pubAllowedMetrics.includes('agent_disk_read_bytes')) {
-            ioSeries.push({ label: 'Read', color: '#fb923c', fill: false, data: rateRead.map(pt => ({ timestamp: pt[0], value: pt[1] })) });
+            ioSeries.push({ label: 'Read', color: 'var(--s2)', fill: false, data: rateRead.map(pt => ({ timestamp: pt[0], value: pt[1] })) });
           }
           if (pubAllowedMetrics.includes('agent_disk_write_bytes')) {
-            ioSeries.push({ label: 'Write', color: '#ef4444', fill: false, data: rateWrite.map(pt => ({ timestamp: pt[0], value: pt[1] })) });
+            ioSeries.push({ label: 'Write', color: 'var(--s3)', fill: false, data: rateWrite.map(pt => ({ timestamp: pt[0], value: pt[1] })) });
           }
 
           let totalDisk = 0;
@@ -548,8 +512,11 @@
       const ramPct = (agent.ram_size && agent.ram_size > 0) ? (snap.ram_used_bytes / agent.ram_size) * 100 : 0;
       const swapPct = (agent.swap_size && agent.swap_size > 0) ? (snap.ram_swap_used_bytes / agent.swap_size) * 100 : 0;
 
-      if (valRam) valRam.textContent = window.CertainStatsChart.formatBytes(snap.ram_used_bytes) + (agent.ram_size ? ' / ' + window.CertainStatsChart.formatBytes(agent.ram_size) : '');
-      if (tdRam) tdRam.textContent = window.CertainStatsChart.formatBytes(snap.ram_used_bytes);
+      const pctRam = document.getElementById('pub-pct-ram-' + id);
+      const ramLabel = agent.ram_size ? Math.round(ramPct) + '%' : window.CertainStatsChart.formatBytes(snap.ram_used_bytes);
+      if (pctRam) pctRam.textContent = ramLabel;
+      if (valRam && agent.ram_size) valRam.textContent = 'of ' + window.CertainStatsChart.formatBytes(agent.ram_size);
+      if (tdRam) tdRam.textContent = ramLabel;
       if (segRam) segRam.style.width = Math.min(ramPct, 100) + '%';
       if (segSwap) segSwap.style.width = Math.min(swapPct, 100) + '%';
       if (tdSegRam) tdSegRam.style.width = Math.min(ramPct, 100) + '%';
@@ -569,36 +536,15 @@
       }
       const diskPct = (pubDiskTotal > 0 && pubDiskUsed > 0 && pubAllowedMetrics.includes('agent_disk_used')) ? (pubDiskUsed / pubDiskTotal) * 100 : 0;
 
-      if (diskBarsGroup && pubAllowedMetrics.includes('agent_disk_used')) {
-        if (snap.disks && snap.disks.length > 1) {
-          let barsHtml = '';
-          snap.disks.forEach(d => {
-            const path = d.path || '/';
-            const label = path === '/' ? 'DISK' : `DISK (${path})`;
-            const used = d.used_bytes || 0;
-            const total = d.total_bytes || 0;
-            const pct = total > 0 ? (used / total) * 100 : 0;
-            barsHtml += `
-              <div class="usage-bar-group">
-                <div class="usage-bar-label">
-                  <span class="title">${label}</span>
-                  <span class="value">${window.CertainStatsChart.formatBytes(used)}${total ? ' / ' + window.CertainStatsChart.formatBytes(total) : ''}</span>
-                </div>
-                <div class="usage-bar-track">
-                  <div class="usage-segment seg-disk" style="width: ${Math.min(pct, 100)}%;"></div>
-                </div>
-              </div>`;
-          });
-          diskBarsGroup.innerHTML = barsHtml;
-        } else {
-          const segDisk = document.getElementById('pub-seg-disk-' + id);
-          const valDisk = document.getElementById('pub-val-disk-' + id);
-          if (valDisk && pubDiskUsed > 0) {
-            valDisk.textContent = window.CertainStatsChart.formatBytes(pubDiskUsed) + (pubDiskTotal ? ' / ' + window.CertainStatsChart.formatBytes(pubDiskTotal) : '');
-          }
-          if (segDisk && diskPct > 0) {
-            segDisk.style.width = Math.min(diskPct, 100) + '%';
-          }
+      if (diskBarsGroup && pubAllowedMetrics.includes('agent_disk_used') && pubDiskUsed > 0) {
+        const segDisk = document.getElementById('pub-seg-disk-' + id);
+        const valDisk = document.getElementById('pub-val-disk-' + id);
+        const pctDisk = document.getElementById('pub-pct-disk-' + id);
+        if (pctDisk) pctDisk.textContent = pubDiskTotal ? Math.round(diskPct) + '%' : window.CertainStatsChart.formatBytes(pubDiskUsed);
+        if (valDisk && pubDiskTotal) valDisk.textContent = 'of ' + window.CertainStatsChart.formatBytes(pubDiskTotal);
+        if (segDisk) {
+          segDisk.style.width = Math.min(diskPct, 100) + '%';
+          segDisk.classList.toggle('is-high', diskPct >= 90);
         }
       }
 
@@ -607,7 +553,7 @@
         const rows = snap.disks.map(d => ({
           label: d.path ? `Disk (${d.path})` : 'Disk',
           val: window.CertainStatsChart.formatBytes(d.used_bytes) + (d.total_bytes ? ' / ' + window.CertainStatsChart.formatBytes(d.total_bytes) : ''),
-          color: '#8b5cf6'
+          color: 'var(--s1)'
         }));
         pubTrackDisk.setAttribute('data-tooltip-rows', JSON.stringify(rows));
         pubTrackDisk.setAttribute('data-tooltip-header', 'Storage Partitions');
@@ -619,9 +565,12 @@
       const tdSegNetRx = document.getElementById('pub-td-seg-net-rx-' + id);
       const tdSegNetTx = document.getElementById('pub-td-seg-net-tx-' + id);
       const valNet = document.getElementById('pub-val-net-' + id);
-      if (valNet) {
-        valNet.textContent = '↓ ' + window.CertainStatsChart.formatBps(snap.rx_bps) + ' / ↑ ' + window.CertainStatsChart.formatBps(snap.tx_bps);
-      }
+      const netParts = [];
+      if (pubAllowedMetrics.includes('agent_rx_bytes')) netParts.push('↓ ' + window.CertainStatsChart.formatBps(snap.rx_bps));
+      if (pubAllowedMetrics.includes('agent_tx_bytes')) netParts.push('↑ ' + window.CertainStatsChart.formatBps(snap.tx_bps));
+      if (valNet) valNet.textContent = netParts.join(' · ');
+      const tdNet = document.getElementById('pub-td-net-' + id);
+      if (tdNet) tdNet.textContent = netParts.join(' · ');
       const tot = snap.rx_bps + snap.tx_bps;
       if (tot > 0) {
         if (segRx) segRx.style.width = ((snap.rx_bps / tot) * 100) + '%';
@@ -639,30 +588,30 @@
       const trackCpu = document.getElementById('pub-track-cpu-' + id);
       if (trackCpu) {
         const rows = [];
-        if (pubAllowedMetrics.includes('agent_cpu_usage')) rows.push({ label: 'Used', val: snap.cpu_usage_percent.toFixed(1) + '%', color: '#3b82f6' });
-        if (pubAllowedMetrics.includes('agent_cpu_iowait')) rows.push({ label: 'IO Wait', val: snap.cpu_iowait_percent.toFixed(1) + '%', color: '#fb923c' });
-        if (pubAllowedMetrics.includes('agent_cpu_steal')) rows.push({ label: 'Steal', val: snap.cpu_steal_percent.toFixed(1) + '%', color: '#ef4444' });
+        if (pubAllowedMetrics.includes('agent_cpu_usage')) rows.push({ label: 'Used', val: snap.cpu_usage_percent.toFixed(1) + '%', color: 'var(--s1)' });
+        if (pubAllowedMetrics.includes('agent_cpu_iowait')) rows.push({ label: 'IO wait', val: snap.cpu_iowait_percent.toFixed(1) + '%', color: 'var(--s2)' });
+        if (pubAllowedMetrics.includes('agent_cpu_steal')) rows.push({ label: 'Steal', val: snap.cpu_steal_percent.toFixed(1) + '%', color: 'var(--s3)' });
         trackCpu.setAttribute('data-tooltip-rows', JSON.stringify(rows));
       }
       const trackRam = document.getElementById('pub-track-ram-' + id);
       if (trackRam) {
         const rows = [];
-        if (pubAllowedMetrics.includes('agent_ram_used')) rows.push({ label: 'RAM Used', val: window.CertainStatsChart.formatBytes(snap.ram_used_bytes), color: '#14b8a6' });
-        if (pubAllowedMetrics.includes('agent_swap_used')) rows.push({ label: 'Swap Used', val: window.CertainStatsChart.formatBytes(snap.ram_swap_used_bytes), color: '#4b5563' });
+        if (pubAllowedMetrics.includes('agent_ram_used')) rows.push({ label: 'RAM used', val: window.CertainStatsChart.formatBytes(snap.ram_used_bytes), color: 'var(--s4)' });
+        if (pubAllowedMetrics.includes('agent_swap_used')) rows.push({ label: 'Swap used', val: window.CertainStatsChart.formatBytes(snap.ram_swap_used_bytes), color: 'var(--s5)' });
         trackRam.setAttribute('data-tooltip-rows', JSON.stringify(rows));
       }
       const trackNet = document.getElementById('pub-track-net-' + id);
       if (trackNet) {
         const rows = [];
-        if (pubAllowedMetrics.includes('agent_rx_bytes')) rows.push({ label: 'Download (RX)', val: window.CertainStatsChart.formatBps(snap.rx_bps), color: '#1e40af' });
-        if (pubAllowedMetrics.includes('agent_tx_bytes')) rows.push({ label: 'Upload (TX)', val: window.CertainStatsChart.formatBps(snap.tx_bps), color: '#7e22ce' });
+        if (pubAllowedMetrics.includes('agent_rx_bytes')) rows.push({ label: 'Download', val: window.CertainStatsChart.formatBps(snap.rx_bps), color: 'var(--rx)' });
+        if (pubAllowedMetrics.includes('agent_tx_bytes')) rows.push({ label: 'Upload', val: window.CertainStatsChart.formatBps(snap.tx_bps), color: 'var(--tx)' });
         trackNet.setAttribute('data-tooltip-rows', JSON.stringify(rows));
       }
       const tdTrackNet = document.getElementById('pub-td-track-net-' + id);
       if (tdTrackNet) {
         const rows = [];
-        if (pubAllowedMetrics.includes('agent_rx_bytes')) rows.push({ label: 'Download (RX)', val: window.CertainStatsChart.formatBps(snap.rx_bps), color: '#1e40af' });
-        if (pubAllowedMetrics.includes('agent_tx_bytes')) rows.push({ label: 'Upload (TX)', val: window.CertainStatsChart.formatBps(snap.tx_bps), color: '#7e22ce' });
+        if (pubAllowedMetrics.includes('agent_rx_bytes')) rows.push({ label: 'Download', val: window.CertainStatsChart.formatBps(snap.rx_bps), color: 'var(--rx)' });
+        if (pubAllowedMetrics.includes('agent_tx_bytes')) rows.push({ label: 'Upload', val: window.CertainStatsChart.formatBps(snap.tx_bps), color: 'var(--tx)' });
         tdTrackNet.setAttribute('data-tooltip-rows', JSON.stringify(rows));
       }
 
@@ -671,7 +620,7 @@
         const uptimeEl = document.getElementById('pub-uptime-' + id);
         const tdUptimeEl = document.getElementById('pub-td-uptime-' + id);
         const formatted = window.CertainStatsTelemetry.formatUptime(snap.uptime);
-        if (uptimeEl) uptimeEl.innerHTML = 'Uptime: <strong class="mono" style="color: var(--text-secondary);">' + formatted + '</strong>';
+        if (uptimeEl) uptimeEl.textContent = 'Up ' + formatted;
         if (tdUptimeEl) tdUptimeEl.textContent = formatted;
       }
 
@@ -803,11 +752,14 @@
             if (cardDot) cardDot.className = 'status-dot ' + (isOnline ? 'online' : 'offline');
             const tdDot = document.getElementById('pub-td-dot-' + fa.public_id);
             if (tdDot) tdDot.className = 'status-dot ' + (isOnline ? 'online' : 'offline');
-            const cardBadge = document.getElementById('pub-badge-' + fa.public_id);
-            if (cardBadge) {
-              cardBadge.className = 'badge ' + (isOnline ? 'badge-online' : 'badge-offline');
-              cardBadge.textContent = isOnline ? 'Online' : 'Offline';
-            }
+            ['pub-badge-', 'pub-td-badge-'].forEach(prefix => {
+              const badge = document.getElementById(prefix + fa.public_id);
+              if (badge) {
+                badge.className = 'badge ' + (isOnline ? 'badge-online' : 'badge-offline');
+                badge.textContent = isOnline ? 'Online' : 'Offline';
+              }
+            });
+            document.querySelectorAll('[data-pub-id="' + CSS.escape(fa.public_id) + '"]').forEach(el => el.classList.toggle('is-offline', !isOnline));
             if (currentActivePubId === fa.public_id) {
               const inpageDot = document.getElementById('pub-inpage-dot');
               if (inpageDot) inpageDot.className = 'status-dot ' + (isOnline ? 'online' : 'offline');
@@ -848,11 +800,11 @@
             if (elArch && existing.cpu_model !== undefined) elArch.textContent = existing.cpu_model || 'Generic CPU';
 
             const odoNet = document.getElementById('pub-inpage-odo-net');
-            if (odoNet) odoNet.innerHTML = '<span>↓ ' + window.CertainStatsChart.formatBytes(existing.total_rx_bytes || 0) + '</span> / <span>↑ ' + window.CertainStatsChart.formatBytes(existing.total_tx_bytes || 0) + '</span>';
+            if (odoNet) odoNet.innerHTML = '<span>↓ ' + window.CertainStatsChart.formatBytes(existing.total_rx_bytes || 0) + '</span><span>↑ ' + window.CertainStatsChart.formatBytes(existing.total_tx_bytes || 0) + '</span>';
             let dr = 0, dw = 0;
             if (existing.disks) existing.disks.forEach(d => { dr += d.read_bytes || 0; dw += d.write_bytes || 0; });
             const odoDisk = document.getElementById('pub-inpage-odo-disk');
-            if (odoDisk) odoDisk.innerHTML = '<span>R: ' + window.CertainStatsChart.formatBytes(dr) + '</span> / <span>W: ' + window.CertainStatsChart.formatBytes(dw) + '</span>';
+            if (odoDisk) odoDisk.innerHTML = '<span>R ' + window.CertainStatsChart.formatBytes(dr) + '</span><span>W ' + window.CertainStatsChart.formatBytes(dw) + '</span>';
           }
         });
 
@@ -881,6 +833,10 @@
 
     // 2. Setup DOM-dependent UI on DOM Ready
     window.CertainStatsTelemetry.onReady(function() {
+      let viewMode = 'list';
+      try { viewMode = localStorage.getItem('certainstats_public_view_mode') || 'list'; } catch (e) {}
+      setPublicViewMode(viewMode);
+
       // In-Place Public Router (BASE_PATH/{PUB_AGENT_ID})
       window.CertainStatsTelemetry.initRouter({
         basePath: getPublicBasePath(),
@@ -889,8 +845,8 @@
           const detailView = document.getElementById('public-detail-view');
 
           if (!pubId) {
-            if (detailView) detailView.style.display = 'none';
-            if (overviewView) overviewView.style.display = 'block';
+            if (detailView) detailView.hidden = true;
+            if (overviewView) overviewView.hidden = false;
             currentActivePubId = null;
             window.scrollTo({ top: savedPubScrollY, behavior: 'instant' });
             return;
@@ -898,9 +854,9 @@
 
           savedPubScrollY = window.scrollY;
           currentActivePubId = pubId;
-          if (overviewView) overviewView.style.display = 'none';
+          if (overviewView) overviewView.hidden = true;
           if (detailView) {
-            detailView.style.display = 'block';
+            detailView.hidden = false;
             window.scrollTo({ top: 0, behavior: 'instant' });
 
             renderPubInpageLiveState(pubId);

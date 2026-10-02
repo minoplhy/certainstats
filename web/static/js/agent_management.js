@@ -35,8 +35,8 @@
     const readEl = document.getElementById('mgmt-name-read-' + agentId);
     const editEl = document.getElementById('mgmt-name-edit-' + agentId);
     const input = document.getElementById('mgmt-name-input-' + agentId);
-    if (readEl) readEl.style.display = 'none';
-    if (editEl) editEl.style.display = 'flex';
+    if (readEl) readEl.hidden = true;
+    if (editEl) editEl.hidden = false;
     if (input) {
       input.focus();
       input.select();
@@ -56,8 +56,8 @@
     }
     const readEl = document.getElementById('mgmt-name-read-' + agentId);
     const editEl = document.getElementById('mgmt-name-edit-' + agentId);
-    if (editEl) editEl.style.display = 'none';
-    if (readEl) readEl.style.display = 'flex';
+    if (editEl) editEl.hidden = true;
+    if (readEl) readEl.hidden = false;
   }
 
   function saveMgmtAgentRename(agentId) {

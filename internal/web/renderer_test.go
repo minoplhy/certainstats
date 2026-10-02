@@ -110,14 +110,8 @@ func TestRenderer_ParseAndRender(t *testing.T) {
 				t.Errorf("Render output for %s missing 'CertainStats'", tc.page)
 			}
 
-			if tc.page == "public_dashboard.html" {
-				if !strings.Contains(output, "Initial Render Time:") {
-					t.Errorf("Render output for %s missing 'Initial Render Time:'", tc.page)
-				}
-			} else {
-				if !strings.Contains(output, "Render Time:") {
-					t.Errorf("Render output for %s missing 'Render Time:'", tc.page)
-				}
+			if !strings.Contains(output, "Rendered in") {
+				t.Errorf("Render output for %s missing 'Rendered in'", tc.page)
 			}
 
 			if strings.Contains(output, "src=\"/js/") || strings.Contains(output, "href=\"/css/") {

@@ -1,34 +1,20 @@
 {{define "content"}}
-<!-- Full Overview View -->
 <div id="agents-overview-view">
-  <div class="page-header">
-    <div>
-      <h1 class="page-title">
-        Agent Hub
-        <span class="badge badge-indigo" id="node-count-badge">{{len .Agents}} Nodes</span>
-      </h1>
+  <section class="hero" aria-labelledby="hub-headline">
+    <div class="hero-eyebrow">
+      <span>Agent Hub</span><span aria-hidden="true">·</span><span id="node-count-badge">{{len .Agents}} {{if eq (len .Agents) 1}}node{{else}}nodes{{end}}</span>
     </div>
+    <h1 class="hero-title" id="hub-headline">{{template "hub_headline" .}}</h1>
+    {{template "agents_cluster_cards" .}}
+  </section>
 
-    <div style="display: flex; gap: 10px; align-items: center;">
-      <a href="{{.PanelPath}}/agents/management" class="btn btn-secondary" title="Manage Fleet Credentials & Drivers">
-        Agent Management
-      </a>
-      <button type="button" class="btn btn-primary" onclick="document.getElementById('add-agent-modal').style.display='block'">
-        + Add Agent
-      </button>
-    </div>
-  </div>
-
-  {{template "agents_cluster_cards" .}}
   {{template "agents_toolbar" .}}
 
   {{if not .Agents}}
-  <div class="card" style="text-align: center; padding: 48px;">
-    <h3 style="margin-bottom: 8px;">No Server Agents Configured</h3>
-    <p style="color: var(--text-muted); margin-bottom: 20px;">Provision your first monitoring agent to start collecting CPU, RAM, disk, and network telemetry.</p>
-    <button type="button" class="btn btn-primary" onclick="document.getElementById('add-agent-modal').style.display='block'">
-      Add Agent Now
-    </button>
+  <div class="empty-state">
+    <h2 class="empty-state-title">No agents yet</h2>
+    <p>Add your first agent to start collecting CPU, memory, disk and network data.</p>
+    <button type="button" class="btn btn-primary" data-open-modal="add-agent-modal">Add agent</button>
   </div>
   {{else}}
   {{template "agents_grid_view" .}}

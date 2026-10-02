@@ -54,18 +54,18 @@ func (m *CSSMinifier) Minify(src []byte) ([]byte, error) {
 
 		// Collapse whitespace
 		if isWhitespace(src[i]) {
-			// Skip whitespace if preceding character is a delimiter
-			if buf.Len() > 0 && isCSSDelimiter(buf.Bytes()[buf.Len()-1]) {
+			// Skip whitespace if preceding character allows it
+			if buf.Len() > 0 && trimsSpaceAfter(buf.Bytes()[buf.Len()-1]) {
 				i++
 				continue
 			}
 
-			// Lookahead: skip whitespace if next non-whitespace char is a delimiter
+			// Lookahead: skip whitespace if next non-whitespace char allows it
 			j := i
 			for j < n && isWhitespace(src[j]) {
 				j++
 			}
-			if j < n && isCSSDelimiter(src[j]) {
+			if j < n && trimsSpaceBefore(src[j]) {
 				i = j
 				continue
 			}
@@ -99,6 +99,14 @@ func isWhitespace(c byte) bool {
 	return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\f'
 }
 
-func isCSSDelimiter(c byte) bool {
-	return c == '{' || c == '}' || c == ':' || c == ';' || c == ',' || c == '>' || c == '~' || c == '(' || c == ')'
+// trimsSpaceAfter reports whether whitespace following c is insignificant.
+// ')' is excluded: the space in "var(--a) var(--b)", ":not(.x) .y" or "calc(a) + b" is meaningful.
+func trimsSpaceAfter(c byte) bool {
+	return c == '{' || c == '}' || c == ':' || c == ';' || c == ',' || c == '>' || c == '~' || c == '('
+}
+
+// trimsSpaceBefore reports whether whitespace preceding c is insignificant.
+// '(' and ':' are excluded: "and (min-width:1px)" and descendant ".a :hover" need the space.
+func trimsSpaceBefore(c byte) bool {
+	return c == '{' || c == '}' || c == ';' || c == ',' || c == '>' || c == '~' || c == ')'
 }

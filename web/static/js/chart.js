@@ -138,6 +138,60 @@
     return result;
   }
 
+  // Theme tokens: series colors may be passed as '--s1', 'var(--s1)' or a literal color.
+  function readToken(name) {
+    return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  }
+
+  function resolveColor(c, fallback) {
+    if (!c) return readToken(fallback || '--s1');
+    if (c.startsWith('var(')) c = c.slice(4, -1).trim();
+    if (c.startsWith('--')) return readToken(c) || readToken(fallback || '--s1');
+    return c;
+  }
+
+  function withAlpha(color, a) {
+    const m = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(color);
+    if (!m) return color;
+    let h = m[1];
+    if (h.length === 3) h = h.split('').map(x => x + x).join('');
+    const n = parseInt(h, 16);
+    return 'rgba(' + (n >> 16 & 255) + ',' + (n >> 8 & 255) + ',' + (n & 255) + ',' + a + ')';
+  }
+
+  // Smooth path through points using horizontal midpoint bezier segments (no overshoot in y).
+  function tracePath(ctx, pts, moveFirst) {
+    pts.forEach((p, i) => {
+      if (i === 0) {
+        if (moveFirst) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y);
+        return;
+      }
+      const prev = pts[i - 1];
+      const mx = (prev.x + p.x) / 2;
+      ctx.bezierCurveTo(mx, prev.y, mx, p.y, p.x, p.y);
+    });
+  }
+
+  function formatDuration(ms) {
+    const m = Math.round(ms / 60000);
+    if (m < 60) return m + 'm';
+    const h = Math.floor(m / 60);
+    if (h < 48) return h + 'h' + (m % 60 ? ' ' + (m % 60) + 'm' : '');
+    return Math.round(h / 24) + 'd';
+  }
+
+  function prepareCanvas(canvas) {
+    const dpr = window.devicePixelRatio || 1;
+    const w = canvas.clientWidth, h = canvas.clientHeight;
+    if (!w || !h) return null;
+    canvas.width = Math.round(w * dpr);
+    canvas.height = Math.round(h * dpr);
+    const ctx = canvas.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+    return { ctx: ctx, w: w, h: h };
+  }
+
   window.CertainStatsChart = {
     getPtTs: getPtTs,
     getPtVal: getPtVal,
@@ -145,6 +199,68 @@
     formatBps: formatBps,
     convertDeltaToRate: convertDeltaToRate,
     calculateDowntimes: calculateDowntimes,
+    resolveColor: resolveColor,
+
+    // Small axis-less trend line for cards. points: [[ts, value], ...] or {timestamp, value}.
+    drawSparkline: function (canvas, points, options) {
+      options = options || {};
+      const c = prepareCanvas(canvas);
+      if (!c) return;
+      const ctx = c.ctx;
+      const data = (points || []).map(p => ({ t: getPtTs(p), v: getPtVal(p) })).filter(p => typeof p.v === 'number' && !isNaN(p.v));
+      if (data.length < 2) {
+        ctx.strokeStyle = readToken('--grid');
+        ctx.setLineDash([3, 4]);
+        ctx.beginPath();
+        ctx.moveTo(0, c.h - 2);
+        ctx.lineTo(c.w, c.h - 2);
+        ctx.stroke();
+        return;
+      }
+      const end = Date.now();
+      const start = end - (options.hours || 24) * 3600 * 1000;
+      const max = options.max || Math.max.apply(null, data.map(p => p.v)) * 1.15 || 1;
+      const pad = 4;
+      const X = t => Math.max(0, Math.min(c.w - pad, ((t - start) / (end - start)) * (c.w - pad)));
+      const Y = v => pad + (c.h - pad * 2) * (1 - Math.min(v, max) / max);
+      const color = resolveColor(options.color || '--s1');
+
+      // Split into segments at gaps larger than 3x the typical step
+      const steps = data.slice(1).map((p, i) => p.t - data[i].t).sort((a, b) => a - b);
+      const step = steps[Math.floor(steps.length / 2)] || 60000;
+      const segs = [[]];
+      data.forEach((p, i) => {
+        if (i > 0 && p.t - data[i - 1].t > step * 3) segs.push([]);
+        segs[segs.length - 1].push({ x: X(p.t), y: Y(p.v) });
+      });
+
+      segs.filter(sg => sg.length > 1).forEach(sg => {
+        ctx.beginPath();
+        ctx.moveTo(sg[0].x, c.h);
+        tracePath(ctx, sg, false);
+        ctx.lineTo(sg[sg.length - 1].x, c.h);
+        ctx.closePath();
+        ctx.fillStyle = withAlpha(color, 0.16);
+        ctx.fill();
+        ctx.beginPath();
+        tracePath(ctx, sg, true);
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 1.75;
+        ctx.lineJoin = 'round';
+        ctx.stroke();
+      });
+
+      const last = data[data.length - 1];
+      if (end - last.t < step * 3) {
+        ctx.beginPath();
+        ctx.arc(X(last.t), Y(last.v), 3, 0, Math.PI * 2);
+        ctx.fillStyle = color;
+        ctx.fill();
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = readToken('--surface');
+        ctx.stroke();
+      }
+    },
 
     renderMultiChart: function (canvasId, options) {
       const canvas = document.getElementById(canvasId);
@@ -167,11 +283,12 @@
       let dragStartX = null;
       let currentDragX = null;
       let hoverX = null;
+      let leftPad = 56; // grows to fit the widest y-axis label
 
       function getBounds() {
         const width = canvas.clientWidth || 300;
         const height = canvas.clientHeight || 180;
-        const padding = { top: 25, right: 20, bottom: 25, left: 55 };
+        const padding = { top: 16, right: 12, bottom: 24, left: leftPad };
         return {
           width: width,
           height: height,
@@ -209,7 +326,7 @@
       }
 
       function draw() {
-        const b = getBounds();
+        let b = getBounds();
         if (b.width === 0 || b.height === 0) return;
 
         canvas.width = b.width * window.devicePixelRatio;
@@ -233,21 +350,24 @@
           });
         });
 
-        const isLight = document.documentElement.getAttribute('data-theme') === 'light';
-        const gridColor = isLight ? 'rgba(0, 0, 0, 0.08)' : 'rgba(255, 255, 255, 0.06)';
-        const axisTextColor = isLight ? '#64748b' : '#8e909a';
-        const crosshairColor = isLight ? 'rgba(0, 0, 0, 0.35)' : 'rgba(255, 255, 255, 0.25)';
-        const ttBg = isLight ? 'rgba(255, 255, 255, 0.96)' : 'rgba(15, 17, 23, 0.94)';
-        const ttBorder = isLight ? 'rgba(0, 0, 0, 0.15)' : 'rgba(255, 255, 255, 0.15)';
-        const ttHeader = isLight ? '#64748b' : '#8e909a';
-        const ttLabel = isLight ? '#475569' : '#9ca3af';
-        const ttVal = isLight ? '#0f172a' : '#ffffff';
+        const gridColor = readToken('--grid');
+        const axisTextColor = readToken('--muted');
+        const crosshairColor = readToken('--line-strong');
+        const ttBg = readToken('--surface');
+        const ttBorder = readToken('--line');
+        const ttHeader = readToken('--muted');
+        const ttLabel = readToken('--text-2');
+        const ttVal = readToken('--text');
+        const badColor = readToken('--bad');
+        const surfaceColor = readToken('--surface');
+        const monoFont = readToken('--font-mono') || 'monospace';
+        const bodyFont = readToken('--font-body') || 'sans-serif';
 
         if (!hasPoints) {
           ctx.fillStyle = axisTextColor;
-          ctx.font = '12px Inter, sans-serif';
+          ctx.font = '13px ' + bodyFont;
           ctx.textAlign = 'center';
-          ctx.fillText('No telemetry data available', b.width / 2, b.height / 2);
+          ctx.fillText('No data in this time range', b.width / 2, b.height / 2);
           return;
         }
 
@@ -259,6 +379,16 @@
           effectiveMax = (yMax !== null && yMax !== undefined) ? Math.max(yMax, computedMax) : computedMax;
         }
         if (!effectiveMax || isNaN(effectiveMax) || effectiveMax <= 0) effectiveMax = 100;
+
+        // Fit the left gutter to the y-axis labels before laying out the plot
+        ctx.font = '10px ' + monoFont;
+        let labelW = 0;
+        for (let i = 0; i <= 4; i++) labelW = Math.max(labelW, ctx.measureText(formatter(effectiveMax - (effectiveMax / 4) * i)).width);
+        const fitted = Math.max(36, Math.ceil(labelW) + 14);
+        if (fitted !== leftPad) {
+          leftPad = fitted;
+          b = getBounds();
+        }
 
         // 1. Draw Gridlines & Y-Axis labels
         ctx.strokeStyle = gridColor;
@@ -273,7 +403,7 @@
 
           const val = effectiveMax - (effectiveMax / gridSteps) * i;
           ctx.fillStyle = axisTextColor;
-          ctx.font = '10px JetBrains Mono, monospace';
+          ctx.font = '10px ' + monoFont;
           ctx.textAlign = 'right';
           ctx.fillText(formatter(val), b.padding.left - 8, y + 3);
         }
@@ -286,10 +416,10 @@
           const x2 = Math.min(b.padding.left + b.graphWidth, b.padding.left + ((dw.end - minTs) / tsSpan) * b.graphWidth);
           const w = Math.max(2, x2 - x1);
 
-          ctx.fillStyle = 'rgba(239, 68, 68, 0.16)';
+          ctx.fillStyle = withAlpha(badColor, 0.1);
           ctx.fillRect(x1, b.padding.top, w, b.graphHeight);
 
-          ctx.strokeStyle = 'rgba(239, 68, 68, 0.4)';
+          ctx.strokeStyle = withAlpha(badColor, 0.45);
           ctx.setLineDash([3, 3]);
           ctx.beginPath();
           ctx.moveTo(x1, b.padding.top);
@@ -298,91 +428,80 @@
           ctx.lineTo(x2, b.padding.top + b.graphHeight);
           ctx.stroke();
           ctx.setLineDash([]);
+
+          const label = 'Offline ' + formatDuration(dw.end - dw.start);
+          ctx.font = '600 10px ' + bodyFont;
+          if (ctx.measureText(label).width + 12 < w) {
+            ctx.fillStyle = badColor;
+            ctx.textAlign = 'center';
+            ctx.fillText(label, x1 + w / 2, b.padding.top + 14);
+          }
         });
 
-        // 3. Draw Metric Series Paths
+        // 3. Draw Metric Series Paths (smooth curves, soft area, latest-point marker)
+        const toXY = p => ({
+          x: b.padding.left + ((Math.max(minTs, Math.min(maxTs, p.timestamp)) - minTs) / tsSpan) * b.graphWidth,
+          y: b.padding.top + b.graphHeight - (Math.min(p.value, effectiveMax) / effectiveMax) * b.graphHeight
+        });
+        const baseY = b.padding.top + b.graphHeight;
+        const endMarkers = [];
+
         seriesList.forEach(series => {
           const rawData = series.data || [];
           if (rawData.length === 0) return;
           const cleanData = buildCleanSeries(rawData, queryEndTime, tsSpan);
-          const color = series.color || '#6366f1';
+          const color = resolveColor(series.color);
 
-          // Area Gradient
-          if (series.fill) {
-            let started = false;
-            let firstX = b.padding.left;
-            let lastX = b.padding.left;
+          const segments = [[]];
+          cleanData.forEach(p => {
+            if (p.value === null || isNaN(p.value)) {
+              if (segments[segments.length - 1].length) segments.push([]);
+              return;
+            }
+            segments[segments.length - 1].push(toXY(p));
+          });
 
-            cleanData.forEach(p => {
-              if (p.value === null || isNaN(p.value)) {
-                if (started) {
-                  ctx.lineTo(lastX, b.padding.top + b.graphHeight);
-                  ctx.closePath();
-                  const grad = ctx.createLinearGradient(0, b.padding.top, 0, b.padding.top + b.graphHeight);
-                  grad.addColorStop(0, color + '44');
-                  grad.addColorStop(1, color + '00');
-                  ctx.fillStyle = grad;
-                  ctx.fill();
-                  started = false;
-                }
-                return;
-              }
-
-              const clampedTs = Math.max(minTs, Math.min(maxTs, p.timestamp));
-              const x = b.padding.left + ((clampedTs - minTs) / tsSpan) * b.graphWidth;
-              const y = b.padding.top + b.graphHeight - (Math.min(p.value, effectiveMax) / effectiveMax) * b.graphHeight;
-
-              if (!started) {
-                ctx.beginPath();
-                ctx.moveTo(x, b.padding.top + b.graphHeight);
-                ctx.lineTo(x, y);
-                firstX = x;
-                started = true;
-              } else {
-                ctx.lineTo(x, y);
-              }
-              lastX = x;
-            });
-
-            if (started) {
-              ctx.lineTo(lastX, b.padding.top + b.graphHeight);
+          segments.filter(sg => sg.length > 0).forEach(sg => {
+            if (series.fill !== false) {
+              ctx.beginPath();
+              ctx.moveTo(sg[0].x, baseY);
+              tracePath(ctx, sg, false);
+              ctx.lineTo(sg[sg.length - 1].x, baseY);
               ctx.closePath();
-              const grad = ctx.createLinearGradient(0, b.padding.top, 0, b.padding.top + b.graphHeight);
-              grad.addColorStop(0, color + '44');
-              grad.addColorStop(1, color + '00');
+              const grad = ctx.createLinearGradient(0, b.padding.top, 0, baseY);
+              grad.addColorStop(0, withAlpha(color, series.fill ? 0.24 : 0.12));
+              grad.addColorStop(1, withAlpha(color, 0.02));
               ctx.fillStyle = grad;
               ctx.fill();
             }
-          }
-
-          // Series Stroke Line
-          ctx.strokeStyle = color;
-          ctx.lineWidth = 1.75;
-          ctx.beginPath();
-          let lineStarted = false;
-
-          cleanData.forEach(p => {
-            if (p.value === null || isNaN(p.value)) {
-              lineStarted = false;
-              return;
-            }
-
-            const clampedTs = Math.max(minTs, Math.min(maxTs, p.timestamp));
-            const x = b.padding.left + ((clampedTs - minTs) / tsSpan) * b.graphWidth;
-            const y = b.padding.top + b.graphHeight - (Math.min(p.value, effectiveMax) / effectiveMax) * b.graphHeight;
-
-            if (!lineStarted) {
-              ctx.moveTo(x, y);
-              lineStarted = true;
-            } else {
-              ctx.lineTo(x, y);
-            }
+            ctx.beginPath();
+            tracePath(ctx, sg, true);
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 2;
+            ctx.lineJoin = 'round';
+            ctx.lineCap = 'round';
+            ctx.stroke();
           });
+
+          const lastSeg = segments.filter(sg => sg.length > 0).pop();
+          const lastRaw = cleanData[cleanData.length - 1];
+          if (lastSeg && lastRaw && lastRaw.value !== null && !isNaN(lastRaw.value)) {
+            endMarkers.push({ pt: lastSeg[lastSeg.length - 1], color: color });
+          }
+        });
+
+        endMarkers.forEach(m => {
+          ctx.beginPath();
+          ctx.arc(m.pt.x, m.pt.y, 3.5, 0, Math.PI * 2);
+          ctx.fillStyle = m.color;
+          ctx.fill();
+          ctx.lineWidth = 2;
+          ctx.strokeStyle = surfaceColor;
           ctx.stroke();
         });
 
         // 4. Time Axis Ticks with Strict Non-Overlapping Guarantee
-        ctx.font = '10px JetBrains Mono, monospace';
+        ctx.font = '10px ' + monoFont;
         ctx.fillStyle = axisTextColor;
 
         const sampleStart = formatTimeAxis(minTs, tsSpan);
@@ -440,11 +559,12 @@
           const end = Math.min(b.padding.left + b.graphWidth, Math.max(dragStartX, currentDragX));
           const w = Math.max(0, end - start);
 
-          ctx.fillStyle = 'rgba(99, 102, 241, 0.22)';
+          const accent = readToken('--accent');
+          ctx.fillStyle = withAlpha(accent, 0.14);
           ctx.fillRect(start, b.padding.top, w, b.graphHeight);
 
-          ctx.strokeStyle = 'rgba(99, 102, 241, 0.9)';
-          ctx.lineWidth = 1.5;
+          ctx.strokeStyle = withAlpha(accent, 0.8);
+          ctx.lineWidth = 1;
           ctx.strokeRect(start, b.padding.top, w, b.graphHeight);
         }
 
@@ -495,7 +615,7 @@
                   anyValidPointInRange = true;
                   tooltipRows.push({
                     label: s.label || 'Metric',
-                    color: s.color || '#6366f1',
+                    color: resolveColor(s.color),
                     val: formatter(val)
                   });
                 }
@@ -505,6 +625,7 @@
             // Only render crosshair & tooltip popup if there is valid data at this location (not blank data)
             if (anyValidPointInRange && tooltipRows.length > 0) {
               ctx.strokeStyle = crosshairColor;
+              ctx.lineWidth = 1;
               ctx.setLineDash([3, 3]);
               ctx.beginPath();
               ctx.moveTo(hoverX, b.padding.top);
@@ -513,18 +634,18 @@
               ctx.setLineDash([]);
 
               const timeHeader = formatTimeAxis(hoverTs, tsSpan);
-              ctx.font = 'bold 10px JetBrains Mono, monospace';
+              ctx.font = '600 11px ' + monoFont;
               let maxTextW = ctx.measureText(timeHeader).width;
-              ctx.font = '10px JetBrains Mono, monospace';
+              ctx.font = '11px ' + monoFont;
               tooltipRows.forEach(r => {
                 const rowText = r.label + ': ' + r.val;
                 const w = ctx.measureText(rowText).width + 16;
                 if (w > maxTextW) maxTextW = w;
               });
 
-              const ttWidth = Math.max(110, maxTextW + 20);
-              const rowH = 14;
-              const ttHeight = 20 + tooltipRows.length * rowH + 6;
+              const ttWidth = Math.max(120, maxTextW + 24);
+              const rowH = 17;
+              const ttHeight = 26 + tooltipRows.length * rowH + 6;
 
               let ttX = hoverX + 12;
               if (ttX + ttWidth > b.width - b.padding.right) {
@@ -536,7 +657,7 @@
               ctx.strokeStyle = ttBorder;
               ctx.lineWidth = 1;
 
-              const cr = 6;
+              const cr = 8;
               ctx.beginPath();
               ctx.moveTo(ttX + cr, ttY);
               ctx.lineTo(ttX + ttWidth - cr, ttY);
@@ -552,25 +673,23 @@
               ctx.stroke();
 
               ctx.fillStyle = ttHeader;
-              ctx.font = 'bold 10px JetBrains Mono, monospace';
+              ctx.font = '600 11px ' + monoFont;
               ctx.textAlign = 'left';
-              ctx.fillText(timeHeader, ttX + 8, ttY + 13);
+              ctx.fillText(timeHeader, ttX + 10, ttY + 17);
 
               tooltipRows.forEach((r, idx) => {
-                const y = ttY + 26 + idx * rowH;
+                const y = ttY + 36 + idx * rowH;
                 ctx.fillStyle = r.color;
-                ctx.beginPath();
-                ctx.arc(ttX + 11, y - 3, 3, 0, Math.PI * 2);
-                ctx.fill();
+                ctx.fillRect(ttX + 10, y - 7, 8, 3);
 
                 ctx.fillStyle = ttLabel;
-                ctx.font = '10px JetBrains Mono, monospace';
-                ctx.fillText(r.label + ':', ttX + 18, y);
+                ctx.font = '11px ' + bodyFont;
+                ctx.fillText(r.label, ttX + 24, y);
 
                 ctx.fillStyle = ttVal;
-                ctx.font = 'bold 10px JetBrains Mono, monospace';
+                ctx.font = '500 11px ' + monoFont;
                 ctx.textAlign = 'right';
-                ctx.fillText(r.val, ttX + ttWidth - 8, y);
+                ctx.fillText(r.val, ttX + ttWidth - 10, y);
                 ctx.textAlign = 'left';
               });
             }
@@ -756,7 +875,7 @@
       return this.renderMultiChart(canvasId, {
         seriesList: [{
           label: options.label || 'Metric',
-          color: options.color || '#6366f1',
+          color: options.color || '--s1',
           fill: true,
           data: options.data || []
         }],
@@ -784,21 +903,60 @@
       return `${minutes}m`;
     },
 
+    // Theme preference is 'system' | 'light' | 'dark'; data-theme always holds the resolved 'light' | 'dark'.
     initThemeToggle: function () {
-      const toggleBtns = document.querySelectorAll('#theme-toggle, #theme-toggle-desktop');
-      if (!toggleBtns || toggleBtns.length === 0) return;
+      const root = document.documentElement;
+      const media = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+      const order = ['system', 'light', 'dark'];
+      const labels = { system: 'match system', light: 'light', dark: 'dark' };
 
-      const currentTheme = localStorage.getItem('certainstats_theme') || 'dark';
-      document.documentElement.setAttribute('data-theme', currentTheme);
+      function readPref() {
+        try {
+          const p = localStorage.getItem('certainstats_theme');
+          return order.includes(p) ? p : 'system';
+        } catch (e) {
+          return 'system';
+        }
+      }
 
-      toggleBtns.forEach(btn => {
+      function apply(pref, notify) {
+        const resolved = pref === 'system' ? (media && media.matches ? 'dark' : 'light') : pref;
+        const changed = root.getAttribute('data-theme') !== resolved;
+        root.setAttribute('data-theme', resolved);
+        root.setAttribute('data-theme-pref', pref);
+        document.querySelectorAll('#theme-toggle').forEach(btn => {
+          const next = order[(order.indexOf(pref) + 1) % order.length];
+          btn.setAttribute('data-mode', pref);
+          btn.setAttribute('aria-label', 'Theme: ' + labels[pref] + '. Switch to ' + labels[next]);
+          btn.title = 'Theme: ' + labels[pref];
+        });
+        if (notify && changed) {
+          window.dispatchEvent(new CustomEvent('certainstats_theme_change', { detail: { theme: resolved } }));
+        }
+      }
+
+      apply(readPref(), false);
+
+      document.querySelectorAll('#theme-toggle').forEach(btn => {
         btn.addEventListener('click', function () {
-          const now = document.documentElement.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
-          document.documentElement.setAttribute('data-theme', now);
-          localStorage.setItem('certainstats_theme', now);
-          window.dispatchEvent(new CustomEvent('certainstats_theme_change', { detail: { theme: now } }));
+          const pref = order[(order.indexOf(readPref()) + 1) % order.length];
+          try { localStorage.setItem('certainstats_theme', pref); } catch (e) {}
+          apply(pref, true);
         });
       });
+
+      if (media) {
+        const onSystemChange = () => { if (readPref() === 'system') apply('system', true); };
+        if (media.addEventListener) media.addEventListener('change', onSystemChange);
+        else if (media.addListener) media.addListener(onSystemChange);
+      }
+
+      const navbar = document.querySelector('.navbar');
+      if (navbar) {
+        const onScroll = () => navbar.classList.toggle('is-scrolled', window.scrollY > 4);
+        window.addEventListener('scroll', onScroll, { passive: true });
+        onScroll();
+      }
     }
   };
 

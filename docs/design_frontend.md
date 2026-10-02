@@ -1,390 +1,283 @@
 # CertainStats — Frontend Design Document
 
-> **Version:** 3.0 · **Date:** 2026-08-26 · **Author:** Minoplhy
+> **Version:** 4.0 · **Date:** 2026-10-02 · **Author:** Minoplhy
+>
+> Version 4 is the "Editorial" redesign: light-first with a tuned dark theme, a deep teal accent, plain-language page headlines and self-hosted type.
 
 ---
 
 ## 1. Design Philosophy
 
-> **"Premium. Dense. Real-time. Dependency-Free."**
+> **"Calm, legible, real-time. Dependency-free."**
 
-CertainStats UI delivers the speed and simplicity of server-rendered Web 1.0 combined with the smooth, instant reactivity of a Single-Page Application (SPA) — without requiring Node.js, npm, or heavy frontend runtime frameworks.
+CertainStats renders pages on the server with Go `html/template` and makes them live with small vanilla JS modules. There is no Node.js build, npm package or frontend framework at runtime.
 
 ### Core Rules
-1. **Status at a glance.** Any operator should know cluster and node health within 1 second of opening the panel.
-2. **Hybrid Web 1.0 + In-Page SPA.** Fast initial HTML server-render (`<1ms`) via Go `html/template` with instant, client-side in-page navigation (`pushState`) for node inspection without full page reloads.
-3. **Dark-first, light-supported.** Dark mode is the primary design canvas. Light theme is a first-class inversion with its own tuned token values.
-4. **Zero noise & zero emojis.** Clean inline SVGs, crisp typography, and purposeful data hierarchy. No decorative clutter or emojis in operational controls.
-5. **Monospace for telemetry.** All metric values, timestamps, public/agent IDs, and terminal instructions use `JetBrains Mono`. Human labels use `Outfit` (headings) and `Inter` (body).
-6. **High-Performance Canvas Charting.** Dedicated custom HTML5 Canvas charting engine (`CertainStatsChart`) capable of 60 FPS rendering, drag-to-zoom, downtime gap visualization, and zero framework overhead.
+1. **Say the state in words first.** Each main page opens with a headline that states the situation ("1 node is offline. The other 5 are healthy."), then shows the numbers.
+2. **Hybrid server render + in-page navigation.** HTML is rendered on the server in under 1ms. Opening an agent detail swaps views in place with `pushState`, without a full page load.
+3. **Light-first, dark as an equal.** Light is the default palette. Dark is tuned separately rather than inverted. The user picks **system**, **light** or **dark**, and system is the default.
+4. **Color means something.** Teal is the only accent and is used for actions and focus. Green, amber and red appear only for status. Series colors only appear in charts and meters.
+5. **Monospace for telemetry.** Every metric value, timestamp, ID and command uses Geist Mono. Headings use Bricolage Grotesque and UI text uses Figtree.
+6. **No emojis or glyph icons.** Icons are inline SVG with `aria-hidden="true"`. Decorative Unicode glyphs (⇅ ⛁ ☁) are not used.
+7. **Accessible by default.** Visible `:focus-visible` rings, native `<dialog>` modals, labelled controls, `aria-live` status regions and `prefers-reduced-motion` support.
+8. **Custom canvas charts.** `CertainStatsChart` draws on HTML5 Canvas and reads every color from CSS tokens, so charts follow the theme.
 
 ---
 
 ## 2. Design Tokens
 
-All tokens are defined in [`web/static/css/styles.css`] on `:root` (dark default) and `[data-theme="light"]`.
+All tokens are defined at the top of [`web/static/css/styles.css`](../web/static/css/styles.css). Light values sit on `:root`, and dark values on `[data-theme="dark"]`. Components reference tokens only. Templates and scripts contain no color literals.
 
 ### 2.1 Color Palette
 
-#### Dark Theme (default — `:root`)
-```css
-/* Backgrounds */
---bg-primary:          #0a0a0c;           /* Page background */
---bg-secondary:        #121318;           /* Cards, panels, modal content */
---bg-panel:            rgba(18, 19, 24, 0.88); /* Glassmorphic headers / toolbars */
---bg-hover:            rgba(255, 255, 255, 0.06);
---bg-active:           rgba(255, 255, 255, 0.12);
+| Token | Light | Dark | Role |
+|---|---|---|---|
+| `--bg` | `#f6f7f9` | `#0d1214` | Page background |
+| `--surface` | `#ffffff` | `#131a1d` | Cards, tables, dialogs |
+| `--surface-2` | `#eef1f4` | `#192225` | Hover rows, segmented control track, code chips |
+| `--line` / `--line-strong` | `#dde2e8` / `#c9d0d8` | `#243034` / `#33444a` | Borders and dividers |
+| `--text` / `--text-2` / `--muted` | `#101820` / `#33404c` / `#56616e` | `#e8eef0` / `#c2ced2` / `#8fa0a6` | Primary, secondary, tertiary text |
+| `--accent` / `--accent-soft` | `#0e7c6b` / `#e0f1ed` | `#3cc4ac` / `#123430` | Primary buttons, links, focus, selection |
+| `--ok` / `--ok-soft` | `#15924f` / `#e2f3e8` | `#3fcf7f` / `#10291c` | Online, delivered, operational |
+| `--warn` / `--warn-soft` | `#a96d14` / `#f7eddc` | `#e6aa3c` / `#30230f` | Partial outage, disk ≥ 90% |
+| `--bad` / `--bad-soft` | `#c8372d` / `#f8e6e4` | `#f0645a` / `#33171a` | Offline, firing, destructive actions |
+| `--grid` / `--track` | `#e9edf1` / `#e8ecf0` | `#1d272a` / `#1f292c` | Chart gridlines, meter tracks |
 
-/* Borders */
---border-color:        rgba(255, 255, 255, 0.09);  /* Resting border */
---border-hover:        rgba(255, 255, 255, 0.20);  /* Hovered border */
+Legacy names (`--bg-primary`, `--accent-primary`, `--metric-cpu`, `--status-online`, …) are kept as aliases of these tokens for compatibility. New code should use the names above.
 
-/* Text */
---text-primary:        #ffffff;
---text-secondary:      #cbd5e1;
---text-muted:          #94a3b8;
+### 2.2 Series Colors
 
-/* Accent — Indigo */
---accent-primary:      #6366f1;             /* Buttons, active states, focus rings */
---accent-secondary:    #8b5cf6;             /* Gradient endpoint (violet) */
---accent-glow:         rgba(99, 102, 241, 0.35); /* Glow / box-shadow */
+Fixed per metric across meters, legends, tooltips and charts:
 
-/* Semantic Status */
---status-online:       #10b981;  /* Emerald green */
---status-offline:      #ef4444;  /* Red */
---status-warning:      #f59e0b;  /* Amber */
+| Token | Light | Dark | Used for |
+|---|---|---|---|
+| `--s1` | `#0e7c6b` | `#3cc4ac` | CPU user, disk used, sparklines |
+| `--s2` | `#c98a1c` | `#e6aa3c` | CPU IO wait, disk read |
+| `--s3` | `#c8372d` | `#f0645a` | CPU steal, disk write |
+| `--s4` | `#3b6fd8` | `#7aa2ff` | RAM used |
+| `--s5` | `#a2abb6` | `#56656b` | Swap used |
+| `--rx` / `--tx` | `#0e7c6b` / `#3b6fd8` | `#3cc4ac` / `#7aa2ff` | Network download / upload |
 
-/* Surface & Misc */
---card-shadow:         0 4px 20px rgba(0, 0, 0, 0.4);
---radius:              8px;
---track-bg:            rgba(255, 255, 255, 0.08);
---table-header-bg:     rgba(0, 0, 0, 0.25);
---table-hover-bg:      rgba(255, 255, 255, 0.025);
---input-bg:            #0a0a0c;
---modal-overlay-bg:    rgba(0, 0, 0, 0.72);
-```
-
-#### Light Theme (`[data-theme="light"]`)
-```css
-/* Backgrounds */
---bg-primary:          #f8fafc;
---bg-secondary:        #ffffff;
---bg-panel:            rgba(255, 255, 255, 0.95);
---bg-hover:            rgba(0, 0, 0, 0.04);
---bg-active:           rgba(0, 0, 0, 0.08);
-
-/* Borders */
---border-color:        rgba(0, 0, 0, 0.10);
---border-hover:        rgba(0, 0, 0, 0.22);
-
-/* Text */
---text-primary:        #0f172a;
---text-secondary:      #334155;
---text-muted:          #64748b;
-
-/* Accent — Deeper Indigo */
---accent-primary:      #4f46e5;
---accent-secondary:    #7c3aed;
---accent-glow:         rgba(79, 70, 229, 0.18);
-
-/* Semantic Status */
---status-online:       #059669;
---status-offline:      #dc2626;
---status-warning:      #d97706;
-
-/* Surface & Misc */
---card-shadow:         0 4px 16px rgba(0, 0, 0, 0.06);
---track-bg:            rgba(0, 0, 0, 0.07);
---table-header-bg:     rgba(0, 0, 0, 0.04);
---table-hover-bg:      rgba(0, 0, 0, 0.02);
---input-bg:            #ffffff;
---modal-overlay-bg:    rgba(15, 23, 42, 0.50);
-```
-
----
-
-### 2.2 Metric Semantic Color Map
-
-Metric series colors are fixed across all progress bars, odometer values, and Canvas chart lines:
-
-| Metric | Category | CSS Variable | Hex (Dark) | Hex (Light) |
-|---|---|---|---|---|
-| **CPU Usage (User)** | CPU | `--metric-cpu` | `#3b82f6` | `#2563eb` |
-| **CPU IO Wait** | CPU | `--metric-cpu-io` | `#fb923c` | `#ea580c` |
-| **CPU Steal** | CPU | `--metric-cpu-stl` | `#ef4444` | `#dc2626` |
-| **RAM Used** | Memory | `--metric-ram` | `#14b8a6` | `#0d9488` |
-| **RAM Swap** | Memory | `--metric-swap` | `#64748b` | `#64748b` |
-| **Disk Usage** | Storage | `--metric-disk` | `#a855f7` | `#9333ea` |
-| **Network RX (Inbound)** | Network | `--metric-net-rx` | `#38bdf8` | `#0284c7` |
-| **Network TX (Outbound)** | Network | `--metric-net-tx` | `#c084fc` | `#9333ea` |
-| **Disk Read (Bps)** | Storage I/O | `--metric-disk-r` | `#f59e0b` | `#d97706` |
-| **Disk Write (Bps)** | Storage I/O | `--metric-disk-w` | `#ef4444` | `#dc2626` |
-
----
+Swatch helpers `.sw-s1` … `.sw-tx` color legend marks. Scripts pass series colors as token names (`'--s1'` or `'var(--s1)'`), which `CertainStatsChart.resolveColor` turns into the current theme's value.
 
 ### 2.3 Typography
 
+Fonts are self-hosted as Latin-subset variable woff2 files in [`web/static/fonts/`](../web/static/fonts/) (SIL OFL, license files alongside). Public pages make no third-party font requests.
+
 ```css
---font-sans:    'Inter', system-ui, -apple-system, sans-serif;
---font-display: 'Outfit', 'Inter', system-ui, sans-serif;
---font-mono:    'JetBrains Mono', 'Fira Code', monospace;
+--font-head: 'Bricolage Grotesque', 'Figtree', system-ui, sans-serif;
+--font-body: 'Figtree', system-ui, -apple-system, 'Segoe UI', sans-serif;
+--font-mono: 'Geist Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
 ```
 
-#### Type Hierarchy
-| Scale | Size | Weight | Line Height | Font Family | Usage |
-|---|---|---|---|---|---|
-| **Display Title** | `26px` | `800` | `1.2` | Display | Page headers, main hero titles |
-| **Card Heading** | `18px` | `700` | `1.3` | Display | Section titles, dashboard titles |
-| **Subheading** | `14px` | `600` | `1.4` | Sans | Modal headers, card titles |
-| **Body Text** | `13px` | `400` | `1.5` | Sans | Table rows, paragraphs, descriptions |
-| **Section Label** | `11px` | `800` | `1.2` | Sans | Uppercase headers (`letter-spacing: 0.05em`) |
-| **Telemetry Mono** | `13–16px` | `600` | `1.2` | **Mono** | Gauges, odometer values, stats, live Bps |
-| **Code / Instructions** | `12px` | `500` | `1.4` | **Mono** | Terminal commands, token strings, IDs |
-| **Micro Badge** | `10–11px` | `700` | `1.0` | Sans/Mono | Status chips, type badges, metric units |
+| Role | Size | Weight | Family | Usage |
+|---|---|---|---|---|
+| Hero headline (`.hero-title`, `.detail-title`, `.status-title`) | `clamp(26px, 3.4vw, 38px)` | 650 | Head | Page-opening sentence or entity name |
+| Page title (`.page-title`) | 30px (24px mobile) | 650 | Head | Form pages |
+| Section title (`.section-title`, `.chart-header-title`) | 16–18px | 650 | Head | Sections, chart cards, dialogs |
+| Body | 14px | 400–600 | Body | Text, tables, forms |
+| Label / hint | 12–13px | 500 | Body | Field labels, hints, eyebrow lines |
+| Telemetry figure | 17–28px | 500 | **Mono** | Hero stats, agent metrics, tiles |
+| Data / code | 11–13px | 400–500 | **Mono** | IDs, rates, axis labels, commands |
+
+### 2.4 Shape & Spacing
+
+- Radius: `--r` 10px (controls), `--r-lg` 16px (cards, dialogs), `--r-sm` 6px (small buttons, chips).
+- Content column: `--content-w` 1180px, with a 32px side gutter on desktop and 16px on mobile.
+- Shadows are only used for elevated surfaces (dialogs, popovers, tooltips): `--shadow-pop`.
 
 ---
 
 ## 3. Component System
 
-### 3.1 Cards & Containers
+### 3.1 Page Openers
+- **`.hero`**: an eyebrow line (`.hero-eyebrow`), a sentence headline (`.hero-title`), optional `.page-subtitle`, `.hero-stats` and `.hero-actions`. Used on Agent Hub, Status pages, Alerts, Management and Settings.
+- **Agent Hub headline**: rendered on the server by the `hub_headline` template (`partials/agents/headline.html`) from `OnlineCount` and `OfflineCount`, and re-rendered by `renderHubHeadline()` in `admin_agents.js` after a metadata sync. Offline wording uses `.is-bad`.
+- **`.hero-stats`**: fleet figures (bandwidth now, disk I/O now, traffic and disk all time). They keep the `admin-live-*` and `admin-total-*` element IDs that `renderClusterStats` writes to, with `pub-*` IDs on the public page.
 
-#### `.card`
-Standard container for stat panels, monitor rows, and configuration groups.
-- `background: var(--bg-secondary)`
-- `border: 1px solid var(--border-color)`
-- `border-radius: var(--radius)` (`8px`)
-- `padding: 20px` (desktop), `16px` (mobile)
-- **Hover state** (on interactive cards): `border-color: var(--border-hover)`, `box-shadow: 0 4px 16px rgba(0,0,0,0.15)`.
+### 3.2 Cards
+- **`.card`**: surface, 1px `--line` border, `--r-lg` radius, 20px padding. Cards carry no shadow.
+- **`.agent-card-item`**: an Agent Hub card containing:
+  - a name with status dot, CPU model and driver;
+  - a status badge;
+  - three large figures (CPU %, memory %, disk %), each with a thin meter;
+  - a 24h CPU sparkline (`canvas.agent-spark`);
+  - a footer with live network rates and uptime.
 
-#### `.hw-card`
-Hardware specification card showing a live gauge and mini-meter (CPU Cores, RAM, Root Disk, Swap Size).
-- Top row: hardware label + category badge.
-- Middle row: value + unit (`vCPU`, `GB`, `MB`).
-- Bottom row: `.hw-card-progress-track` with filled segment.
+  Offline cards add `.is-offline`, which applies a `--bad-soft` wash.
+- **`.chart-card`**: a chart container with a title, legend (`.chart-legend-pills`) and `.chart-container` canvas. `.chart-card-wide` spans both columns of `.chart-grid`.
+- **`.partition-card`**: per-mount storage card, rendered by `CertainStatsTelemetry.partitionCardHtml()`, which both detail views share.
+- **`.hw-card`**: a detail metric tile with a label, capacity, live value and meter.
 
-#### `.odometer-tile`
-Real-time telemetry speed tile for Network Traffic and Disk R/W:
-- Label group: Category name + sub-second indicator.
-- Values row: Monospace live rates (e.g. `↓ 12.4 MB/s / ↑ 3.1 MB/s`).
-
-#### `.cluster-stat-card`
-Aggregate summary tile displayed at the top of the Multi-Agent Hub and Public Dashboard:
-- 4-card grid (`Bandwidth`, `Disk I/O`, `Total Traffic`, `Total Read/Write`).
-- Displays live aggregate telemetry summed across all monitored nodes.
-
----
-
-### 3.2 Buttons
+### 3.3 Buttons
 
 | Class | Appearance | Purpose |
 |---|---|---|
-| `.btn-primary` | Solid indigo background (`--accent-primary`), white text, subtle glow | Primary actions (Save, Add Agent, Create Alert) |
-| `.btn-secondary` | Subtle tint background (`--btn-secondary-bg`), border | Secondary actions (Cancel, Reinstall, Uninstall, Filters) |
-| `.btn-danger` | Red tint background (`--btn-danger-bg`), red border & text | Destructive actions (Delete Agent, Eject Session, Delete Alert) |
-| `.btn-sm` | Compact sizing (`padding: 4px 10px`, `font-size: 11px`, `height: 28px`) | In-row actions, table actions, header controls |
+| `.btn-primary` | Solid `--accent`, `--accent-fg` text | One primary action per area |
+| `.btn-secondary` | Surface with `--line` border | Secondary actions |
+| `.btn-ghost` | Transparent, muted text | Tertiary actions, icon buttons |
+| `.btn-danger` | Red text and border, fills red on hover | Destructive actions |
+| `.btn-sm`, `.btn-icon`, `.btn-block` | Size modifiers | Row actions, icon-only buttons, full width |
 
----
+Button labels say exactly what happens ("Create status page", "Sign out other devices").
 
-### 3.3 Status Indicators & Badges
+### 3.4 Status
+- **`.status-dot`**: 8px dot with a soft ring. Classes: `.online`, `.offline`.
+- **`.badge`**: pill chip. Variants: `.badge-online`, `.badge-offline` (each with a leading dot), `.badge-warn` and `.badge-accent` (`.badge-indigo` is an alias).
+- **`.banner`**: full-width status strip. Variants: `.is-ok`, `.is-warn`, `.is-bad`. It's used for the public "All systems operational / Partial outage" banner and the Alerts incident banner.
 
-#### `.status-dot`
-8×8px circle representing real-time heartbeat:
-- `.online`: Emerald green with pulsing glow animation (`pulse-green`).
-- `.offline`: Red solid dot (`--status-offline`).
+### 3.5 Meters
+`.usage-bar-track` with `.usage-segment` children; segments start at zero width and JS sets `style.width`. Series classes are `.seg-cpu-usr`, `.seg-cpu-io`, `.seg-cpu-stl`, `.seg-ram-used`, `.seg-ram-swap`, `.seg-disk` (`.is-high` above 90%), `.seg-net-rx` and `.seg-net-tx`. A track with `data-tooltip-rows` shows the floating tooltip, whose row colors are CSS values such as `var(--s2)`.
 
-#### `.badge`
-Compact metadata chips:
-- `.badge-online`: Emerald text on green alpha background.
-- `.badge-offline`: Red text on red alpha background.
-- `.badge-indigo`: Indigo text on indigo alpha background (used for agent types: `beszel`, `ltstats`, `hetrixtools`).
+### 3.6 Controls
+- **Segmented control**: `.toolbar-group` / `.time-range-bar` containing `.toolbar-btn` / `.time-range-btn`, with `.active` and `aria-pressed`.
+- **Search**: `.toolbar-search` label with an SVG icon and an `input[type=search]`.
+- **Forms**: `.form-group`, `.form-label`, `.form-input` / `.form-select` / `.form-textarea`, `.form-hint`, `.form-grid-2`, `.input-prefix` (address prefix), `.toggle-pill` (checkbox chip), `.node-select-pill` and `.form-fieldset`.
+- **Tables**: `.table-responsive` (a positioned scroll container) holding a `.table`. Helpers: `.table-actions`, `.table-link`, `.table-empty`.
+- **Empty states**: `.empty-state` with `.empty-state-title`, a sentence, and the action that fixes it.
 
----
+### 3.7 In-Place Editing
+Agent rename and short notes are edited inline in the detail header; this is unchanged in behavior from v3. Read and edit states are toggled with the `hidden` attribute. `.editable-title` is focusable (`role="button"`, `tabindex="0"`, Enter starts editing), Enter saves and Escape cancels. Long notes (> 40 characters or multiline) appear in an expanded notes card under the metric tiles.
 
-### 3.4 In-Place Agent Name & Notes System
+### 3.8 Dialogs
+All modals are native `<dialog class="modal">` elements opened with `showModal()`, which gives the focus trap, Esc to close and `::backdrop` for free.
 
-Replicated with a zero-modal, in-place editing interaction model across the panel:
+- Structure: `.modal-header` (`.modal-title`, `.modal-subtitle`, `{{template "modal_close"}}`), then `.modal-body` (scrolls), then `.modal-footer`. Inside a `<form>`, the form wraps the body and footer.
+- Open and close from markup with `data-open-modal="id"` and `data-close-modal` (closes the enclosing dialog). From JS, use `CertainStatsModal.open(id)` and `CertainStatsModal.close(id)`.
+- A click on the backdrop closes the dialog. Use `.modal-lg` for wide dialogs.
+- Current dialogs:
+  - agent dialogs: add agent, notes, reinstall, uninstall;
+  - alert dialogs: new and edit rule, new and edit target, template variables;
+  - delete status page.
 
-```
-[ Monitor Header ]  ● Online  [ Node Name ] [edit]  [beszel]  |  [No notes / short text / See below] notes
-                                  │                                   │
-                                  │                                   ├── Short/Empty → Click opens inline <input> in header
-                                  │                                   └── Long/Multiline → Click scrolls to #agent-notes-section
-                                  │
-                                  └── Click opens inline <input> directly in title + [Save] + [✕]
-```
+### 3.9 Theme Toggle
+The `{{template "theme_toggle"}}` icon button cycles **system → light → dark** and stores the preference in `localStorage.certainstats_theme`.
 
-1. **In-Place Agent Name Editing**:
-   - **Affordance**: The agent title is styled with `.editable-title` (dashed underline, subtle edit pencil SVG, `cursor: pointer`, hover accent transition).
-   - **Click to Edit**: Clicking on the name activates an inline `<input>` with `[Save]` and `[✕]` right in the header bar.
-   - **Keyboard & Actions**: Pressing `Enter` or clicking `Save` sends `PUT /api/agent` (with Web 1.0 `POST /agent/rename` fallback), updates in-memory stores and all DOM elements in real-time, and displays a success toast. Pressing `Escape` or clicking `✕` reverts changes immediately.
-   - **Fleet Management**: The same click-to-edit interaction model is implemented on the Fleet Management page (`/agents/management`) for table rows.
-   - **Zero-Modal**: No popup dialogs or modal overlays are used for renaming agents.
-
-2. **Header Inline Notes Widget** (`#header-inline-notes`):
-   - **Empty**: Displays `"No notes"`. Clicking switches to an inline `<input>` + `Save` + `✕` directly in the header bar.
-   - **Short (≤ 40 chars & single line)**: Displays the note text with a dashed underline. Clicking opens the header inline editor.
-   - **Long (> 40 chars or multiline `\n`)**: Displays `"See below"`. Clicking smoothly scrolls the viewport to `#agent-notes-section`.
-3. **Expanded Notes Section** (`#agent-notes-section`):
-   - Automatically appears below specifications when a note is long; hidden when short or empty.
-   - Read mode: Pre-wrap formatted monospace card with an **Edit** button.
-   - Edit mode: Expands into full `<textarea>` with **Save Note** and **Cancel** controls.
-   - Saves persist via `PUT /api/agent` with live synchronization between the header and expanded view.
-
----
-
-### 3.5 Modals & Overlays
-
-All modals adhere to strict design standards:
-- **Dismissal**: Clicking on the blurred background overlay dismisses the popup.
-- **Typography & Icons**: No emojis; all modal tabs and action headers use clean, crisp inline SVGs.
-- **Components**:
-  - **Provisioning Modal** (`#provision-modal`): Driver selection (`Beszel`, `LTstats`, `HetrixTools`), Docker vs. binary tabs, copy-to-clipboard buttons, live token generation.
-  - **Reinstall Modal**: Direct access to installation scripts for existing agent tokens.
-  - **Uninstall Modal** (`#uninstall-modal`): Teardown commands and cleanup instructions for agents.
+- The `{{template "theme_bootstrap"}}` inline script resolves the preference to `data-theme="light|dark"` before first paint, so there is no flash. It also sets `data-theme-pref`.
+- When the preference is `system`, a `matchMedia` listener follows OS changes.
+- Every change dispatches `certainstats_theme_change`, which charts and sparklines listen for to redraw.
 
 ---
 
 ## 4. Interactive JavaScript Subsystems
 
-The frontend relies on modular, dependency-free JavaScript components loaded via `<script>` tags with Subresource Integrity (SRI) hashes.
+Dependency-free modules loaded with `<script>` tags carrying SRI hashes.
 
 ```mermaid
 flowchart LR
     subgraph Core Helpers
-        Telemetry[CertainStatsTelemetry]
+        Telemetry[CertainStatsTelemetry + CertainStatsModal]
         ChartEngine[CertainStatsChart]
     end
     subgraph App Modules
         Admin[CertainStatsAdminAgents]
         Public[CertainStatsPublicDashboard]
-        Provision[CertainStatsProvision]
+        Provision[CertainStatsProvisionRenderer]
+        Alerts[CertainStatsAdminAlerts]
+        DashEdit[CertainStatsDashboardEdit]
     end
 
     Telemetry --> Admin
     Telemetry --> Public
+    Telemetry --> Alerts
     ChartEngine --> Admin
     ChartEngine --> Public
     Provision --> Admin
 ```
 
----
-
 ### 4.1 `CertainStatsTelemetry` ([`telemetry.js`])
-
-The central utility module providing core primitives:
-- **WebSocket Manager**: Connects to `/api/ws` with exponential backoff reconnection, heartbeat tracking, and message dispatching.
-- **In-Page SPA Router (`initRouter`)**: Manages HTML5 `pushState` and `popstate` events to map URL paths (`/{agent_id}`) to view transitions without page reload.
-- **Date & Time Picker (`initCustomTimePicker`)**: Dual-mode time window selector:
-  - Preset hours pills: `1h`, `6h`, `24h`, `7d`, `30d`.
-  - Custom Date Range Picker: Start/End datetime inputs with automatic timestamp conversion.
-- **Formatters**: `formatBytes`, `formatBps`, `formatPercent`, `formatUptime`, `formatDate`.
-- **Toast Notifications (`showToast`)**: Floating notification banner with auto-dismiss and color status.
-
----
+- **WebSocket manager** for `/api/ws` and `/api/public/ws/{id}`, with reconnection.
+- **In-page router (`initRouter`)** maps `/{agent_id}` and `/{slug}/{pub_id}` to view swaps.
+- **Time range picker (`initCustomTimePicker`)**: quick ranges plus a custom start and end dropdown with `aria-expanded`. Public pages clamp the range to `MaxDays`.
+- **`renderClusterStats`** updates the hero figures, the public header status and the public status banner.
+- **`partitionCardHtml`** renders the shared storage partition card.
+- **Floating tooltips** on meters, **toasts**, and **`CertainStatsModal`** (open/close plus the delegated `data-open-modal`/`data-close-modal` handlers).
 
 ### 4.2 `CertainStatsChart` ([`chart.js`])
-
-A lightweight, zero-dependency HTML5 Canvas time-series charting engine:
-- **High-DPI Rendering**: Automatically scales for Retina / 2x Displays using `window.devicePixelRatio`.
-- **Chart Types**: Stacked Area Charts (e.g. CPU User / IO / Steal, Memory Used / Buffers / Cached) and Multi-Line Charts (e.g. Network RX/TX, Disk Read/Write).
-- **Downtime Gap Shading**: Automatically detects data gaps (> 2.5× polling interval) and renders red vertical outage markers.
-- **Interactive Drag-to-Zoom**: Click-and-drag across the time axis to select an arbitrary time range; triggers zoom callbacks.
-- **Crosshair Hover Tooltip**: High-precision hover inspection displaying interpolated values and exact timestamps.
-
----
+- **Colors from tokens**: grid, axis text, tooltip card, downtime band and drag selection all read CSS variables, and series colors go through `resolveColor`.
+- **Style**:
+  - smooth curves (horizontal midpoint bezier, so no overshoot) with a 2px stroke and soft gradient area;
+  - a marked latest point (a dot with a ring in the surface color);
+  - offline gaps drawn as a red band labelled "Offline 42m".
+- **Fitted y-axis gutter**: the left padding grows to fit the widest label.
+- **Drag to zoom**, a **crosshair tooltip**, and **High-DPI** rendering.
+- **`drawSparkline(canvas, points, opts)`**: axis-less trend line for Agent Hub cards, split at data gaps.
+- **Theme**: `initThemeToggle` handles the three-way preference described in §3.9.
 
 ### 4.3 `CertainStatsAdminAgents` ([`admin_agents.js`])
-
-Controls the private Multi-Agent Hub and In-Page Detail view:
-- **View Density Modes**: Toggles between `detailed` (full segmented usage bars + mini legends) and `simplified` (compact usage meters).
-- **Layout Modes**: Switches between Responsive Grid (`.grid-cards`) and Table List (`.table-view`).
-- **Live Search Filtering**: Sub-millisecond client-side filtering across nicknames, hostnames, agent IDs, and IP addresses.
-- **In-Page Detail Transition**:
-  - Hides `#agents-overview-view`, displays `#agents-detail-view`.
-  - Fetches multi-series TSDB telemetry via `/api/metrics`.
-  - Initializes per-partition disk usage and I/O charts dynamically.
-  - Synchronizes Header Inline Notes and Expanded Notes.
-
----
+- Switches between card and table views (persisted), and filters by name, CPU or ID.
+- Applies live WebSocket snapshots to cards, table rows and the open detail view. Element IDs are the contract between templates and this script, so keep them stable.
+- Loads 24h CPU sparklines (`/api/metrics?…&hours=24`), staggered per card.
+- Re-renders the headline and offline card washes after each metadata sync.
 
 ### 4.4 `CertainStatsPublicDashboard` ([`public_dashboard.js`])
+- Status rows (the default view) or cards, persisted per visitor.
+- Strictly respects `AllowedFeatures` and `AllowedMetrics`. Templates use `hasFeature` and `hasMetric`, and scripts check `pubAllowedMetrics`.
+- Public agent detail is rendered in place at `/dashboard/{slug}/{pub_id}` with the same structure as the admin detail, minus admin actions.
 
-Controls unauthenticated Public Status Pages (`/dashboard/{slug}`):
-- **Access Rule Filtering**: Strictly respects `AllowedFeatures` and `AllowedMetrics` configured by the administrator.
-- **In-Page SPA Navigation**: Allows public visitors to click into individual monitor details (`/{slug}/{pub_id}`) seamlessly in-place.
-- **Time Window Clamping**: Enforces `MaxDays` history boundaries on all metric requests.
+### 4.5 `CertainStatsProvisionRenderer` ([`provision_renderer.js`])
+Agent onboarding, install and uninstall instructions, with copy buttons. Driver choice is a `radiogroup` of `.driver-select-card` buttons.
 
----
-
-### 4.5 `CertainStatsProvision` ([`provision_renderer.js`])
-
-Manages agent onboarding, reinstall instructions, and teardown scripts:
-- Fetches setup metadata from `/api/agent/install/{id}` and `/api/agent/uninstall/{id}`.
-- Renders driver-specific instructions for Docker, Docker Compose, Linux systemd, and Binary commands.
-- Provides copy-to-clipboard functionality with visual feedback.
+### 4.6 `CertainStatsDashboardEdit` ([`dashboard_edit.js`])
+Status page editor:
+- server selection and aliases;
+- drag-to-reorder, plus up and down buttons for keyboard users (`data-move`);
+- order is submitted as repeated `agents_order` hidden inputs with the `is_dragged` flag.
 
 ---
 
 ## 5. Page Specifications & Templates
-
-All HTML templates reside in [`web/templates/`] and are compiled into the Go binary at build time.
 
 ### 5.1 Template Hierarchy
 
 ```
 web/templates/
 ├── layout/
-│   ├── base.html              # Authenticated Admin Shell (Navbar, Container, Live Dot, Footer)
-│   └── public_base.html       # Public Unauthenticated Shell (Clean Header, Footer)
+│   ├── base.html              # Admin shell: skip link, navbar, mobile subnav, flash, footer
+│   └── public_base.html       # Public shell: page title + live status, theme toggle
 ├── partials/
-│   ├── agents/
-│   │   ├── inpage_detail.html # In-Page Agent Detail View (#agents-detail-view)
-│   │   └── provision_modal.html
-│   ├── dashboards/
-│   │   └── public_inpage_detail.html
-│   └── common/
-│       ├── time_picker.html
-│       └── uninstall_modal.html
-├── agents_list.html           # Main Multi-Agent Hub
-├── agent_management.html      # Fleet Management Table (Tokens, SSH Keys, Reset)
-├── dashboards_list.html       # Public Dashboards Manager
-├── dashboard_edit.html        # Access Rules & Public Slug Editor
-├── alerts_list.html           # Alerts & Webhook Targets Configurator
-├── settings.html              # Password & Session Ejection Manager
-├── login.html                 # Login View
-└── setup.html                 # First-Time Admin Account Creation
+│   ├── common/
+│   │   ├── shell.html         # theme_bootstrap, logo_mark, theme_toggle, modal_close
+│   │   ├── reinstall_modal.html
+│   │   └── uninstall_modal.html
+│   ├── agents/                # headline, cluster_cards (hero stats), toolbar, grid/list views,
+│   │                          # inpage_detail, provision_modal, notes_modal
+│   ├── public/                # cluster_cards, toolbar, grid_view (cards), list_view (status rows),
+│   │                          # public_inpage_detail
+│   ├── alerts/                # rules/targets/history tables, incidents banner, dialogs
+│   └── settings/              # password_form, sessions_table
+├── agents_list.html           # Agent Hub + in-page agent detail
+├── agent_management.html      # Agent credentials (tokens, SSH keys, resets)
+├── dashboards_list.html       # Status pages list
+├── dashboard_edit.html        # Status page editor
+├── alerts_list.html           # Alert rules, targets, incident history
+├── settings.html              # Password and signed-in devices
+├── login.html
+├── setup.html
+└── public_dashboard.html      # Public status page + in-page public agent detail
 ```
 
----
-
-### 5.2 Application Shell ([`layout/base.html`])
-
-The main admin navigation bar contains:
-- **Brand Logo**: CertainStats logomark linking to `/`.
-- **Navigation Links**: `Monitors` (`/`), `Dashboards` (`/dashboards`), `Alerts` (`/alerts`), `Fleet Management` (`/agents/management`), `Settings` (`/settings`).
-- **Live Stream Indicator**: Green pulse dot showing active WebSocket connection status.
-- **Theme Toggle**: In-place dark/light toggle persisting preference in `localStorage`.
-- **Logout Form**: Secure POST `/logout`.
-- **Footer**: Displays server render time (e.g. `Render Time: 0.35ms`), copyright, and version.
-
----
+### 5.2 Application Shell
+- **Brand**: SVG logo mark (a pulse line in a rounded teal square) with the "CertainStats" wordmark.
+- **Navigation**: Agent Hub, Dashboards, Alerts, Management, Settings. The active link has `aria-current="page"` and a teal underline. On mobile the links move to a horizontally scrolling subnav.
+- **Right side**: theme toggle and Log out.
+- **Navbar**: translucent and sticky. It gains a bottom border once the page scrolls (`.is-scrolled`).
+- **Footer**: copyright and server render time ("Rendered in 0.35ms").
 
 ### 5.3 Page Route Map
 
 | URL Route | Template | JavaScript Entry | Key Functionality |
 |---|---|---|---|
-| `/` | `agents_list.html` | `admin_agents.js` | Multi-Agent Hub Overview (Grid/List, Density modes, Search) |
-| `/{agent_id}` | `agents_list.html` | `admin_agents.js` | In-Page Detail SPA for specific node (Telemetry, Disks, Notes) |
-| `/agents/management` | `agent_management.html` | `provision_renderer.js` | Fleet table, Pre-shared tokens, SSH Key rotation |
-| `/dashboards` | `dashboards_list.html` | — | Dashboard management list |
-| `/dashboard/create` | `dashboard_edit.html` | `dashboard_edit.css` | Create new public dashboard |
-| `/dashboard/{id}` | `dashboard_edit.html` | `dashboard_edit.css` | Configure slug, Access Rules, and assigned agents |
-| `/alerts` | `alerts_list.html` | — | Alert rule builder and Webhook targets (Discord, etc.) |
-| `/settings` | `settings.html` | `admin_modals.js` | Password change, active session browser table, and individual/bulk session ejection |
-| `/login` | `login.html` | — | User authentication (24h default expiration with 30-day "Remember me" option) |
-| `/first-time-setup` | `setup.html` | — | Initial administrator provisioning |
-| `/dashboard/{slug}` | `public_dashboard.html` | `public_dashboard.js` | Public Status Page Overview |
-| `/dashboard/{slug}/{pub_id}` | `public_dashboard.html` | `public_dashboard.js` | Public Status Page In-Page Monitor Detail |
+| `/` | `agents_list.html` | `admin_agents.js` | Agent Hub: headline, fleet figures, cards/table, search, sparklines |
+| `/{agent_id}` | `agents_list.html` | `admin_agents.js` | In-page agent detail: tiles, storage, history charts, notes |
+| `/agents/management` | `agent_management.html` | `agent_management.js`, `provision_renderer.js` | Tokens, SSH keys, resets, install steps |
+| `/dashboards` | `dashboards_list.html` | `admin_modals.js` | Status pages list |
+| `/dashboard/create`, `/dashboard/{id}` | `dashboard_edit.html` | `dashboard_edit.js` | Address, visibility rules, servers, order |
+| `/alerts` | `alerts_list.html` | `admin_alerts.js` | Rules, targets, incident history |
+| `/settings` | `settings.html` | `admin_modals.js` | Password change, signed-in devices |
+| `/login`, `/first-time-setup` | `login.html`, `setup.html` | — | Sign in, initial administrator account |
+| `/dashboard/{slug}` | `public_dashboard.html` | `public_dashboard.js` | Public status page |
+| `/dashboard/{slug}/{pub_id}` | `public_dashboard.html` | `public_dashboard.js` | Public agent detail |
 
 ---
 
@@ -392,11 +285,12 @@ The main admin navigation bar contains:
 
 ### 6.1 Sub-Millisecond Server Rendering
 - Templates are pre-parsed on startup via `NewTemplateRenderer` in `renderer.go` into memory.
-- Typical page render time is **< 0.50 ms**, recorded in the response footer via `PageData.RenderTime()`.
+- Typical page render time is **< 0.50 ms**, shown in the footer via `PageData.RenderTime()`.
 
 ### 6.2 Asset Embedding & Minification
-- Static assets (CSS, JS) and templates are embedded into the Go binary using `embed.FS` in `web/embed.go`.
-- Assets are minified at startup using `internal/minify` and served with cache-busting SHA-256 asset hashes.
+- Static assets (CSS, JS, fonts) and templates are embedded into the Go binary using `embed.FS` in `web/embed.go`.
+- CSS and JS are minified at startup by `internal/minify` and served under content-hashed names with SRI. Fonts pass through unchanged and are referenced by stable paths (`/static/fonts/*.woff2`).
+- The CSS minifier keeps whitespace that changes meaning: around `(` in media queries, after `)` in selectors such as `:not(…) .x`, and inside `calc()` and `color-mix()`.
 
 ### 6.3 In-Memory Output Caching
-- Public status pages utilize `DashboardHTMLCache` (`internal/context/cache.go`) with configurable TTLs, invalidating immediately whenever dashboard configurations change.
+- Public status pages use `DashboardHTMLCache` (`internal/context/cache.go`) with configurable TTLs, invalidated when dashboard configuration changes.

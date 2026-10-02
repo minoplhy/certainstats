@@ -50,35 +50,12 @@
     const btnGrid = document.getElementById('btn-view-grid');
     const btnList = document.getElementById('btn-view-list');
 
-    if (mode === 'list') {
-      if (gridContainer) gridContainer.style.display = 'none';
-      if (listContainer) listContainer.style.display = 'block';
-      if (btnGrid) btnGrid.classList.remove('active');
-      if (btnList) btnList.classList.add('active');
-    } else {
-      if (gridContainer) gridContainer.style.display = 'grid';
-      if (listContainer) listContainer.style.display = 'none';
-      if (btnGrid) btnGrid.classList.add('active');
-      if (btnList) btnList.classList.remove('active');
-    }
+    const isList = mode === 'list';
+    if (gridContainer) gridContainer.hidden = isList;
+    if (listContainer) listContainer.hidden = !isList;
+    if (btnGrid) { btnGrid.classList.toggle('active', !isList); btnGrid.setAttribute('aria-pressed', String(!isList)); }
+    if (btnList) { btnList.classList.toggle('active', isList); btnList.setAttribute('aria-pressed', String(isList)); }
     try { localStorage.setItem('certainstats_view_mode', mode); } catch (e) {}
-  }
-
-  function setAgentDensity(density) {
-    const btnDetailed = document.getElementById('btn-density-detailed');
-    const btnSimplified = document.getElementById('btn-density-simplified');
-    const detailFields = document.querySelectorAll('.detail-only-field');
-
-    if (density === 'simplified') {
-      if (btnDetailed) btnDetailed.classList.remove('active');
-      if (btnSimplified) btnSimplified.classList.add('active');
-      detailFields.forEach(el => el.style.display = 'none');
-    } else {
-      if (btnDetailed) btnDetailed.classList.add('active');
-      if (btnSimplified) btnSimplified.classList.remove('active');
-      detailFields.forEach(el => el.style.display = 'block');
-    }
-    try { localStorage.setItem('certainstats_density', density); } catch (e) {}
   }
 
   function filterAgentsList() {
@@ -130,27 +107,26 @@
     const expandedTextarea = document.getElementById('inpage-expanded-notes-textarea');
     const headerInput = document.getElementById('inpage-header-notes-input');
 
-    if (headerReadEl) headerReadEl.style.display = 'inline-flex';
-    if (headerEditEl) headerEditEl.style.display = 'none';
+    if (headerReadEl) headerReadEl.hidden = false;
+    if (headerEditEl) headerEditEl.hidden = true;
 
     if (headerTextEl) {
       if (isLong) {
-        headerTextEl.textContent = 'See below';
-        headerTextEl.title = 'Click to view full notes below';
-        headerTextEl.style.color = 'var(--text-secondary)';
+        headerTextEl.textContent = 'Notes below';
+        headerTextEl.title = 'Jump to notes';
       } else {
-        headerTextEl.textContent = note || 'No notes';
-        headerTextEl.title = note ? `${note} (Click to edit)` : 'No notes yet. Click to add private notes.';
-        headerTextEl.style.color = 'var(--text-primary)';
+        headerTextEl.textContent = note || 'Add a note';
+        headerTextEl.title = note ? 'Edit note' : 'Add a private note';
       }
+      headerTextEl.classList.toggle('is-empty', !note);
     }
 
     if (headerInput) headerInput.value = note || '';
 
     if (expandedSection) {
-      expandedSection.style.display = isLong ? 'block' : 'none';
-      if (expandedReadEl) expandedReadEl.style.display = 'block';
-      if (expandedEditEl) expandedEditEl.style.display = 'none';
+      expandedSection.hidden = !isLong;
+      if (expandedReadEl) expandedReadEl.hidden = false;
+      if (expandedEditEl) expandedEditEl.hidden = true;
       if (expandedTextEl) expandedTextEl.textContent = note || '';
       if (expandedTextarea) expandedTextarea.value = note || '';
     }
@@ -167,8 +143,8 @@
       const readEl = document.getElementById('inpage-header-notes-read');
       const editEl = document.getElementById('inpage-header-notes-edit');
       const input = document.getElementById('inpage-header-notes-input');
-      if (readEl) readEl.style.display = 'none';
-      if (editEl) editEl.style.display = 'inline-flex';
+      if (readEl) readEl.hidden = true;
+      if (editEl) editEl.hidden = false;
       if (input) {
         input.value = note;
         input.focus();
@@ -179,8 +155,8 @@
   function cancelInpageHeaderNoteEdit() {
     const readEl = document.getElementById('inpage-header-notes-read');
     const editEl = document.getElementById('inpage-header-notes-edit');
-    if (editEl) editEl.style.display = 'none';
-    if (readEl) readEl.style.display = 'inline-flex';
+    if (editEl) editEl.hidden = true;
+    if (readEl) readEl.hidden = false;
   }
 
   function saveInpageHeaderInlineNote() {
@@ -195,8 +171,8 @@
     const readEl = document.getElementById('inpage-expanded-notes-read');
     const editEl = document.getElementById('inpage-expanded-notes-edit');
     const textarea = document.getElementById('inpage-expanded-notes-textarea');
-    if (readEl) readEl.style.display = 'none';
-    if (editEl) editEl.style.display = 'flex';
+    if (readEl) readEl.hidden = true;
+    if (editEl) editEl.hidden = false;
     if (textarea) {
       textarea.value = agent ? (agent.note || '') : '';
       textarea.focus();
@@ -210,8 +186,8 @@
     const editEl = document.getElementById('inpage-expanded-notes-edit');
     const textarea = document.getElementById('inpage-expanded-notes-textarea');
     if (textarea) textarea.value = agent ? (agent.note || '') : '';
-    if (editEl) editEl.style.display = 'none';
-    if (readEl) readEl.style.display = 'block';
+    if (editEl) editEl.hidden = true;
+    if (readEl) readEl.hidden = false;
   }
 
   function saveInpageExpandedNotes() {
@@ -260,8 +236,8 @@
     const readEl = document.getElementById('detail-name-read-container');
     const editEl = document.getElementById('detail-name-edit-container');
     const input = document.getElementById('detail-name-input');
-    if (readEl) readEl.style.display = 'none';
-    if (editEl) editEl.style.display = 'inline-flex';
+    if (readEl) readEl.hidden = true;
+    if (editEl) editEl.hidden = false;
     if (input) {
       input.value = agent ? (agent.nickname || agent.agent_id) : '';
       input.focus();
@@ -272,8 +248,8 @@
   function cancelInpageAgentNameEdit() {
     const readEl = document.getElementById('detail-name-read-container');
     const editEl = document.getElementById('detail-name-edit-container');
-    if (editEl) editEl.style.display = 'none';
-    if (readEl) readEl.style.display = 'inline-flex';
+    if (editEl) editEl.hidden = true;
+    if (readEl) readEl.hidden = false;
   }
 
   function saveInpageAgentName() {
@@ -355,13 +331,7 @@
     cancelInpageExpandedNotesEdit();
 
     // Close any open modals
-    const modalIds = ['reinstall-modal', 'uninstall-modal', 'add-agent-modal', 'provision-modal'];
-    modalIds.forEach(id => {
-      const el = document.getElementById(id);
-      if (el && el.style.display !== 'none') {
-        el.style.display = 'none';
-      }
-    });
+    ['reinstall-modal', 'uninstall-modal', 'add-agent-modal'].forEach(id => window.CertainStatsModal.close(id));
   }
 
   function handleInpageZoom(startMs, endMs) {
@@ -387,48 +357,12 @@
           const snapDisk = (snap && snap.disks) ? snap.disks.find(x => x.path === path) : null;
           const used = snapDisk ? snapDisk.used_bytes : (d.used_bytes || 0);
           const total = d.total_bytes || (snapDisk ? snapDisk.total_bytes : 0) || 0;
-          const pct = total > 0 ? (used / total) * 100 : 0;
-          disksHtml += `
-            <div class="hw-card">
-              <div class="hw-card-header">
-                <span>⛁ ${path}</span>
-                <span class="mono" style="color: var(--text-secondary); font-weight: 600;">${pct > 0 ? pct.toFixed(1) + '%' : '-'}</span>
-              </div>
-              <div class="hw-card-val-row">
-                <span class="hw-card-val">${window.CertainStatsChart.formatBytes(used)}</span>
-                <span class="hw-card-unit">${total ? ' / ' + window.CertainStatsChart.formatBytes(total) : ''}</span>
-              </div>
-              <div class="hw-card-progress-track">
-                <div class="hw-card-progress-fill seg-disk" style="width: ${Math.min(pct, 100)}%;"></div>
-              </div>
-              <div style="display: flex; justify-content: space-between; align-items: center; font-size: 12px; margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--border-color);">
-                <span style="color: var(--text-secondary); font-weight: 600;">Total:</span>
-                <span class="mono" style="font-size: 12px; font-weight: 600; color: var(--text-primary);">R: ${window.CertainStatsChart.formatBytes(d.read_bytes || 0)} <span style="color: var(--border-color); margin: 0 4px;">/</span> W: ${window.CertainStatsChart.formatBytes(d.write_bytes || 0)}</span>
-              </div>
-            </div>`;
+          disksHtml += window.CertainStatsTelemetry.partitionCardHtml(path, used, total, d.read_bytes || 0, d.write_bytes || 0);
         });
       } else {
         const diskUsed = snap ? (snap.disk_used_bytes || 0) : 0;
         const diskTotal = agent.disk_size || (snap ? snap.disk_total_bytes : 0) || 0;
-        const pct = diskTotal > 0 ? (diskUsed / diskTotal) * 100 : 0;
-        disksHtml += `
-          <div class="hw-card">
-            <div class="hw-card-header">
-              <span>⛁ /</span>
-              <span class="mono" style="color: var(--text-secondary); font-weight: 600;">${pct > 0 ? pct.toFixed(1) + '%' : '-'}</span>
-            </div>
-            <div class="hw-card-val-row">
-              <span class="hw-card-val">${window.CertainStatsChart.formatBytes(diskUsed)}</span>
-              <span class="hw-card-unit">${diskTotal ? ' / ' + window.CertainStatsChart.formatBytes(diskTotal) : ''}</span>
-            </div>
-            <div class="hw-card-progress-track">
-              <div class="hw-card-progress-fill seg-disk" style="width: ${Math.min(pct, 100)}%;"></div>
-            </div>
-            <div style="display: flex; justify-content: space-between; align-items: center; font-size: 12px; margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--border-color);">
-              <span style="color: var(--text-secondary); font-weight: 600;">Total:</span>
-              <span class="mono" style="font-size: 12px; font-weight: 600; color: var(--text-primary);">R: ${window.CertainStatsChart.formatBytes(agent.total_disk_read_bytes || 0)} <span style="color: var(--border-color); margin: 0 4px;">/</span> W: ${window.CertainStatsChart.formatBytes(agent.total_disk_write_bytes || 0)}</span>
-            </div>
-          </div>`;
+        disksHtml += window.CertainStatsTelemetry.partitionCardHtml('/', diskUsed, diskTotal, agent.total_disk_read_bytes || 0, agent.total_disk_write_bytes || 0);
       }
       inpageDisksGrid.innerHTML = disksHtml;
     }
@@ -446,6 +380,12 @@
       if (inpageRam) inpageRam.style.width = Math.min(ramPct, 100) + '%';
       if (inpageDisk && diskPct > 0) inpageDisk.style.width = Math.min(diskPct, 100) + '%';
       if (inpageSwap && swapPct > 0) inpageSwap.style.width = Math.min(swapPct, 100) + '%';
+
+      const fmt = window.CertainStatsChart.formatBytes;
+      const tileCpu = document.getElementById('inpage-tile-cpu'); if (tileCpu) tileCpu.textContent = snap.cpu_usage_percent.toFixed(1) + '%';
+      const tileRam = document.getElementById('inpage-tile-ram'); if (tileRam) tileRam.textContent = fmt(snap.ram_used_bytes);
+      const tileDisk = document.getElementById('inpage-tile-disk'); if (tileDisk) tileDisk.textContent = snap.disk_used_bytes > 0 ? fmt(snap.disk_used_bytes) : '–';
+      const tileSwap = document.getElementById('inpage-tile-swap'); if (tileSwap) tileSwap.textContent = fmt(snap.ram_swap_used_bytes);
 
       const inpageCpuUsr = document.getElementById('inpage-live-cpu-usr'); if (inpageCpuUsr) inpageCpuUsr.textContent = snap.cpu_usage_percent.toFixed(1) + '%';
       const inpageCpuIo = document.getElementById('inpage-live-cpu-io'); if (inpageCpuIo) inpageCpuIo.textContent = snap.cpu_iowait_percent.toFixed(1) + '%';
@@ -497,7 +437,7 @@
       renderInpageLiveState(agentId);
 
       const odoNet = document.getElementById('inpage-odo-net');
-      if (odoNet) odoNet.innerHTML = '<span>↓ ' + window.CertainStatsChart.formatBytes(agent.total_rx_bytes || 0) + '</span> / <span>↑ ' + window.CertainStatsChart.formatBytes(agent.total_tx_bytes || 0) + '</span>';
+      if (odoNet) odoNet.innerHTML = '<span>↓ ' + window.CertainStatsChart.formatBytes(agent.total_rx_bytes || 0) + '</span><span>↑ ' + window.CertainStatsChart.formatBytes(agent.total_tx_bytes || 0) + '</span>';
 
       let totalDiskRead = agent.total_disk_read_bytes || 0;
       let totalDiskWrite = agent.total_disk_write_bytes || 0;
@@ -508,7 +448,7 @@
         });
       }
       const odoDisk = document.getElementById('inpage-odo-disk');
-      if (odoDisk) odoDisk.innerHTML = '<span>R: ' + window.CertainStatsChart.formatBytes(totalDiskRead) + '</span> / <span>W: ' + window.CertainStatsChart.formatBytes(totalDiskWrite) + '</span>';
+      if (odoDisk) odoDisk.innerHTML = '<span>R ' + window.CertainStatsChart.formatBytes(totalDiskRead) + '</span><span>W ' + window.CertainStatsChart.formatBytes(totalDiskWrite) + '</span>';
 
       // Populate action form IDs and notes preview
       const elDeleteId = document.getElementById('inpage-delete-id'); if (elDeleteId) elDeleteId.value = agent.agent_id;
@@ -533,9 +473,9 @@
       const elStl = document.getElementById('inpage-live-cpu-stl'); if (elStl) elStl.textContent = lastStl.toFixed(1) + '%';
 
       const seriesList = [
-        { label: 'Usr', color: '#6366f1', fill: true, data: ptsUsr.map(p => ({ timestamp: p[0], value: p[1] })) },
-        { label: 'IO', color: '#94a3b8', fill: false, data: ptsIO.map(p => ({ timestamp: p[0], value: p[1] })) },
-        { label: 'Stl', color: '#ef4444', fill: false, data: ptsStl.map(p => ({ timestamp: p[0], value: p[1] })) }
+        { label: 'Usr', color: 'var(--s1)', fill: true, data: ptsUsr.map(p => ({ timestamp: p[0], value: p[1] })) },
+        { label: 'IO', color: 'var(--s2)', fill: false, data: ptsIO.map(p => ({ timestamp: p[0], value: p[1] })) },
+        { label: 'Stl', color: 'var(--s3)', fill: false, data: ptsStl.map(p => ({ timestamp: p[0], value: p[1] })) }
       ];
 
       if (!inpageCpuChart) {
@@ -569,8 +509,8 @@
       const elSwap = document.getElementById('inpage-live-ram-swap'); if (elSwap) elSwap.textContent = window.CertainStatsChart.formatBytes(lastSwap);
 
       const seriesList = [
-        { label: 'RAM', color: '#14b8a6', fill: true, data: ptsRam.map(p => ({ timestamp: p[0], value: p[1] })) },
-        { label: 'Swap', color: '#94a3b8', fill: false, data: ptsSwap.map(p => ({ timestamp: p[0], value: p[1] })) }
+        { label: 'RAM', color: 'var(--s4)', fill: true, data: ptsRam.map(p => ({ timestamp: p[0], value: p[1] })) },
+        { label: 'Swap', color: 'var(--s5)', fill: false, data: ptsSwap.map(p => ({ timestamp: p[0], value: p[1] })) }
       ];
 
       if (!inpageRamChart) {
@@ -604,8 +544,8 @@
       const elTx = document.getElementById('inpage-live-net-tx'); if (elTx) elTx.textContent = '↑ ' + window.CertainStatsChart.formatBps(lastTx);
 
       const seriesList = [
-        { label: 'RX', color: '#1e40af', fill: false, data: rateRx.map(p => ({ timestamp: p[0], value: p[1] })) },
-        { label: 'TX', color: '#7e22ce', fill: false, data: rateTx.map(p => ({ timestamp: p[0], value: p[1] })) }
+        { label: 'RX', color: 'var(--rx)', fill: false, data: rateRx.map(p => ({ timestamp: p[0], value: p[1] })) },
+        { label: 'TX', color: 'var(--tx)', fill: false, data: rateTx.map(p => ({ timestamp: p[0], value: p[1] })) }
       ];
 
       if (!inpageNetChart) {
@@ -656,28 +596,24 @@
         paths.forEach(p => {
           const safe = safeId(p);
           html += `
-            <div class="card" id="inpage-disk-card-usage-${safe}">
+            <div class="chart-card" id="inpage-disk-card-usage-${safe}">
               <div class="chart-header-row">
-                <h3 class="chart-header-title">Disk Usage (${p})</h3>
+                <h3 class="chart-header-title">Disk usage <span class="muted mono">${p}</span></h3>
                 <div class="chart-legend-pills">
-                  <span class="chart-legend-item"><span class="chart-legend-dot" style="background-color: #8b5cf6;"></span>Used: <span class="chart-legend-val" id="inpage-live-disk-used-${safe}">0 B</span></span>
+                  <span class="chart-legend-item"><span class="chart-legend-dot sw-s1"></span>Used <span class="chart-legend-val" id="inpage-live-disk-used-${safe}">0 B</span></span>
                 </div>
               </div>
-              <div class="chart-container" style="height: 220px;">
-                <canvas id="inpage-chart-disk-${safe}" class="chart-canvas"></canvas>
-              </div>
+              <div class="chart-container"><canvas id="inpage-chart-disk-${safe}" class="chart-canvas"></canvas></div>
             </div>
-            <div class="card" id="inpage-disk-card-io-${safe}">
+            <div class="chart-card" id="inpage-disk-card-io-${safe}">
               <div class="chart-header-row">
-                <h3 class="chart-header-title">Disk I/O Rate (${p})</h3>
+                <h3 class="chart-header-title">Disk I/O <span class="muted mono">${p}</span></h3>
                 <div class="chart-legend-pills">
-                  <span class="chart-legend-item"><span class="chart-legend-dot" style="background-color: #fb923c;"></span>Read: <span class="chart-legend-val" id="inpage-live-disk-read-${safe}">0 B/s</span></span>
-                  <span class="chart-legend-item"><span class="chart-legend-dot" style="background-color: #ef4444;"></span>Write: <span class="chart-legend-val" id="inpage-live-disk-write-${safe}">0 B/s</span></span>
+                  <span class="chart-legend-item"><span class="chart-legend-dot sw-s2"></span>Read <span class="chart-legend-val" id="inpage-live-disk-read-${safe}">0 B/s</span></span>
+                  <span class="chart-legend-item"><span class="chart-legend-dot sw-s3"></span>Write <span class="chart-legend-val" id="inpage-live-disk-write-${safe}">0 B/s</span></span>
                 </div>
               </div>
-              <div class="chart-container" style="height: 220px;">
-                <canvas id="inpage-chart-disk-io-${safe}" class="chart-canvas"></canvas>
-              </div>
+              <div class="chart-container"><canvas id="inpage-chart-disk-io-${safe}" class="chart-canvas"></canvas></div>
             </div>`;
         });
         container.innerHTML = html;
@@ -703,14 +639,14 @@
 
         const usageSeries = [{
           label: 'Used',
-          color: '#8b5cf6',
+          color: 'var(--s1)',
           fill: true,
           data: ptsUsed.map(pt => ({ timestamp: pt[0], value: pt[1] }))
         }];
 
         const ioSeries = [
-          { label: 'Read', color: '#fb923c', fill: false, data: rateRead.map(pt => ({ timestamp: pt[0], value: pt[1] })) },
-          { label: 'Write', color: '#ef4444', fill: false, data: rateWrite.map(pt => ({ timestamp: pt[0], value: pt[1] })) }
+          { label: 'Read', color: 'var(--s2)', fill: false, data: rateRead.map(pt => ({ timestamp: pt[0], value: pt[1] })) },
+          { label: 'Write', color: 'var(--s3)', fill: false, data: rateWrite.map(pt => ({ timestamp: pt[0], value: pt[1] })) }
         ];
 
         let diskTotal = 0;
@@ -800,8 +736,10 @@
       const ramPct = (agent.ram_size && agent.ram_size > 0) ? (snap.ram_used_bytes / agent.ram_size) * 100 : 0;
       const swapPct = (agent.swap_size && agent.swap_size > 0) ? (snap.ram_swap_used_bytes / agent.swap_size) * 100 : 0;
 
-      if (valRam) valRam.textContent = window.CertainStatsChart.formatBytes(snap.ram_used_bytes) + (agent.ram_size ? ' / ' + window.CertainStatsChart.formatBytes(agent.ram_size) : '');
-      if (tdRam) tdRam.textContent = window.CertainStatsChart.formatBytes(snap.ram_used_bytes);
+      const pctRam = document.getElementById('pct-ram-' + id);
+      if (pctRam) pctRam.textContent = agent.ram_size ? Math.round(ramPct) + '%' : window.CertainStatsChart.formatBytes(snap.ram_used_bytes);
+      if (valRam) valRam.textContent = agent.ram_size ? 'of ' + window.CertainStatsChart.formatBytes(agent.ram_size) : 'used';
+      if (tdRam) tdRam.textContent = agent.ram_size ? Math.round(ramPct) + '%' : window.CertainStatsChart.formatBytes(snap.ram_used_bytes);
       if (segRam) segRam.style.width = Math.min(ramPct, 100) + '%';
       if (segSwap) segSwap.style.width = Math.min(swapPct, 100) + '%';
       if (tdSegRam) tdSegRam.style.width = Math.min(ramPct, 100) + '%';
@@ -822,44 +760,29 @@
       const diskPct = (diskTotal > 0 && diskUsed > 0) ? (diskUsed / diskTotal) * 100 : 0;
 
       if (diskBarsGroup) {
-        if (snap.disks && snap.disks.length > 1) {
-          let barsHtml = '';
-          snap.disks.forEach(d => {
-            const path = d.path || '/';
-            const label = path === '/' ? 'DISK' : `DISK (${path})`;
-            const used = d.used_bytes || 0;
-            const total = d.total_bytes || 0;
-            const pct = total > 0 ? (used / total) * 100 : 0;
-            barsHtml += `
-              <div class="usage-bar-group">
-                <div class="usage-bar-label">
-                  <span class="title">${label}</span>
-                  <span class="value">${window.CertainStatsChart.formatBytes(used)}${total ? ' / ' + window.CertainStatsChart.formatBytes(total) : ''}</span>
-                </div>
-                <div class="usage-bar-track">
-                  <div class="usage-segment seg-disk" style="width: ${Math.min(pct, 100)}%;"></div>
-                </div>
-              </div>`;
-          });
-          diskBarsGroup.innerHTML = barsHtml;
-        } else {
-          const segDisk = document.getElementById('seg-disk-' + id);
-          const valDisk = document.getElementById('val-disk-' + id);
-          if (valDisk && diskUsed > 0) {
-            valDisk.textContent = window.CertainStatsChart.formatBytes(diskUsed) + (diskTotal ? ' / ' + window.CertainStatsChart.formatBytes(diskTotal) : '');
-          }
-          if (segDisk && diskPct > 0) {
+        const segDisk = document.getElementById('seg-disk-' + id);
+        const valDisk = document.getElementById('val-disk-' + id);
+        const pctDisk = document.getElementById('pct-disk-' + id);
+        if (diskUsed > 0) {
+          if (valDisk) valDisk.textContent = diskTotal ? 'of ' + window.CertainStatsChart.formatBytes(diskTotal) : 'used';
+          if (pctDisk) pctDisk.textContent = diskTotal ? Math.round(diskPct) + '%' : window.CertainStatsChart.formatBytes(diskUsed);
+          if (segDisk) {
             segDisk.style.width = Math.min(diskPct, 100) + '%';
+            segDisk.classList.toggle('is-high', diskPct >= 90);
           }
         }
       }
 
       const trackDisk = document.getElementById('track-disk-' + id);
+      if (trackDisk && diskUsed > 0) {
+        trackDisk.setAttribute('data-tooltip-header', 'Disk');
+        trackDisk.setAttribute('data-tooltip-rows', JSON.stringify([{ label: 'Used', val: window.CertainStatsChart.formatBytes(diskUsed) + (diskTotal ? ' / ' + window.CertainStatsChart.formatBytes(diskTotal) : ''), color: 'var(--s1)' }]));
+      }
       if (trackDisk && snap.disks && snap.disks.length > 1) {
         const rows = snap.disks.map(d => ({
           label: d.path ? `Disk (${d.path})` : 'Disk',
           val: window.CertainStatsChart.formatBytes(d.used_bytes) + (d.total_bytes ? ' / ' + window.CertainStatsChart.formatBytes(d.total_bytes) : ''),
-          color: '#8b5cf6'
+          color: 'var(--s1)'
         }));
         trackDisk.setAttribute('data-tooltip-rows', JSON.stringify(rows));
         trackDisk.setAttribute('data-tooltip-header', 'Storage Partitions');
@@ -871,9 +794,10 @@
       const tdSegNetRx = document.getElementById('td-seg-net-rx-' + id);
       const tdSegNetTx = document.getElementById('td-seg-net-tx-' + id);
       const valNet = document.getElementById('val-net-' + id);
-      if (valNet) {
-        valNet.textContent = '↓ ' + window.CertainStatsChart.formatBps(snap.rx_bps) + ' / ↑ ' + window.CertainStatsChart.formatBps(snap.tx_bps);
-      }
+      const netText = '↓ ' + window.CertainStatsChart.formatBps(snap.rx_bps) + ' · ↑ ' + window.CertainStatsChart.formatBps(snap.tx_bps);
+      if (valNet) valNet.textContent = netText;
+      const tdNet = document.getElementById('td-net-' + id);
+      if (tdNet) tdNet.textContent = netText;
       const tot = snap.rx_bps + snap.tx_bps;
       if (tot > 0) {
         if (segRx) segRx.style.width = ((snap.rx_bps / tot) * 100) + '%';
@@ -891,30 +815,30 @@
       const trackCpu = document.getElementById('track-cpu-' + id);
       if (trackCpu) {
         trackCpu.setAttribute('data-tooltip-rows', JSON.stringify([
-          { label: 'Used', val: snap.cpu_usage_percent.toFixed(1) + '%', color: '#3b82f6' },
-          { label: 'IO Wait', val: snap.cpu_iowait_percent.toFixed(1) + '%', color: '#fb923c' },
-          { label: 'Steal', val: snap.cpu_steal_percent.toFixed(1) + '%', color: '#ef4444' }
+          { label: 'Used', val: snap.cpu_usage_percent.toFixed(1) + '%', color: 'var(--s1)' },
+          { label: 'IO wait', val: snap.cpu_iowait_percent.toFixed(1) + '%', color: 'var(--s2)' },
+          { label: 'Steal', val: snap.cpu_steal_percent.toFixed(1) + '%', color: 'var(--s3)' }
         ]));
       }
       const trackRam = document.getElementById('track-ram-' + id);
       if (trackRam) {
         trackRam.setAttribute('data-tooltip-rows', JSON.stringify([
-          { label: 'RAM Used', val: window.CertainStatsChart.formatBytes(snap.ram_used_bytes), color: '#14b8a6' },
-          { label: 'Swap Used', val: window.CertainStatsChart.formatBytes(snap.ram_swap_used_bytes), color: '#4b5563' }
+          { label: 'RAM used', val: window.CertainStatsChart.formatBytes(snap.ram_used_bytes), color: 'var(--s4)' },
+          { label: 'Swap used', val: window.CertainStatsChart.formatBytes(snap.ram_swap_used_bytes), color: 'var(--s5)' }
         ]));
       }
       const trackNet = document.getElementById('track-net-' + id);
       if (trackNet) {
         trackNet.setAttribute('data-tooltip-rows', JSON.stringify([
-          { label: 'Download (RX)', val: window.CertainStatsChart.formatBps(snap.rx_bps), color: '#1e40af' },
-          { label: 'Upload (TX)', val: window.CertainStatsChart.formatBps(snap.tx_bps), color: '#7e22ce' }
+          { label: 'Download', val: window.CertainStatsChart.formatBps(snap.rx_bps), color: 'var(--rx)' },
+          { label: 'Upload', val: window.CertainStatsChart.formatBps(snap.tx_bps), color: 'var(--tx)' }
         ]));
       }
       const tdTrackNet = document.getElementById('td-track-net-' + id);
       if (tdTrackNet) {
         tdTrackNet.setAttribute('data-tooltip-rows', JSON.stringify([
-          { label: 'Download (RX)', val: window.CertainStatsChart.formatBps(snap.rx_bps), color: '#1e40af' },
-          { label: 'Upload (TX)', val: window.CertainStatsChart.formatBps(snap.tx_bps), color: '#7e22ce' }
+          { label: 'Download', val: window.CertainStatsChart.formatBps(snap.rx_bps), color: 'var(--rx)' },
+          { label: 'Upload', val: window.CertainStatsChart.formatBps(snap.tx_bps), color: 'var(--tx)' }
         ]));
       }
 
@@ -923,7 +847,7 @@
         const uptimeEl = document.getElementById('uptime-' + id);
         const tdUptimeEl = document.getElementById('td-uptime-' + id);
         const formatted = window.CertainStatsTelemetry.formatUptime(snap.uptime);
-        if (uptimeEl) uptimeEl.innerHTML = 'Uptime: <strong class="mono" style="color: var(--text-secondary);">' + formatted + '</strong>';
+        if (uptimeEl) uptimeEl.textContent = 'Up ' + formatted;
         if (tdUptimeEl) tdUptimeEl.textContent = formatted;
       }
 
@@ -1051,6 +975,8 @@
               cardBadge.className = 'badge ' + (isOnline ? 'badge-online' : 'badge-offline');
               cardBadge.textContent = isOnline ? 'Online' : 'Offline';
             }
+            const card = document.querySelector('.agent-card-item[data-agent-id="' + CSS.escape(fa.agent_id) + '"]');
+            if (card) card.classList.toggle('is-offline', !isOnline);
             if (currentActiveAgentId === fa.agent_id) {
               const activeDot = document.getElementById('detail-active-dot');
               if (activeDot) activeDot.className = 'status-dot ' + (isOnline ? 'online' : 'offline');
@@ -1078,16 +1004,54 @@
             if (elArch) elArch.textContent = existing.cpu_model || 'Generic CPU';
 
             const odoNet = document.getElementById('inpage-odo-net');
-            if (odoNet) odoNet.innerHTML = '<span>↓ ' + window.CertainStatsChart.formatBytes(existing.total_rx_bytes || 0) + '</span> / <span>↑ ' + window.CertainStatsChart.formatBytes(existing.total_tx_bytes || 0) + '</span>';
+            if (odoNet) odoNet.innerHTML = '<span>↓ ' + window.CertainStatsChart.formatBytes(existing.total_rx_bytes || 0) + '</span><span>↑ ' + window.CertainStatsChart.formatBytes(existing.total_tx_bytes || 0) + '</span>';
             const odoDisk = document.getElementById('inpage-odo-disk');
-            if (odoDisk) odoDisk.innerHTML = '<span>R: ' + window.CertainStatsChart.formatBytes(existing.total_disk_read_bytes || 0) + '</span> / <span>W: ' + window.CertainStatsChart.formatBytes(existing.total_disk_write_bytes || 0) + '</span>';
+            if (odoDisk) odoDisk.innerHTML = '<span>R ' + window.CertainStatsChart.formatBytes(existing.total_disk_read_bytes || 0) + '</span><span>W ' + window.CertainStatsChart.formatBytes(existing.total_disk_write_bytes || 0) + '</span>';
           }
         });
 
         // Recalculate and re-render cluster overview totals
         window.CertainStatsTelemetry.renderClusterStats('admin-', agentsData, liveMetricsStore);
+        renderHubHeadline();
       })
       .catch(() => {});
+  }
+
+  // Mirrors the server-rendered "hub_headline" template.
+  function renderHubHeadline() {
+    const el = document.getElementById('hub-headline');
+    if (!el || agentsData.length === 0) return;
+    const total = agentsData.length;
+    const online = agentsData.filter(a => a.is_online === true).length;
+    const offline = total - online;
+    const bad = text => '<span class="is-bad">' + text + '</span>';
+    let html;
+    if (offline === 0) html = total === 1 ? 'Your node is healthy.' : 'All ' + total + ' nodes are healthy.';
+    else if (online === 0) html = bad(total === 1 ? 'Your node is offline.' : 'All ' + total + ' nodes are offline.');
+    else html = bad(offline + (offline === 1 ? ' node is' : ' nodes are') + ' offline.') + ' The other ' + online + (online === 1 ? ' is' : ' are') + ' healthy.';
+    el.innerHTML = html;
+  }
+
+  // 24h CPU sparkline per card, fetched once at low resolution.
+  function loadSparklines() {
+    const canvases = document.querySelectorAll('canvas.agent-spark');
+    canvases.forEach((canvas, i) => {
+      const agentId = canvas.getAttribute('data-agent-id');
+      setTimeout(() => {
+        fetch(panelPath + '/api/metrics?agent_id=' + encodeURIComponent(agentId) + '&metric=agent_cpu_usage&hours=24')
+          .then(r => r.ok ? r.json() : null)
+          .then(res => {
+            const points = res && res.series && res.series[0] ? res.series[0].data : [];
+            canvas._sparkPoints = points;
+            window.CertainStatsChart.drawSparkline(canvas, points, { color: '--s1', max: 100 });
+          })
+          .catch(() => {});
+      }, i * 60);
+    });
+    const redraw = () => canvases.forEach(c => { if (c._sparkPoints) window.CertainStatsChart.drawSparkline(c, c._sparkPoints, { color: '--s1', max: 100 }); });
+    window.addEventListener('certainstats_theme_change', redraw);
+    let t;
+    window.addEventListener('resize', () => { clearTimeout(t); t = setTimeout(redraw, 150); });
   }
 
   function init(options) {
@@ -1104,13 +1068,11 @@
     // 2. Setup DOM-dependent UI on DOM Ready
     window.CertainStatsTelemetry.onReady(function() {
       let viewMode = 'grid';
-      let density = 'detailed';
       try {
         viewMode = localStorage.getItem('certainstats_view_mode') || 'grid';
-        density = localStorage.getItem('certainstats_density') || 'detailed';
       } catch (e) {}
       setAgentViewMode(viewMode);
-      setAgentDensity(density);
+      loadSparklines();
 
       // In-Place SPA Router (BASE_PATH/{AGENT_ID})
       window.CertainStatsTelemetry.initRouter({
@@ -1122,8 +1084,8 @@
           resetInpageEditStates();
 
           if (!agentId) {
-            if (detailView) detailView.style.display = 'none';
-            if (overviewView) overviewView.style.display = 'block';
+            if (detailView) detailView.hidden = true;
+            if (overviewView) overviewView.hidden = false;
             currentActiveAgentId = null;
             window.scrollTo({ top: savedScrollY, behavior: 'instant' });
             return;
@@ -1131,9 +1093,9 @@
 
           savedScrollY = window.scrollY;
           currentActiveAgentId = agentId;
-          if (overviewView) overviewView.style.display = 'none';
+          if (overviewView) overviewView.hidden = true;
           if (detailView) {
-            detailView.style.display = 'block';
+            detailView.hidden = false;
             window.scrollTo({ top: 0, behavior: 'instant' });
 
             renderInpageLiveState(agentId);
@@ -1183,7 +1145,6 @@
     closeAgentDetail: closeAgentDetail,
     resetInpageEditStates: resetInpageEditStates,
     setAgentViewMode: setAgentViewMode,
-    setAgentDensity: setAgentDensity,
     filterAgentsList: filterAgentsList,
     showInpageReinstallModal: showInpageReinstallModal,
     showInpageUninstallModal: showInpageUninstallModal,
@@ -1206,7 +1167,6 @@
   window.closeAgentDetail = closeAgentDetail;
   window.resetInpageEditStates = resetInpageEditStates;
   window.setAgentViewMode = setAgentViewMode;
-  window.setAgentDensity = setAgentDensity;
   window.filterAgentsList = filterAgentsList;
   window.showInpageReinstallModal = showInpageReinstallModal;
   window.showInpageUninstallModal = showInpageUninstallModal;

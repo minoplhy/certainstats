@@ -1,32 +1,41 @@
 {{define "content"}}
-<div style="max-width: 440px; margin: 40px auto;">
-  <div class="card">
-    <div style="text-align: center; margin-bottom: 24px;">
-      <span class="logo-icon" style="width: 40px; height: 40px; font-size: 20px; margin: 0 auto 12px;">C</span>
-      <h1 class="page-title" style="justify-content: center;">Initial Setup</h1>
-      <p style="color: var(--text-muted); font-size: 13px;">Create your administrator account to get started.</p>
+<div class="auth-shell">
+  <div class="auth-card">
+    <div class="auth-head">
+      {{template "logo_mark"}}
+      <h1 class="auth-title">Set up CertainStats</h1>
+      <p class="muted">Create the administrator account. You can add servers right after.</p>
     </div>
 
-    <form action="{{.PanelPath}}/first-time-setup" method="POST">
+    <form class="card auth-form" action="{{.PanelPath}}/first-time-setup" method="POST" id="setup-form">
       <input type="hidden" name="token" value="{{.Token}}">
 
       <div class="form-group">
-        <label class="form-label" for="username">Admin Username</label>
-        <input type="text" id="username" name="username" class="form-input" required placeholder="admin" autofocus>
+        <label class="form-label" for="username">Username</label>
+        <input type="text" id="username" name="username" class="form-input" required autofocus autocomplete="username">
       </div>
 
       <div class="form-group">
         <label class="form-label" for="password">Password</label>
-        <input type="password" id="password" name="password" class="form-input" required placeholder="••••••••">
+        <input type="password" id="password" name="password" class="form-input" required autocomplete="new-password">
       </div>
 
       <div class="form-group">
-        <label class="form-label" for="confirm_password">Confirm Password</label>
-        <input type="password" id="confirm_password" name="confirm_password" class="form-input" required placeholder="••••••••">
+        <label class="form-label" for="confirm_password">Confirm password</label>
+        <input type="password" id="confirm_password" name="confirm_password" class="form-input" required autocomplete="new-password">
       </div>
 
-      <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 10px;">Complete Setup</button>
+      <button type="submit" class="btn btn-primary btn-block">Create account</button>
     </form>
   </div>
 </div>
+<script>
+  (function () {
+    var pw = document.getElementById('password');
+    var confirmPw = document.getElementById('confirm_password');
+    function check() { confirmPw.setCustomValidity(confirmPw.value && confirmPw.value !== pw.value ? 'Passwords do not match.' : ''); }
+    pw.addEventListener('input', check);
+    confirmPw.addEventListener('input', check);
+  })();
+</script>
 {{end}}

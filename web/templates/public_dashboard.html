@@ -1,14 +1,20 @@
 {{define "content"}}
-<!-- Public Overview View -->
 <div id="public-overview-view">
-  <div class="page-header" style="margin-bottom: 24px;">
-    <div style="display: flex; flex-direction: column; gap: 4px;">
-      <h1 class="page-title">{{.Dashboard.Title}}</h1>
-      <p style="color: var(--text-muted); font-size: 13px; margin: 0;">Real-time system health and status monitoring.</p>
+  <section class="status-head">
+    <h1 class="status-title">{{.Dashboard.Title}}</h1>
+    {{if hasFeature .AccessRules "is_online"}}
+    {{$total := len .Agents}}
+    <div id="public-status-banner" class="banner {{if eq .OfflineCount 0}}is-ok{{else if eq .OnlineCount 0}}is-bad{{else}}is-warn{{end}}" role="status">
+      <span class="banner-title">
+        <span class="status-dot {{if eq .OfflineCount 0}}online{{else}}offline{{end}}" id="public-status-banner-dot"></span>
+        <span id="public-status-banner-text">{{if eq $total 0}}No servers on this page yet{{else if eq .OfflineCount 0}}All systems operational{{else if eq .OnlineCount 0}}Major outage: all {{$total}} servers offline{{else}}Partial outage: {{.OfflineCount}} of {{$total}} {{if eq $total 1}}server{{else}}servers{{end}} offline{{end}}</span>
+      </span>
+      <span class="banner-meta">Live · updates every few seconds</span>
     </div>
-  </div>
+    {{end}}
+    {{template "public_cluster_cards" .}}
+  </section>
 
-  {{template "public_cluster_cards" .}}
   {{template "public_toolbar" .}}
   {{template "public_grid_view" .}}
   {{template "public_list_view" .}}

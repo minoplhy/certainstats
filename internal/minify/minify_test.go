@@ -5,6 +5,22 @@ import (
 	"testing"
 )
 
+func TestMinifyCSSKeepsSignificantSpaces(t *testing.T) {
+	cases := map[string]string{
+		"@media screen and (max-width: 600px) { a { color: red; } }":  "@media screen and (max-width:600px){a{color:red}}",
+		":root:not([data-theme=\"light\"]) .card { color: red; }":     ":root:not([data-theme=\"light\"]) .card{color:red}",
+		"a { width: calc(var(--w) + 2px); }":                          "a{width:calc(var(--w) + 2px)}",
+		"a { background: color-mix(in srgb, var(--a) 55%, white); }":  "a{background:color-mix(in srgb,var(--a) 55%,white)}",
+		"a { grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); }": "a{grid-template-columns:minmax(0,1fr) minmax(0,2fr)}",
+		".nav :hover { color: red; }":                                 ".nav :hover{color:red}",
+	}
+	for in, want := range cases {
+		if got := string(CSS([]byte(in))); got != want {
+			t.Errorf("CSS(%q)\n got  %q\n want %q", in, got, want)
+		}
+	}
+}
+
 func TestMinifyCSS(t *testing.T) {
 	input := `
 		/* Header Navigation Style */
@@ -219,4 +235,3 @@ func TestRegisterMinifierAndMinifierFunc(t *testing.T) {
 		t.Errorf("expected whitespace stripped, got %q", string(pkgOut))
 	}
 }
-

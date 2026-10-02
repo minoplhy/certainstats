@@ -1,84 +1,20 @@
 {{define "agents_cluster_cards"}}
-<!-- 4 Dual-Metric Cluster Cards (Total Telemetry Panel) -->
-<div class="total-telemetry-panel">
-  <!-- Card 1: TOTAL BANDWIDTH -->
-  <div class="telemetry-card">
-    <div class="telemetry-card-header">
-      <span class="telemetry-card-title">TOTAL BANDWIDTH</span>
-      <span class="telemetry-card-icon" style="color: var(--accent-primary);">⇅</span>
-    </div>
-    <div class="telemetry-card-body">
-      <div class="telemetry-col">
-        <div class="telemetry-col-label">Download</div>
-        <div class="telemetry-num-val" id="admin-live-rx-val">↓ 0 B/s</div>
-      </div>
-      <div class="telemetry-divider"></div>
-      <div class="telemetry-col">
-        <div class="telemetry-col-label">Upload</div>
-        <div class="telemetry-num-val" id="admin-live-tx-val">↑ 0 B/s</div>
-      </div>
-    </div>
-    <div class="telemetry-bottom-line" style="background: linear-gradient(90deg, var(--accent-primary), transparent);"></div>
+<div class="hero-stats">
+  <div class="hero-stat">
+    <span class="hero-stat-label">Bandwidth now</span>
+    <span class="hero-stat-value"><span id="admin-live-rx-val">↓ 0 B/s</span><span id="admin-live-tx-val">↑ 0 B/s</span></span>
   </div>
-
-  <!-- Card 2: TOTAL DISK I/O -->
-  <div class="telemetry-card">
-    <div class="telemetry-card-header">
-      <span class="telemetry-card-title">TOTAL DISK I/O</span>
-      <span class="telemetry-card-icon" style="color: #fb923c;">⛁</span>
-    </div>
-    <div class="telemetry-card-body">
-      <div class="telemetry-col">
-        <div class="telemetry-col-label">Read</div>
-        <div class="telemetry-num-val" id="admin-live-disk-read-val">0 B/s</div>
-      </div>
-      <div class="telemetry-divider"></div>
-      <div class="telemetry-col">
-        <div class="telemetry-col-label">Write</div>
-        <div class="telemetry-num-val" id="admin-live-disk-write-val">0 B/s</div>
-      </div>
-    </div>
-    <div class="telemetry-bottom-line" style="background: linear-gradient(90deg, #fb923c, transparent);"></div>
+  <div class="hero-stat">
+    <span class="hero-stat-label">Disk I/O now</span>
+    <span class="hero-stat-value"><span>R <span id="admin-live-disk-read-val">0 B/s</span></span><span>W <span id="admin-live-disk-write-val">0 B/s</span></span></span>
   </div>
-
-  <!-- Card 3: TOTAL TRAFFIC -->
-  <div class="telemetry-card">
-    <div class="telemetry-card-header">
-      <span class="telemetry-card-title">TOTAL TRAFFIC</span>
-      <span class="telemetry-card-icon" style="color: #14b8a6;">☁</span>
-    </div>
-    <div class="telemetry-card-body">
-      <div class="telemetry-col">
-        <div class="telemetry-col-label">Received</div>
-        <div class="telemetry-num-val" id="admin-total-rx-val">↓ 0 B</div>
-      </div>
-      <div class="telemetry-divider"></div>
-      <div class="telemetry-col">
-        <div class="telemetry-col-label">Sent</div>
-        <div class="telemetry-num-val" id="admin-total-tx-val">↑ 0 B</div>
-      </div>
-    </div>
-    <div class="telemetry-bottom-line" style="background: linear-gradient(90deg, #14b8a6, transparent);"></div>
+  <div class="hero-stat">
+    <span class="hero-stat-label">Traffic, all time</span>
+    <span class="hero-stat-value"><span id="admin-total-rx-val">↓ 0 B</span><span id="admin-total-tx-val">↑ 0 B</span></span>
   </div>
-
-  <!-- Card 4: TOTAL DISK READ/WRITE -->
-  <div class="telemetry-card">
-    <div class="telemetry-card-header">
-      <span class="telemetry-card-title">TOTAL DISK READ/WRITE</span>
-      <span class="telemetry-card-icon" style="color: #ef4444;">⛁</span>
-    </div>
-    <div class="telemetry-card-body">
-      <div class="telemetry-col">
-        <div class="telemetry-col-label">Read Vol</div>
-        <div class="telemetry-num-val" id="admin-total-disk-read-val">0 B</div>
-      </div>
-      <div class="telemetry-divider"></div>
-      <div class="telemetry-col">
-        <div class="telemetry-col-label">Write Vol</div>
-        <div class="telemetry-num-val" id="admin-total-disk-write-val">0 B</div>
-      </div>
-    </div>
-    <div class="telemetry-bottom-line" style="background: linear-gradient(90deg, #ef4444, transparent);"></div>
+  <div class="hero-stat">
+    <span class="hero-stat-label">Disk, all time</span>
+    <span class="hero-stat-value"><span>R <span id="admin-total-disk-read-val">0 B</span></span><span>W <span id="admin-total-disk-write-val">0 B</span></span></span>
   </div>
 </div>
 {{end}}

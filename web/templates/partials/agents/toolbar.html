@@ -1,18 +1,22 @@
 {{define "agents_toolbar"}}
-<!-- Toolbar (Search, Grid/List, Density) -->
 <div class="toolbar-bar">
-  <div class="toolbar-search">
-    <input type="text" id="agent-search-input" placeholder="Search by nickname, agent or OS..." oninput="filterAgentsList()">
+  <label class="toolbar-search">
+    <span class="sr-only">Search agents</span>
+    <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+    <input type="search" id="agent-search-input" placeholder="Search by name, CPU or ID" oninput="filterAgentsList()">
+  </label>
+
+  <div class="toolbar-group" role="group" aria-label="View">
+    <button type="button" class="toolbar-btn active" id="btn-view-grid" onclick="setAgentViewMode('grid')">Cards</button>
+    <button type="button" class="toolbar-btn" id="btn-view-list" onclick="setAgentViewMode('list')">Table</button>
   </div>
 
-  <div class="toolbar-group">
-    <button type="button" class="toolbar-btn active" id="btn-view-grid" onclick="setAgentViewMode('grid')">Grid</button>
-    <button type="button" class="toolbar-btn" id="btn-view-list" onclick="setAgentViewMode('list')">List</button>
-  </div>
+  <span class="toolbar-spacer"></span>
 
-  <div class="toolbar-group" id="density-toggle-group">
-    <button type="button" class="toolbar-btn active" id="btn-density-detailed" onclick="setAgentDensity('detailed')">Detailed</button>
-    <button type="button" class="toolbar-btn" id="btn-density-simplified" onclick="setAgentDensity('simplified')">Simplified</button>
-  </div>
+  <a href="{{.PanelPath}}/agents/management" class="btn btn-secondary">Manage agents</a>
+  <button type="button" class="btn btn-primary" data-open-modal="add-agent-modal">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+    Add agent
+  </button>
 </div>
 {{end}}

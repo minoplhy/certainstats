@@ -1,16 +1,18 @@
 {{define "alerts_template_guide_modal"}}
 <!-- Template Variables Guide Modal -->
-<div id="template-guide-modal" class="modal-overlay" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); z-index: 2000; backdrop-filter: blur(4px);">
-  <div style="max-width: 680px; margin: 40px auto; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: var(--radius); padding: 24px; box-shadow: var(--shadow-lg); max-height: 85vh; overflow-y: auto;">
-    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-      <h3 style="margin: 0; font-family: var(--font-display);">Webhook Payload Templating Reference</h3>
-      <button type="button" class="btn btn-secondary btn-sm" onclick="document.getElementById('template-guide-modal').style.display='none'">✕</button>
+<dialog id="template-guide-modal" class="modal modal-lg" aria-labelledby="template-guide-modal-title">
+    <div class="modal-header">
+      <div>
+        <h2 class="modal-title" id="template-guide-modal-title">Message template variables</h2>
+        <p class="modal-subtitle">Use these in a custom webhook payload. They are filled in when the alert fires.</p>
+      </div>
+      {{template "modal_close"}}
     </div>
+    <div class="modal-body">
+    <p class="modal-lead">Payloads are Go templates. These variables are available:</p>
 
-    <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 16px;">Custom webhook payloads support Go template interpolation with the following available context variables:</p>
-
-    <div class="table-responsive" style="margin-bottom: 16px;">
-      <table class="table" style="font-size: 12px;">
+    <div class="table-responsive">
+      <table class="table table-compact">
         <thead>
           <tr>
             <th>Variable</th>
@@ -29,9 +31,9 @@
       </table>
     </div>
 
-    <div style="display: flex; justify-content: flex-end;">
-      <button type="button" class="btn btn-secondary" onclick="document.getElementById('template-guide-modal').style.display='none'">Close</button>
     </div>
-  </div>
-</div>
+    <div class="modal-footer">
+      <button type="button" class="btn btn-secondary" data-close-modal="template-guide-modal">Close</button>
+    </div>
+</dialog>
 {{end}}

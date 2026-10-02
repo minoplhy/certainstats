@@ -16,17 +16,17 @@
       title = idOrTitle;
     }
 
-    if (!confirm('Delete public dashboard "' + title + '"?')) return;
+    if (!confirm('Delete the status page "' + title + '"? Its public link stops working right away.')) return;
     fetch((panelPath || '') + '/dashboard/' + encodeURIComponent(id), {
       method: 'DELETE'
     }).then(res => {
       if (res.ok) {
         window.location.reload();
       } else {
-        alert('Failed to delete dashboard');
+        alert('Could not delete the status page. Try again.');
       }
     }).catch(() => {
-      alert('Failed to delete dashboard');
+      alert('Could not delete the status page. Check your connection and try again.');
     });
   }
 
@@ -61,7 +61,6 @@
 
   // Backwards compatibility globals
   window.deleteDashboard = function(id, title) {
-    const publicPath = (document.body?.getAttribute('data-public-path') || '').replace(/\/+$/, '');
-    deleteDashboard(publicPath, id, title);
+    deleteDashboard(id, title);
   };
 })();

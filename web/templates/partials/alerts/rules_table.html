@@ -1,50 +1,51 @@
 {{define "alerts_rules_table"}}
-<!-- Alert Rules Table -->
-<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
-  <h3 style="font-family: var(--font-display); font-size: 16px; margin: 0; display: flex; align-items: center; gap: 8px;">
-    Configured Alert Rules
-  </h3>
-</div>
+<section class="page-section">
+  <div class="section-header">
+    <div>
+      <h2 class="section-title">Alert rules</h2>
+      <p class="form-hint">Conditions that open an incident and send a notification.</p>
+    </div>
+    <button type="button" class="btn btn-primary btn-sm" data-open-modal="new-alert-modal">New rule</button>
+  </div>
 
 {{if not .Alerts}}
-<div class="card" style="text-align: center; padding: 36px 20px; margin-bottom: 32px; background: var(--bg-secondary);">
-  <p style="color: var(--text-muted); margin: 0 0 12px 0;">No alert rules configured yet. Create automated rules to monitor node health and telemetry thresholds.</p>
-  <button type="button" class="btn btn-primary btn-sm" onclick="document.getElementById('new-alert-modal').style.display='block'">
-    + Create Alert Rule
-  </button>
+<div class="empty-state">
+  <h3 class="empty-state-title">No alert rules yet</h3>
+  <p>Create a rule to hear about offline servers or high resource usage.</p>
+  <button type="button" class="btn btn-primary" data-open-modal="new-alert-modal">New rule</button>
 </div>
 {{else}}
-<div class="table-responsive" style="margin-bottom: 32px;">
+<div class="table-responsive">
   <table class="table">
     <thead>
       <tr>
-        <th>Rule Name</th>
-        <th>Trigger Condition</th>
-        <th>Duration</th>
-        <th>Target / Channel</th>
-        <th>Nodes</th>
+        <th>Rule</th>
+        <th>Condition</th>
+        <th>For</th>
+        <th>Sends to</th>
+        <th>Servers</th>
         <th>Status</th>
-        <th>Actions</th>
+        <th><span class="sr-only">Actions</span></th>
       </tr>
     </thead>
     <tbody>
       {{range $a := .Alerts}}
       <tr>
         <td>
-          <strong style="color: var(--text-primary);">{{$a.Nickname}}</strong>
+          <span class="table-node-name">{{$a.Nickname}}</span>
         </td>
         <td>
-          <div style="display: flex; align-items: center; gap: 6px;">
-            <span class="badge badge-indigo" style="font-size: 11px;">{{$a.Trigger.Type}}</span>
+          <div class="rule-condition">
+            <span class="badge badge-accent">{{$a.Trigger.Type}}</span>
             {{if ne (printf "%s" $a.Trigger.Type) "agent_down"}}
-            <span class="mono" style="font-size: 12px; font-weight: 600;">{{$a.Trigger.Operator}} {{$a.Trigger.Threshold}}</span>
+            <span class="mono">{{$a.Trigger.Operator}} {{$a.Trigger.Threshold}}</span>
             {{end}}
           </div>
         </td>
-        <td class="mono" style="font-size: 12px;">{{if $a.Trigger.Duration}}{{$a.Trigger.Duration}}{{else}}5m{{end}}</td>
+        <td class="mono">{{if $a.Trigger.Duration}}{{$a.Trigger.Duration}}{{else}}5m{{end}}</td>
         <td>
           {{if eq (printf "%s" $a.Action.Type) "preset"}}
-            <span style="font-size: 12px; color: var(--text-secondary); display: flex; align-items: center; gap: 4px;">
+            <span class="rule-target">
               {{$matched := false}}
               {{range $.Targets}}
                 {{if eq .TargetID $a.Action.TargetID}}
@@ -52,17 +53,17 @@
                   {{$matched = true}}
                 {{end}}
               {{end}}
-              {{if not $matched}}<span style="color: var(--text-muted);">Preset: {{$a.Action.TargetID}}</span>{{end}}
+              {{if not $matched}}<span class="muted">Missing target {{$a.Action.TargetID}}</span>{{end}}
             </span>
           {{else if eq (printf "%s" $a.Action.Type) "discord"}}
-            <span style="font-size: 12px; color: var(--accent-primary);">Discord Webhook</span>
+            <span class="rule-target">Discord webhook</span>
           {{else}}
-            <span style="font-size: 12px; color: var(--text-secondary);">Custom Webhook</span>
+            <span class="rule-target">Custom webhook</span>
           {{end}}
         </td>
         <td>
-          <span class="badge" style="background: rgba(255,255,255,0.05); color: var(--text-secondary); font-size: 11px;">
-            {{if not $a.Agents}}All Nodes{{else}}{{len $a.Agents}} Node{{if ne (len $a.Agents) 1}}s{{end}}{{end}}
+          <span class="badge">
+            {{if not $a.Agents}}All servers{{else}}{{len $a.Agents}} server{{if ne (len $a.Agents) 1}}s{{end}}{{end}}
           </span>
         </td>
         <td>
@@ -71,8 +72,8 @@
           </span>
         </td>
         <td>
-          <div style="display: flex; gap: 6px; align-items: center;">
-            <button type="button" class="btn btn-secondary btn-sm test-alert-btn" data-id="{{$a.AlertID}}" style="font-size: 11px; padding: 3px 8px;">
+          <div class="table-actions">
+            <button type="button" class="btn btn-secondary btn-sm test-alert-btn" data-id="{{$a.AlertID}}">
               Test
             </button>
             <button type="button" class="btn btn-secondary btn-sm edit-alert-btn" 
@@ -87,13 +88,12 @@
               data-target-id="{{$a.Action.TargetID}}"
               data-destination="{{$a.Action.Destination}}"
               data-payload="{{$a.Action.Payload}}"
-              data-agents="{{range $i, $ag := $a.Agents}}{{if $i}},{{end}}{{$ag.AgentID}}{{end}}"
-              style="font-size: 11px; padding: 3px 8px;">
+              data-agents="{{range $i, $ag := $a.Agents}}{{if $i}},{{end}}{{$ag.AgentID}}{{end}}">
               Edit
             </button>
-            <form action="{{$.PanelPath}}/alerts/delete" method="POST" onsubmit="return confirm('Are you sure you want to delete alert rule \'{{$a.Nickname}}\'?')" style="margin: 0;">
+            <form action="{{$.PanelPath}}/alerts/delete" method="POST" onsubmit="return confirm('Delete the rule \'{{$a.Nickname}}\'? Its incident history is deleted too.')">
               <input type="hidden" name="id" value="{{$a.AlertID}}">
-              <button type="submit" class="btn btn-danger btn-sm" style="font-size: 11px; padding: 3px 8px;">Delete</button>
+              <button type="submit" class="btn btn-danger btn-sm">Delete</button>
             </form>
           </div>
         </td>
@@ -103,4 +103,5 @@
   </table>
 </div>
 {{end}}
+</section>
 {{end}}
