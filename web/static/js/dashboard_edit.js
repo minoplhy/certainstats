@@ -280,7 +280,7 @@
   }
 
   function confirmDeleteDashboard() {
-    fetch((panelPath || '') + '/dashboard/' + encodeURIComponent(dashboardId), {
+    fetch((panelPath || '') + '/dashboards/' + encodeURIComponent(dashboardId), {
       method: 'DELETE'
     }).then(res => {
       if (res.ok) {

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"net/http"
 	"strings"
 )
@@ -57,4 +58,34 @@ func HostRouter(panelHost, panelPath, publicHost, publicPath string, panelRouter
 
 		fallbackRouter.ServeHTTP(w, r)
 	})
+}
+
+// panelRootSegments are the top-level path segments setupPanel registers.
+// Keep in sync with setupPanel in main.go.
+var panelRootSegments = []string{
+	"static", "api", "submit", "login", "logout", "first-time-setup",
+	"agents", "agent", "dashboards", "alerts", "settings",
+}
+
+// checkPathCollision reports when the public prefix sits inside the panel
+// prefix on the same host and would shadow, or be shadowed by, a panel route.
+func checkPathCollision(cfg *Config) error {
+	if cfg.PanelHost != cfg.PublicHost || cfg.PanelPath == cfg.PublicPath {
+		return nil
+	}
+	rel := ""
+	if cfg.PanelPath == "/" {
+		rel = cfg.PublicPath
+	} else if strings.HasPrefix(cfg.PublicPath, cfg.PanelPath+"/") {
+		rel = strings.TrimPrefix(cfg.PublicPath, cfg.PanelPath)
+	} else {
+		return nil
+	}
+	first := strings.SplitN(strings.TrimPrefix(rel, "/"), "/", 2)[0]
+	for _, seg := range panelRootSegments {
+		if first == seg {
+			return fmt.Errorf("public path %s collides with panel route %s; choose a different PUBLIC_PATH or PUBLIC_URL", cfg.PublicPath, strings.TrimSuffix(cfg.PanelPath, "/")+"/"+seg)
+		}
+	}
+	return nil
 }

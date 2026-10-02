@@ -4,7 +4,7 @@
   <article class="card agent-card-item public-monitor-item{{if hasFeature $.AccessRules "is_online"}}{{if not (isOnline .IsOnline)}} is-offline{{end}}{{end}}" data-pub-id="{{.PublicID}}" data-name="{{.Name}}" onclick="handlePubItemClick(event, '{{.PublicID}}');">
     <div class="agent-card-header">
       <div class="agent-card-title">
-        <a href="{{if $.Dashboard.Slug}}{{if and $.PublicPath (ne $.PublicPath "/")}}{{$.PublicPath}}/{{$.Dashboard.Slug}}{{else}}/dashboard/{{$.Dashboard.Slug}}{{end}}/{{.PublicID}}{{else}}/{{.PublicID}}{{end}}" class="agent-name">
+        <a href="{{$.PublicPath}}/{{$.Dashboard.Slug}}/{{.PublicID}}" class="agent-name">
           {{if hasFeature $.AccessRules "is_online"}}<span class="status-dot {{if isOnline .IsOnline}}online{{else}}offline{{end}}" id="pub-dot-{{.PublicID}}"></span>{{end}}
           <span>{{.Name}}</span>
         </a>

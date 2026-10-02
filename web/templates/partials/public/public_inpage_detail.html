@@ -2,7 +2,7 @@
 <div id="public-detail-view" hidden data-max-days="{{.AccessRules.MaxDays}}">
   <section class="detail-hero">
     <div class="hero-eyebrow">
-      <a href="{{if and .PublicPath (ne .PublicPath "/")}}{{.PublicPath}}/{{.Dashboard.Slug}}{{else}}/dashboard/{{.Dashboard.Slug}}{{end}}" onclick="event.preventDefault(); closePublicDetail();">&larr; {{.Dashboard.Title}}</a>
+      <a href="{{.PublicPath}}/{{.Dashboard.Slug}}" onclick="event.preventDefault(); closePublicDetail();">&larr; {{.Dashboard.Title}}</a>
     </div>
     <h1 class="detail-title" id="pub-inpage-name">Server</h1>
     <div class="spec-row">

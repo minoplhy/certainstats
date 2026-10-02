@@ -257,7 +257,7 @@ func (h *WebHandler) DashboardUpdateHandler(w http.ResponseWriter, r *http.Reque
 	}
 
 	if err := h.Store.DashboardUpdate(r.Context(), updateDashboard, reqAgents); err != nil {
-		http.Redirect(w, r, h.PanelPath+"/dashboard/"+dashID+"?error=Failed+to+update+dashboard", http.StatusSeeOther)
+		http.Redirect(w, r, h.PanelPath+"/dashboards/"+dashID+"?error=Failed+to+update+dashboard", http.StatusSeeOther)
 		return
 	}
 
@@ -339,9 +339,6 @@ func (h *WebHandler) PublicDashboardHandler(w http.ResponseWriter, r *http.Reque
 	}
 
 	pubStaticPath := h.PublicPath + "/static"
-	if h.PublicPath == "/" {
-		pubStaticPath = "/static"
-	}
 
 	online := 0
 	for _, a := range pubAgents {

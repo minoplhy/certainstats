@@ -4,7 +4,7 @@
   <h1 class="hero-title">Share live server status without giving out a login.</h1>
   <p class="page-subtitle">Each page shows the servers and metrics you choose. Anyone with the link can view it.</p>
   <div class="hero-actions">
-    <a href="{{$.PanelPath}}/dashboard/create" class="btn btn-primary">
+    <a href="{{$.PanelPath}}/dashboards/new" class="btn btn-primary">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
       New status page
     </a>
@@ -15,7 +15,7 @@
 <div class="empty-state">
   <h2 class="empty-state-title">No status pages yet</h2>
   <p>Create one to share selected servers and metrics publicly.</p>
-  <a href="{{$.PanelPath}}/dashboard/create" class="btn btn-primary">New status page</a>
+  <a href="{{$.PanelPath}}/dashboards/new" class="btn btn-primary">New status page</a>
 </div>
 {{else}}
 <div class="table-responsive">
@@ -30,14 +30,14 @@
     </thead>
     <tbody>
       {{range .Dashboards}}
-      {{$href := ""}}{{if eq $.PublicPath "/"}}{{$href = printf "/dashboard/%s" .Slug}}{{else}}{{$href = printf "%s/%s" $.PublicPath .Slug}}{{end}}
+      {{$href := printf "%s/%s" $.PublicPath .Slug}}
       <tr>
-        <td><a class="table-node-name table-link" href="{{$.PanelPath}}/dashboard/{{.DashboardID}}">{{.Title}}</a></td>
+        <td><a class="table-node-name table-link" href="{{$.PanelPath}}/dashboards/{{.DashboardID}}">{{.Title}}</a></td>
         <td class="mono"><a class="table-link-muted" href="{{$href}}" target="_blank" rel="noopener">{{$href}} &nearr;</a></td>
         <td>{{if (index .AccessRules "public")}}{{(index .AccessRules "public").MaxDays}}{{else}}7{{end}} days</td>
         <td>
           <div class="table-actions">
-            <a href="{{$.PanelPath}}/dashboard/{{.DashboardID}}" class="btn btn-secondary btn-sm">Edit</a>
+            <a href="{{$.PanelPath}}/dashboards/{{.DashboardID}}" class="btn btn-secondary btn-sm">Edit</a>
             <button type="button" class="btn btn-danger btn-sm" onclick="deleteDashboard('{{.DashboardID}}', '{{.Title}}')">Delete</button>
           </div>
         </td>

@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 
 	"certainstats/internal/agent"
@@ -114,6 +115,9 @@ func main() {
 	}()
 
 	cfg := LoadConfig()
+	if err := checkPathCollision(cfg); err != nil {
+		log.Fatalf("config: %v", err)
+	}
 	panelPath := cfg.PanelPath
 	publicPath := cfg.PublicPath
 	panelHost := cfg.PanelHost
@@ -182,8 +186,8 @@ func main() {
 		Renderer:   renderer,
 		Store:      db,
 		Cache:      metricsCache,
-		PanelPath:  panelPath,
-		PublicPath: publicPath,
+		PanelPath:  strings.TrimSuffix(panelPath, "/"),
+		PublicPath: strings.TrimSuffix(publicPath, "/"),
 		StaticPath: staticPath,
 	}
 
@@ -232,7 +236,6 @@ func main() {
 		rt.Post("/logout", webHandler.LogoutHandler)
 
 		rt.Get("/", webHandler.RequireAuthWeb(webHandler.AgentsListHandler))
-		rt.Get("/{id}", webHandler.RequireAuthWeb(webHandler.AgentsListHandler))
 
 		rt.Get("/agents/management", webHandler.RequireAuthWeb(webHandler.AgentManagementHandler))
 		rt.Post("/agent/provision", webHandler.RequireAuthWeb(webHandler.AgentProvisionHandler))
@@ -242,11 +245,11 @@ func main() {
 		rt.Post("/agent/delete", webHandler.RequireAuthWeb(webHandler.AgentDeleteHandler))
 
 		rt.Get("/dashboards", webHandler.RequireAuthWeb(webHandler.DashboardsListHandler))
-		rt.Get("/dashboard/create", webHandler.RequireAuthWeb(webHandler.DashboardCreatePageHandler))
-		rt.Post("/dashboard/create", webHandler.RequireAuthWeb(webHandler.DashboardCreateHandler))
-		rt.Get("/dashboard/{id}", webHandler.RequireAuthWeb(webHandler.DashboardEditHandler))
-		rt.Post("/dashboard/{id}", webHandler.RequireAuthWeb(webHandler.DashboardUpdateHandler))
-		rt.Delete("/dashboard/{id}", webHandler.RequireAuthWeb(webHandler.DashboardDeleteHandler))
+		rt.Get("/dashboards/new", webHandler.RequireAuthWeb(webHandler.DashboardCreatePageHandler))
+		rt.Post("/dashboards/new", webHandler.RequireAuthWeb(webHandler.DashboardCreateHandler))
+		rt.Get("/dashboards/{id}", webHandler.RequireAuthWeb(webHandler.DashboardEditHandler))
+		rt.Post("/dashboards/{id}", webHandler.RequireAuthWeb(webHandler.DashboardUpdateHandler))
+		rt.Delete("/dashboards/{id}", webHandler.RequireAuthWeb(webHandler.DashboardDeleteHandler))
 
 		rt.Get("/alerts", webHandler.RequireAuthWeb(webHandler.AlertsListHandler))
 		rt.Post("/alerts/create", webHandler.RequireAuthWeb(webHandler.AlertCreateHandler))

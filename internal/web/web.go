@@ -13,6 +13,8 @@ type WebHandler struct {
 	Renderer   *TemplateRenderer
 	Store      store.FullStore
 	Cache      *metrics.RealtimeCache
+	// PanelPath and PublicPath are URL prefixes without a trailing slash,
+	// empty when mounted at the root, so h.PanelPath+"/login" is always valid.
 	PanelPath  string
 	PublicPath string
 	StaticPath string

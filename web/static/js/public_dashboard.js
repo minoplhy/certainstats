@@ -19,15 +19,15 @@
     return (!p || p === '/') ? 'root' : p.replace(/[^a-zA-Z0-9_-]/g, '_');
   }
 
+  // The page is served at {prefix}/{slug} or {prefix}/{slug}/{pubId}; read the
+  // base from the URL so every mount form (including a bare root) round-trips.
   function getPublicBasePath() {
     const publicPath = (document.body?.getAttribute('data-public-path') || '').replace(/\/+$/, '');
-    if (dashSlug) {
-      if (publicPath && publicPath !== '/') {
-        return publicPath.endsWith('/' + dashSlug) ? publicPath : (publicPath + '/' + dashSlug);
-      }
-      return '/dashboard/' + dashSlug;
-    }
-    return publicPath || '/dashboard';
+    if (!dashSlug) return publicPath;
+    const segs = window.location.pathname.replace(/\/+$/, '').split('/');
+    if (segs[segs.length - 1] === dashSlug) return segs.join('/');
+    if (segs.length > 2 && segs[segs.length - 2] === dashSlug) return segs.slice(0, -1).join('/');
+    return publicPath + '/' + dashSlug;
   }
 
   function handlePubItemClick(event, pubId) {

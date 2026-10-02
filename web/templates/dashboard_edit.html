@@ -8,13 +8,13 @@
     </div>
     {{if not .IsCreate}}
     <div class="page-actions">
-      <a class="btn btn-secondary" href="{{if and $.PublicPath (ne $.PublicPath "/")}}{{$.PublicPath}}/{{.Dashboard.Slug}}{{else}}/dashboard/{{.Dashboard.Slug}}{{end}}" target="_blank" rel="noopener">Open page &nearr;</a>
+      <a class="btn btn-secondary" href="{{$.PublicPath}}/{{.Dashboard.Slug}}" target="_blank" rel="noopener">Open page &nearr;</a>
       <button type="button" class="btn btn-danger" data-open-modal="delete-dashboard-modal">Delete</button>
     </div>
     {{end}}
   </div>
 
-  <form id="dashboard-form" action="{{if .IsCreate}}{{$.PanelPath}}/dashboard/create{{else}}{{$.PanelPath}}/dashboard/{{.Dashboard.DashboardID}}{{end}}" method="POST" class="form-stack">
+  <form id="dashboard-form" action="{{if .IsCreate}}{{$.PanelPath}}/dashboards/new{{else}}{{$.PanelPath}}/dashboards/{{.Dashboard.DashboardID}}{{end}}" method="POST" class="form-stack">
     {{if not .IsCreate}}
     <input type="hidden" name="id" value="{{.Dashboard.DashboardID}}">
     {{end}}
@@ -39,7 +39,7 @@
           <label class="form-label" for="dash-slug-input">Address</label>
           <div class="input-prefix">
             <span class="input-prefix-text">
-              {{if and $.PublicPath (ne $.PublicPath "/")}}{{$.PublicPath}}/{{else}}/dashboard/{{end}}
+              {{$.PublicPath}}/
             </span>
             <input type="text" id="dash-slug-input" name="slug" required pattern="[a-z0-9-]+" title="Lowercase letters, numbers and dashes" value="{{if not .IsCreate}}{{.Dashboard.Slug}}{{end}}" class="form-input">
           </div>

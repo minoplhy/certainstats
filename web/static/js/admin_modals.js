@@ -17,7 +17,7 @@
     }
 
     if (!confirm('Delete the status page "' + title + '"? Its public link stops working right away.')) return;
-    fetch((panelPath || '') + '/dashboard/' + encodeURIComponent(id), {
+    fetch((panelPath || '') + '/dashboards/' + encodeURIComponent(id), {
       method: 'DELETE'
     }).then(res => {
       if (res.ok) {

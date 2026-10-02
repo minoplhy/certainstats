@@ -272,7 +272,7 @@ web/templates/
 | `/{agent_id}` | `agents_list.html` | `admin_agents.js` | In-page agent detail: tiles, storage, history charts, notes |
 | `/agents/management` | `agent_management.html` | `agent_management.js`, `provision_renderer.js` | Tokens, SSH keys, resets, install steps |
 | `/dashboards` | `dashboards_list.html` | `admin_modals.js` | Status pages list |
-| `/dashboard/create`, `/dashboard/{id}` | `dashboard_edit.html` | `dashboard_edit.js` | Address, visibility rules, servers, order |
+| `/dashboards/new`, `/dashboards/{id}` | `dashboard_edit.html` | `dashboard_edit.js` | Address, visibility rules, servers, order |
 | `/alerts` | `alerts_list.html` | `admin_alerts.js` | Rules, targets, incident history |
 | `/settings` | `settings.html` | `admin_modals.js` | Password change, signed-in devices |
 | `/login`, `/first-time-setup` | `login.html`, `setup.html` | — | Sign in, initial administrator account |
