@@ -56,7 +56,15 @@ func (h *WebHandler) AgentManagementHandler(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	pd := h.newPageData(r, "Fleet Management", "management", map[string]any{"Agents": agents})
+	drivers := map[string]bool{}
+	for _, a := range agents {
+		drivers[a.AgentType] = true
+	}
+
+	pd := h.newPageData(r, "Fleet Management", "management", map[string]any{
+		"Agents":      agents,
+		"DriverCount": len(drivers),
+	})
 	h.Renderer.RenderHTTP(w, http.StatusOK, "agent_management.html", pd)
 }
 

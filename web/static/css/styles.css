@@ -3380,27 +3380,202 @@ dialog.modal > form {
   padding-block: 10px;
 }
 
-/* Management & settings */
-.secret-cell {
+/* Management: expandable credential rows */
+.mgmt-list {
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.mgmt-item + .mgmt-item {
+  border-top: 1px solid var(--line);
+}
+
+.mgmt-item.is-highlighted {
+  box-shadow: inset 3px 0 0 var(--accent);
+  background: var(--accent-soft);
+  transition: background 0.6s ease;
+}
+
+.mgmt-summary {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 12px;
+  padding: 14px 18px;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+
+.mgmt-summary::-webkit-details-marker {
+  display: none;
+}
+
+.mgmt-summary:hover {
+  background: var(--surface-2);
+}
+
+.mgmt-summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.mgmt-name {
+  font-weight: 600;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mgmt-id {
+  font-size: 12px;
+  color: var(--muted);
+  margin-left: auto;
+}
+
+.mgmt-chevron {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  color: var(--muted);
+  transition: transform 0.15s ease;
+}
+
+.mgmt-item[open] .mgmt-chevron {
+  transform: rotate(90deg);
+}
+
+.mgmt-item[open] .mgmt-summary {
+  background: var(--surface-2);
+}
+
+.mgmt-panel {
+  padding: 6px 18px 16px;
+  background: var(--surface-2);
+}
+
+.cred-list {
+  display: grid;
+  margin: 0;
+}
+
+.cred-row {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.cred-row dt {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.cred-row dd {
+  margin: 0;
+  min-width: 0;
+}
+
+.cred-value {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  min-width: 0;
 }
 
 .secret {
   font-family: var(--font-mono);
-  font-size: 11px;
-  max-width: 150px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  background: var(--surface-2);
-  padding: 3px 7px;
+  font-size: 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  padding: 3px 8px;
   border-radius: var(--r-sm);
+  overflow-wrap: anywhere;
+  min-width: 0;
+  margin-right: 4px;
 }
 
-.secret-wide {
-  max-width: 200px;
+.secret.is-revealed {
+  border-color: color-mix(in srgb, var(--warn) 45%, var(--line));
+}
+
+.secret-link {
+  color: var(--text);
+  text-decoration: none;
+}
+
+.secret-link:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.mgmt-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding-top: 14px;
+}
+
+.mgmt-no-match {
+  padding: 18px;
+  text-align: center;
+}
+
+/* Confirm dialog */
+dialog.modal.modal-confirm {
+  width: min(440px, calc(100vw - 32px));
+}
+
+.confirm-match {
+  display: grid;
+  gap: 6px;
+  margin-top: 14px;
+}
+
+.btn-danger-solid {
+  background: var(--bad);
+  border-color: var(--bad);
+  color: #ffffff;
+}
+
+.btn-danger-solid:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--bad) 85%, #000);
+}
+
+@media (max-width: 600px) {
+  .mgmt-summary {
+    flex-wrap: wrap;
+    row-gap: 4px;
+    padding: 12px 14px;
+  }
+
+  .mgmt-name {
+    flex: 1 1 100%;
+    order: -1;
+  }
+
+  .mgmt-id {
+    margin-left: 0;
+  }
+
+  .mgmt-chevron {
+    margin-left: auto;
+  }
+
+  .mgmt-panel {
+    padding: 4px 14px 14px;
+  }
+
+  .cred-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 4px;
+  }
 }
 
 .card-title-spaced {

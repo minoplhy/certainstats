@@ -213,4 +213,25 @@ func TestDashboardEdit_RenderJSValid(t *testing.T) {
 	})
 }
 
+func TestMaskSecret(t *testing.T) {
+	cases := map[string]string{
+		"":                  "••••••••••••",
+		"short":             "••••••••••••",
+		"abcdefgh":          "••••••••••••efgh",
+		"tok_1234567893f9a": "••••••••••••3f9a",
+	}
+	for in, want := range cases {
+		if got := maskSecret(in); got != want {
+			t.Errorf("maskSecret(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
 
+func TestMiddleTrim(t *testing.T) {
+	if got := middleTrim("agt_x8vrtnJpvtR0EN65toBpAMzgENXFN9EM", 8, 5); got != "agt_x8vr…FN9EM" {
+		t.Errorf("got %q", got)
+	}
+	if got := middleTrim("short", 8, 5); got != "short" {
+		t.Errorf("got %q", got)
+	}
+}

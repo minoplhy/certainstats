@@ -148,7 +148,16 @@ All modals are native `<dialog class="modal">` elements opened with `showModal()
 - Current dialogs:
   - agent dialogs: add agent, notes, reinstall, uninstall;
   - alert dialogs: new and edit rule, new and edit target, template variables;
-  - delete status page.
+  - delete status page;
+  - confirm (shared, see below).
+- **Confirmations.** Use the shared `{{template "confirm_modal"}}` partial instead of `window.confirm()`.
+  - A form opts in with `data-confirm="message"`, plus optional `data-confirm-title`, `data-confirm-label`, `data-confirm-danger` and `data-confirm-match` (text the user must type before the button enables; use it for deletes).
+  - `data-confirm-flash` is shown as a toast on the page the submit lands on (stored in `sessionStorage`).
+  - From JS, `CertainStatsModal.confirm({title, message, label, danger, match})` returns a `Promise<boolean>`.
+  - Currently used on the Management page. Other pages still use `confirm()` and can move over.
+
+### 3.8.1 Credentials
+Secrets (agent tokens) render masked through the `maskSecret` template func (12 dots plus the last four characters). The real value lives in `data-secret` on the `<code class="secret">` element: a Show button swaps it in, and Copy always copies the full value. Masking is for screen-sharing and shoulder-surfing, not access control; the value is still in the page source of an authenticated page. Long values such as SSH keys and agent IDs are shortened with `middleTrim` and carry the full value in `title`.
 
 ### 3.9 Theme Toggle
 The `{{template "theme_toggle"}}` icon button cycles **system → light → dark** and stores the preference in `localStorage.certainstats_theme`.
@@ -270,7 +279,7 @@ web/templates/
 |---|---|---|---|
 | `/` | `agents_list.html` | `admin_agents.js` | Agent Hub: headline, fleet figures, cards/table, search, sparklines |
 | `/{agent_id}` | `agents_list.html` | `admin_agents.js` | In-page agent detail: tiles, storage, history charts, notes |
-| `/agents/management` | `agent_management.html` | `agent_management.js`, `provision_renderer.js` | Tokens, SSH keys, resets, install steps |
+| `/agents/management` | `agent_management.html` | `agent_management.js`, `provision_renderer.js` | Expandable credential rows: masked token, SSH key, rename, install steps, resets, delete; search |
 | `/dashboards` | `dashboards_list.html` | `admin_modals.js` | Status pages list |
 | `/dashboards/new`, `/dashboards/{id}` | `dashboard_edit.html` | `dashboard_edit.js` | Address, visibility rules, servers, order |
 | `/alerts` | `alerts_list.html` | `admin_alerts.js` | Rules, targets, incident history |

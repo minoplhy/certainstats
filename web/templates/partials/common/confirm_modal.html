@@ -1,0 +1,21 @@
+{{define "confirm_modal"}}
+<dialog id="confirm-modal" class="modal modal-confirm" aria-labelledby="confirm-modal-title" aria-describedby="confirm-modal-message">
+  <form method="dialog" id="confirm-modal-form">
+    <div class="modal-header">
+      <h2 class="modal-title" id="confirm-modal-title">Are you sure?</h2>
+      {{template "modal_close"}}
+    </div>
+    <div class="modal-body">
+      <p class="modal-lead" id="confirm-modal-message"></p>
+      <div class="confirm-match" id="confirm-modal-match" hidden>
+        <label class="form-label" for="confirm-modal-match-input">Type <b class="mono" id="confirm-modal-match-text"></b> to confirm</label>
+        <input type="text" id="confirm-modal-match-input" class="form-input" autocomplete="off" spellcheck="false">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn btn-secondary" data-close-modal>Cancel</button>
+      <button type="submit" class="btn btn-primary" id="confirm-modal-ok" value="ok">Confirm</button>
+    </div>
+  </form>
+</dialog>
+{{end}}

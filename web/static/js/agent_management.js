@@ -100,10 +100,11 @@
         saveBtn.textContent = 'Save';
       }
       if (r.ok) {
-        const row = document.querySelector('tr[data-mgmt-agent-id="' + agentId + '"]');
-        if (row) {
-          const nickSpan = row.querySelector('.agent-mgmt-nickname');
-          if (nickSpan) nickSpan.textContent = newNickname;
+        const item = document.querySelector('[data-mgmt-agent-id="' + agentId + '"]');
+        if (item) {
+          item.querySelectorAll('.agent-mgmt-nickname').forEach(el => { el.textContent = newNickname; });
+          const badge = item.querySelector('.mgmt-summary .badge');
+          item.setAttribute('data-search', [newNickname, agentId, badge ? badge.textContent : ''].join(' '));
         }
         cancelMgmtAgentRename(agentId);
         if (window.CertainStatsTelemetry && window.CertainStatsTelemetry.showToast) {
@@ -134,9 +135,61 @@
     });
   }
 
+  function toggleSecret(btn) {
+    const code = btn.parentElement.querySelector('code[data-secret]');
+    if (!code) return;
+    const show = btn.getAttribute('aria-pressed') !== 'true';
+    code.textContent = show ? code.getAttribute('data-secret') : code.getAttribute('data-mask');
+    code.classList.toggle('is-revealed', show);
+    btn.setAttribute('aria-pressed', String(show));
+    btn.textContent = show ? 'Hide' : 'Show';
+  }
+
+  function filterMgmtList() {
+    const input = document.getElementById('mgmt-search-input');
+    const query = (input ? input.value : '').trim().toLowerCase();
+    let shown = 0;
+    document.querySelectorAll('.mgmt-item').forEach(el => {
+      const match = (el.getAttribute('data-search') || '').toLowerCase().includes(query);
+      el.hidden = !match;
+      if (match) shown++;
+    });
+    const empty = document.getElementById('mgmt-no-match');
+    if (empty) empty.hidden = shown > 0;
+  }
+
+  const actions = {
+    'rename': btn => startMgmtAgentRename(btn.dataset.agentId),
+    'rename-save': btn => saveMgmtAgentRename(btn.dataset.agentId),
+    'rename-cancel': btn => cancelMgmtAgentRename(btn.dataset.agentId),
+    'copy': btn => copyCredential(btn.dataset.secret, btn.dataset.label),
+    'toggle-secret': toggleSecret,
+    'install': btn => showReinstallModal(btn.dataset.agentId, btn.dataset.nickname, btn.dataset.agentType, '', btn.dataset.sshKey)
+  };
+
+  // After a reset the server redirects to #agent-{id}: reopen that row and point at it.
+  function openFromHash() {
+    const id = decodeURIComponent(window.location.hash.slice(1));
+    if (!id.startsWith('agent-')) return;
+    const item = document.getElementById(id);
+    if (!item || !item.classList.contains('mgmt-item')) return;
+    item.open = true;
+    item.scrollIntoView({ block: 'center' });
+    item.classList.add('is-highlighted');
+    setTimeout(() => item.classList.remove('is-highlighted'), 2400);
+  }
+
   function init(options) {
     options = options || {};
     panelPath = options.panelPath || window.CertainStatsTelemetry.getPanelPath();
+
+    document.addEventListener('click', function (e) {
+      const btn = e.target.closest('[data-action]');
+      if (btn && actions[btn.dataset.action]) actions[btn.dataset.action](btn);
+    });
+    const search = document.getElementById('mgmt-search-input');
+    if (search) search.addEventListener('input', filterMgmtList);
+    window.CertainStatsTelemetry.onReady(openFromHash);
   }
 
   window.CertainStatsAgentManagement = {

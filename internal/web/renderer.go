@@ -69,6 +69,25 @@ func toUint64(val any) uint64 {
 	return 0
 }
 
+// maskSecret hides all but the last four characters of a credential.
+func maskSecret(s string) string {
+	const dots = "••••••••••••"
+	if len([]rune(s)) < 8 {
+		return dots
+	}
+	r := []rune(s)
+	return dots + string(r[len(r)-4:])
+}
+
+// middleTrim shortens s to its first head and last tail characters.
+func middleTrim(s string, head, tail int) string {
+	r := []rune(s)
+	if len(r) <= head+tail+1 {
+		return s
+	}
+	return string(r[:head]) + "…" + string(r[len(r)-tail:])
+}
+
 func NewRenderer() (*TemplateRenderer, error) {
 	funcMap := template.FuncMap{
 		"asset":     minify.AssetPath,
@@ -85,6 +104,8 @@ func NewRenderer() (*TemplateRenderer, error) {
 			}
 			return false
 		},
+		"maskSecret": maskSecret,
+		"middleTrim": middleTrim,
 		"formatBytes": func(val any) string {
 			bytes := toUint64(val)
 			if bytes == 0 {

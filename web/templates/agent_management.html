@@ -1,102 +1,146 @@
 {{define "content"}}
 <section class="hero">
-  <div class="hero-eyebrow"><a href="{{.PanelPath}}/">&larr; Agent Hub</a><span aria-hidden="true">·</span><span>Management</span></div>
+  <div class="hero-eyebrow">
+    <a href="{{.PanelPath}}/">&larr; Agent Hub</a>
+    <span aria-hidden="true">·</span>
+    <span>{{len .Agents}} {{if eq (len .Agents) 1}}agent{{else}}agents{{end}}</span>
+    {{if .Agents}}<span aria-hidden="true">·</span><span>{{.DriverCount}} {{if eq .DriverCount 1}}driver{{else}}drivers{{end}}</span>{{end}}
+  </div>
   <h1 class="hero-title">Agent credentials</h1>
   <p class="page-subtitle">Tokens, SSH keys and install steps for each agent. Treat tokens like passwords.</p>
-  <div class="hero-actions">
-    <button type="button" class="btn btn-primary" data-open-modal="add-agent-modal">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
-      Add agent
-    </button>
-  </div>
 </section>
 
-<div class="table-responsive">
-  <table class="table">
-    <thead>
-      <tr>
-        <th>Agent</th>
-        <th>Software</th>
-        <th>Token</th>
-        <th>Beszel SSH key</th>
-        <th><span class="sr-only">Actions</span></th>
-      </tr>
-    </thead>
-    <tbody>
-      {{range .Agents}}
-      <tr data-mgmt-agent-id="{{.AgentID}}">
-        <td>
-          <div class="cell-stack">
-          <div id="mgmt-name-read-{{.AgentID}}" class="editable-title" role="button" tabindex="0" title="Rename" onclick="startMgmtAgentRename('{{.AgentID}}')" onkeydown="if (event.key === 'Enter') startMgmtAgentRename('{{.AgentID}}')">
-            <span class="agent-mgmt-nickname table-node-name">{{.Nickname}}</span>
-            <span class="editable-pencil" aria-hidden="true">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
-            </span>
-          </div>
-          <div id="mgmt-name-edit-{{.AgentID}}" class="inline-edit" hidden>
-            <label class="sr-only" for="mgmt-name-input-{{.AgentID}}">Agent name</label>
-            <input type="text" id="mgmt-name-input-{{.AgentID}}" value="{{.Nickname}}" class="form-input form-input-sm" maxlength="64" autocomplete="off">
-            <button type="button" id="mgmt-name-save-btn-{{.AgentID}}" class="btn btn-primary btn-sm" onclick="saveMgmtAgentRename('{{.AgentID}}')">Save</button>
-            <button type="button" class="btn btn-secondary btn-sm" onclick="cancelMgmtAgentRename('{{.AgentID}}')">Cancel</button>
-          </div>
-          <a class="table-link-muted mono" href="{{$.PanelPath}}/{{.AgentID}}">{{.AgentID}} &nearr;</a>
-          </div>
-        </td>
-        <td><span class="badge badge-accent">{{if .AgentType}}{{.AgentType}}{{else}}beszel{{end}}</span></td>
-        <td>
-          {{if .Token}}
-          <div class="secret-cell">
-            <code class="secret" title="{{.Token}}">{{.Token}}</code>
-            <button type="button" class="btn btn-secondary btn-sm" onclick="copyCredential('{{.Token}}', 'Token')">Copy</button>
-          </div>
-          {{else}}
-          <span class="muted">No token</span>
-          {{end}}
-        </td>
-        <td>
-          {{if .BeszelPublicKey}}
-          <div class="secret-cell">
-            <code class="secret secret-wide" title="{{.BeszelPublicKey}}">{{.BeszelPublicKey}}</code>
-            <button type="button" class="btn btn-secondary btn-sm" onclick="copyCredential('{{.BeszelPublicKey}}', 'SSH key')">Copy</button>
-          </div>
-          {{else}}
-          <span class="muted">Not used</span>
-          {{end}}
-        </td>
-        <td>
-          <div class="table-actions">
-            <button type="button" class="btn btn-secondary btn-sm" onclick="showReinstallModal('{{.AgentID}}', '{{.Nickname}}', '{{.AgentType}}', '{{.Token}}', '{{.BeszelPublicKey}}')">Install steps</button>
-            <form action="{{$.PanelPath}}/agent/reset/token" method="POST" onsubmit="return confirm('Reset the token for {{.Nickname}}? The agent stops reporting until it is reinstalled with the new token.')">
-              <input type="hidden" name="agent_id" value="{{.AgentID}}">
-              <input type="hidden" name="redirect_to" value="{{$.PanelPath}}/agents/management">
-              <button type="submit" class="btn btn-secondary btn-sm">Reset token</button>
-            </form>
-            {{if eq .AgentType "beszel"}}
-            <form action="{{$.PanelPath}}/agent/reset/ssh" method="POST" onsubmit="return confirm('Generate a new SSH key pair for {{.Nickname}}? The agent needs the new public key.')">
-              <input type="hidden" name="agent_id" value="{{.AgentID}}">
-              <input type="hidden" name="redirect_to" value="{{$.PanelPath}}/agents/management">
-              <button type="submit" class="btn btn-secondary btn-sm">Reset SSH key</button>
-            </form>
-            {{end}}
-            <form action="{{$.PanelPath}}/agent/delete" method="POST" onsubmit="return confirm('Delete {{.Nickname}}? Its token is revoked and all of its stored metrics are permanently removed.')">
-              <input type="hidden" name="agent_id" value="{{.AgentID}}">
-              <input type="hidden" name="redirect_to" value="{{$.PanelPath}}/agents/management">
-              <button type="submit" class="btn btn-danger btn-sm">Delete</button>
-            </form>
-          </div>
-        </td>
-      </tr>
-      {{else}}
-      <tr>
-        <td colspan="5" class="table-empty">No agents yet. Use Add agent to register your first server.</td>
-      </tr>
-      {{end}}
-    </tbody>
-  </table>
+<div class="toolbar-bar">
+  <label class="toolbar-search">
+    <span class="sr-only">Search agents</span>
+    <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+    <input type="search" id="mgmt-search-input" placeholder="Search by name, ID or driver" autocomplete="off">
+  </label>
+  <span class="toolbar-spacer"></span>
+  <button type="button" class="btn btn-primary" data-open-modal="add-agent-modal">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+    Add agent
+  </button>
 </div>
+
+{{if not .Agents}}
+<div class="empty-state">
+  <h2 class="empty-state-title">No agents yet</h2>
+  <p>Add an agent to get a token and install steps for your first server.</p>
+  <button type="button" class="btn btn-primary" data-open-modal="add-agent-modal">Add agent</button>
+</div>
+{{else}}
+<div class="mgmt-list" id="mgmt-list">
+  {{range .Agents}}
+  {{$type := .AgentType}}{{if not $type}}{{$type = "beszel"}}{{end}}
+  {{$redir := printf "%s/agents/management#agent-%s" $.PanelPath .AgentID}}
+  <details class="mgmt-item" id="agent-{{.AgentID}}" data-mgmt-agent-id="{{.AgentID}}" data-search="{{.Nickname}} {{.AgentID}} {{$type}}">
+    <summary class="mgmt-summary">
+      <span class="mgmt-name agent-mgmt-nickname">{{.Nickname}}</span>
+      <span class="badge badge-accent">{{$type}}</span>
+      <span class="mgmt-id mono" title="{{.AgentID}}">{{middleTrim .AgentID 8 5}}</span>
+      <svg class="mgmt-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
+    </summary>
+
+    <div class="mgmt-panel">
+      <dl class="cred-list">
+        <div class="cred-row">
+          <dt>Name</dt>
+          <dd>
+            <div id="mgmt-name-read-{{.AgentID}}" class="cred-value">
+              <span class="agent-mgmt-nickname">{{.Nickname}}</span>
+              <button type="button" class="btn btn-ghost btn-sm" data-action="rename" data-agent-id="{{.AgentID}}">Rename</button>
+            </div>
+            <div id="mgmt-name-edit-{{.AgentID}}" class="inline-edit" hidden>
+              <label class="sr-only" for="mgmt-name-input-{{.AgentID}}">Agent name</label>
+              <input type="text" id="mgmt-name-input-{{.AgentID}}" value="{{.Nickname}}" class="form-input form-input-sm" maxlength="64" autocomplete="off">
+              <button type="button" id="mgmt-name-save-btn-{{.AgentID}}" class="btn btn-primary btn-sm" data-action="rename-save" data-agent-id="{{.AgentID}}">Save</button>
+              <button type="button" class="btn btn-secondary btn-sm" data-action="rename-cancel" data-agent-id="{{.AgentID}}">Cancel</button>
+            </div>
+          </dd>
+        </div>
+
+        <div class="cred-row">
+          <dt>Agent ID</dt>
+          <dd class="cred-value">
+            <a class="secret secret-link" href="{{$.PanelPath}}/{{.AgentID}}" title="Open agent">{{.AgentID}}</a>
+            <button type="button" class="btn btn-ghost btn-sm" data-action="copy" data-secret="{{.AgentID}}" data-label="Agent ID">Copy</button>
+          </dd>
+        </div>
+
+        <div class="cred-row">
+          <dt>Token</dt>
+          <dd class="cred-value">
+            {{if .Token}}
+            <code class="secret" data-secret="{{.Token}}" data-mask="{{maskSecret .Token}}">{{maskSecret .Token}}</code>
+            <button type="button" class="btn btn-ghost btn-sm" data-action="toggle-secret" aria-pressed="false">Show</button>
+            <button type="button" class="btn btn-ghost btn-sm" data-action="copy" data-secret="{{.Token}}" data-label="Token">Copy</button>
+            {{else}}
+            <span class="muted">No token</span>
+            {{end}}
+          </dd>
+        </div>
+
+        {{if .BeszelPublicKey}}
+        <div class="cred-row">
+          <dt>SSH key</dt>
+          <dd class="cred-value">
+            <code class="secret" title="{{.BeszelPublicKey}}">{{middleTrim .BeszelPublicKey 24 6}}</code>
+            <button type="button" class="btn btn-ghost btn-sm" data-action="copy" data-secret="{{.BeszelPublicKey}}" data-label="SSH key">Copy</button>
+          </dd>
+        </div>
+        {{end}}
+      </dl>
+
+      <div class="mgmt-actions">
+        <button type="button" class="btn btn-primary btn-sm" data-action="install" data-agent-id="{{.AgentID}}" data-nickname="{{.Nickname}}" data-agent-type="{{.AgentType}}" data-ssh-key="{{.BeszelPublicKey}}">Install steps</button>
+
+        <form action="{{$.PanelPath}}/agent/reset/token" method="POST"
+              data-confirm-title="Reset token for {{.Nickname}}?"
+              data-confirm="{{.Nickname}} stops reporting until it's reinstalled with the new token."
+              data-confirm-label="Reset token"
+              data-confirm-flash="Token reset. Copy the new one into the agent.">
+          <input type="hidden" name="agent_id" value="{{.AgentID}}">
+          <input type="hidden" name="redirect_to" value="{{$redir}}">
+          <button type="submit" class="btn btn-secondary btn-sm">Reset token</button>
+        </form>
+
+        {{if eq .AgentType "beszel"}}
+        <form action="{{$.PanelPath}}/agent/reset/ssh" method="POST"
+              data-confirm-title="New SSH key for {{.Nickname}}?"
+              data-confirm="The agent needs the new public key before it can connect again."
+              data-confirm-label="Generate new key"
+              data-confirm-flash="New SSH key generated. Copy it into the agent.">
+          <input type="hidden" name="agent_id" value="{{.AgentID}}">
+          <input type="hidden" name="redirect_to" value="{{$redir}}">
+          <button type="submit" class="btn btn-secondary btn-sm">Reset SSH key</button>
+        </form>
+        {{end}}
+
+        <span class="toolbar-spacer"></span>
+
+        <form action="{{$.PanelPath}}/agent/delete" method="POST"
+              data-confirm-title="Delete {{.Nickname}}?"
+              data-confirm="Its token is revoked and all of its stored metrics are permanently removed. This can't be undone."
+              data-confirm-label="Delete agent"
+              data-confirm-danger
+              data-confirm-match="{{.Nickname}}"
+              data-confirm-flash="{{.Nickname}} deleted.">
+          <input type="hidden" name="agent_id" value="{{.AgentID}}">
+          <input type="hidden" name="redirect_to" value="{{$.PanelPath}}/agents/management">
+          <button type="submit" class="btn btn-danger btn-sm">Delete agent</button>
+        </form>
+      </div>
+    </div>
+  </details>
+  {{end}}
+  <p class="mgmt-no-match muted" id="mgmt-no-match" hidden>No agents match your search.</p>
+</div>
+{{end}}
 
 {{template "agents_provision_modal" .}}
 {{template "reinstall_modal" .}}
+{{template "confirm_modal"}}
 
 <script src="{{.StaticPath}}/{{asset "js/agent_management.js"}}" integrity="{{integrity "js/agent_management.js"}}"></script>
 <script>
