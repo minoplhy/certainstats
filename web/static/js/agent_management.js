@@ -164,7 +164,8 @@
     'rename-cancel': btn => cancelMgmtAgentRename(btn.dataset.agentId),
     'copy': btn => copyCredential(btn.dataset.secret, btn.dataset.label),
     'toggle-secret': toggleSecret,
-    'install': btn => showReinstallModal(btn.dataset.agentId, btn.dataset.nickname, btn.dataset.agentType, '', btn.dataset.sshKey)
+    'install': btn => showReinstallModal(btn.dataset.agentId, btn.dataset.nickname, btn.dataset.agentType, '', btn.dataset.sshKey),
+    'uninstall': btn => window.CertainStatsTelemetry.openUninstallModal({ agentId: btn.dataset.agentId, nickname: btn.dataset.nickname })
   };
 
   // After a reset the server redirects to #agent-{id}: reopen that row and point at it.

@@ -279,7 +279,7 @@ web/templates/
 |---|---|---|---|
 | `/` | `agents_list.html` | `admin_agents.js` | Agent Hub: headline, fleet figures, cards/table, search, sparklines |
 | `/{agent_id}` | `agents_list.html` | `admin_agents.js` | In-page agent detail: tiles, storage, history charts, notes |
-| `/agents/management` | `agent_management.html` | `agent_management.js`, `provision_renderer.js` | Expandable credential rows: masked token, SSH key, rename, install steps, resets, delete; search |
+| `/agents/management` | `agent_management.html` | `agent_management.js`, `provision_renderer.js` | Expandable credential rows: masked token, SSH key, rename, install, uninstall, resets, delete; search |
 | `/dashboards` | `dashboards_list.html` | `admin_modals.js` | Status pages list |
 | `/dashboards/new`, `/dashboards/{id}` | `dashboard_edit.html` | `dashboard_edit.js` | Address, visibility rules, servers, order |
 | `/alerts` | `alerts_list.html` | `admin_alerts.js` | Rules, targets, incident history |

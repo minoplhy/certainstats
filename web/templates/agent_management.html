@@ -93,7 +93,8 @@
       </dl>
 
       <div class="mgmt-actions">
-        <button type="button" class="btn btn-primary btn-sm" data-action="install" data-agent-id="{{.AgentID}}" data-nickname="{{.Nickname}}" data-agent-type="{{.AgentType}}" data-ssh-key="{{.BeszelPublicKey}}">Install steps</button>
+        <button type="button" class="btn btn-primary btn-sm" data-action="install" data-agent-id="{{.AgentID}}" data-nickname="{{.Nickname}}" data-agent-type="{{.AgentType}}" data-ssh-key="{{.BeszelPublicKey}}">Install</button>
+        <button type="button" class="btn btn-secondary btn-sm" data-action="uninstall" data-agent-id="{{.AgentID}}" data-nickname="{{.Nickname}}">Uninstall</button>
 
         <form action="{{$.PanelPath}}/agent/reset/token" method="POST"
               data-confirm-title="Reset token for {{.Nickname}}?"
@@ -140,6 +141,7 @@
 
 {{template "agents_provision_modal" .}}
 {{template "reinstall_modal" .}}
+{{template "uninstall_modal" .}}
 {{template "confirm_modal"}}
 
 <script src="{{.StaticPath}}/{{asset "js/agent_management.js"}}" integrity="{{integrity "js/agent_management.js"}}"></script>

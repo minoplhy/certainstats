@@ -2120,7 +2120,7 @@ dialog.modal[open] {
   background: var(--code-bg);
   border-radius: var(--r);
   position: relative;
-  padding: 14px 52px 14px 16px;
+  padding: 14px 92px 14px 16px;
   overflow-x: auto;
 }
 
