@@ -32,13 +32,16 @@ func GetAverageMetric(ctx context.Context, tsdb *tsdb.DB, agentID string, metric
 	// false = we want data, not just metadata; nil = no hinting
 	seriesSet := querier.Select(ctx, false, nil, matchers...)
 
-	var sum float64
-	var count int
+	// Multi-series metrics (e.g. one per disk path) are summed: each series is
+	// averaged on its own, then the averages are added together.
+	var total float64
 
 	// 4. Iterate through the matching series (usually just 1 series per agent/metric combo)
 	for seriesSet.Next() {
 		series := seriesSet.At()
 		iterator := series.Iterator(nil)
+		var sum float64
+		var count int
 
 		// 5. Iterate through the actual raw data chunks (time + value)
 		// Note: In newer Prometheus versions, Next() returns a chunkenc.ValueType
@@ -52,17 +55,14 @@ func GetAverageMetric(ctx context.Context, tsdb *tsdb.DB, agentID string, metric
 		if err := iterator.Err(); err != nil {
 			return 0, fmt.Errorf("error iterating chunks: %w", err)
 		}
+		if count > 0 {
+			total += sum / float64(count)
+		}
 	}
 
 	if err := seriesSet.Err(); err != nil {
 		return 0, fmt.Errorf("error in series selection: %w", err)
 	}
 
-	// 6. Return the calculated average
-	if count == 0 {
-		//return 0, fmt.Errorf("no data points found for %s over the last %s", metricName, duration)
-		return 0, nil
-	}
-
-	return sum / float64(count), nil
+	return total, nil
 }

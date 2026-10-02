@@ -120,25 +120,13 @@ func SubmitHandler(agents store.AgentStore, tdb *tsdb.DB, parserRegistry *regist
 			return
 		}
 
-		// 4. Calculate total disk size across partitions while preserving all disk mount points
-		if parsedData.AgentInfo != nil {
+		// 4. Disk size is the total across all partitions (matches the summed usage in the live snapshot)
+		if parsedData.AgentInfo != nil && len(parsedData.Metrics) > 0 {
 			var totalDiskSize uint64
-			var rootDiskSize uint64
-			foundRoot := false
-
-			if len(parsedData.Metrics) > 0 {
-				for _, d := range parsedData.Metrics[0].Disks {
-					totalDiskSize += d.TotalBytes
-					if d.Path == "/" {
-						rootDiskSize = d.TotalBytes
-						foundRoot = true
-					}
-				}
+			for _, d := range parsedData.Metrics[0].Disks {
+				totalDiskSize += d.TotalBytes
 			}
-
-			if foundRoot && rootDiskSize > 0 {
-				parsedData.AgentInfo.DiskSize = rootDiskSize
-			} else if totalDiskSize > 0 {
+			if totalDiskSize > 0 {
 				parsedData.AgentInfo.DiskSize = totalDiskSize
 			}
 		}

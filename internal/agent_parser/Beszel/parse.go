@@ -62,8 +62,15 @@ func (b *BeszelStats) Parse(data []byte) (*agentparser.ParsedData, error) {
 
 		// Disk/Swap: Use Stats fields with standard GB assumption,
 		// but only update them during this high-fidelity Details event.
-		if combined.Stats.DiskTotal > 0 {
-			agentInfo.DiskSize = uint64(combined.Stats.DiskTotal * 1024 * 1024 * 1024)
+		// DiskSize is the total across root and extra filesystems, matching the summed usage.
+		diskTotal := combined.Stats.DiskTotal
+		for path, fs := range combined.Stats.ExtraFs {
+			if fs != nil && path != "/" {
+				diskTotal += fs.Total
+			}
+		}
+		if diskTotal > 0 {
+			agentInfo.DiskSize = uint64(diskTotal * 1024 * 1024 * 1024)
 		}
 		if combined.Stats.Swap > 0 {
 			agentInfo.SwapSize = uint64(combined.Stats.Swap * 1024 * 1024 * 1024)
