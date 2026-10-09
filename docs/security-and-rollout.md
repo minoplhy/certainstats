@@ -34,7 +34,7 @@ Lifetime totals count observed traffic since agent creation. Collection gaps are
 
 Release the security/privacy, metric correctness, UX, and deployment changes as separate reviewed stages. Before deploying any stage that changes storage, stop ingestion and back up the entire data directory, including SQLite/WAL and TSDB. Test recovery and migration on a copy. SQLite migrations are additive and idempotent and fail startup on unexpected errors.
 
-The runtime is pinned to Alpine 3.22.1 and runs as UID/GID 10001. Existing bind mounts must be writable by that account (`chown -R 10001:10001 ./data` on the intended data directory). Compose retains `restart: unless-stopped`; HTTP health checks are removed and no health route is added. Shutdown stops HTTP traffic, cancels background work, closes browser/agent sockets, waits for the central routine, and closes storage.
+The runtime uses `alpine:latest` and its default root user. No fixed UID/GID or volume-ownership migration is required. Compose retains `restart: unless-stopped`; HTTP health checks are removed and no health route is added. Shutdown stops HTTP traffic, cancels background work, closes browser/agent sockets, waits for the central routine, and closes storage.
 
 Retention remains unlimited unless configured. `RETENTION_DURATION` uses Go duration syntax, such as `2160h`; `STORAGE_MAX_BYTES` sets the TSDB block-size ceiling. These settings do not impose a whole-volume quota on SQLite, WAL, head blocks or journals.
 

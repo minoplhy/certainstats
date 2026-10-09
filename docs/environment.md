@@ -26,4 +26,4 @@
 
 `ALLOWED_ORIGINS` adds explicit HTTP(S) origins to same-origin browser WebSockets. Empty configuration no longer permits arbitrary origins. Forwarded HTTPS indicators require a trusted proxy. Browser HTTP defaults are a ten-second header timeout, thirty-second read/write timeouts and sixty-second idle timeout. Forms/JSON are limited to 1 MiB; agent submissions remain 16 KiB.
 
-The container runs as UID/GID 10001; grant that account access to existing persistent bind mounts before upgrading. Initial setup credentials are read from `DATA_DIR/setup-token`, rather than application logs. See [security and rollout](security-and-rollout.md) for CSRF, recovery, caching and staged deployment details.
+The container uses Alpine's default root user; no fixed UID/GID or volume-ownership migration is required. Initial setup credentials are read from `DATA_DIR/setup-token`, rather than application logs. See [security and rollout](security-and-rollout.md) for CSRF, recovery, caching and staged deployment details.
