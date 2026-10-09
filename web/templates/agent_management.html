@@ -122,7 +122,7 @@
 
         <form action="{{$.PanelPath}}/agent/delete" method="POST"
               data-confirm-title="Delete {{.Nickname}}?"
-              data-confirm="Its token is revoked and all of its stored metrics are permanently removed. This can't be undone."
+              data-confirm="Its token is revoked and all of its stored metrics are permanently removed. Incident history is preserved. This can't be undone."
               data-confirm-label="Delete agent"
               data-confirm-danger
               data-confirm-match="{{.Nickname}}"

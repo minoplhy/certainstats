@@ -340,3 +340,69 @@ func TestAlertLifecycle_DownAndResolve(t *testing.T) {
 		t.Errorf("expected 0 notifications sent during retry of resolved alert, got %d", dispatchCount)
 	}
 }
+
+func TestRecoveryFailureIsPersistedAndAutomaticallyRetried(t *testing.T) {
+	ctx := context.Background()
+	db, err := sqlite.New(t.TempDir() + "/recovery.db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if err = db.CreateUser(ctx, "owner", "owner", "hash", false); err != nil {
+		t.Fatal(err)
+	}
+	if err = db.AgentProvision(ctx, "node", "owner", "token", "Node", "ltstats"); err != nil {
+		t.Fatal(err)
+	}
+	failRecovery := true
+	recoveries := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		body, _ := io.ReadAll(req.Body)
+		if strings.Contains(string(body), "RESOLVED") {
+			recoveries++
+			if failRecovery {
+				w.WriteHeader(503)
+				return
+			}
+		}
+		w.WriteHeader(200)
+	}))
+	defer server.Close()
+	rule := store.Alert{AlertID: "rule", UserID: "owner", Nickname: "Offline", Enabled: true, Trigger: basealert.Trigger{Type: basealert.TriggerTypeDown, Duration: "1m"}, Action: basealert.AlertAction{Type: basealert.DestWebhook, Destination: server.URL}, Agents: []basealert.AgentState{{AgentID: "node"}}}
+	if err = db.AlertCreate(ctx, rule); err != nil {
+		t.Fatal(err)
+	}
+	routine := &Routine{Store: db}
+	state := basealert.AgentState{AgentID: "node", Status: "ok"}
+	info := store.AgentInfo{Nickname: "Node"}
+	if err = routine.TriggerAlert(ctx, rule, state, info, 0); err != nil {
+		t.Fatal(err)
+	}
+	h, err := db.AlertHistoryActive(ctx, "owner", "rule", "node")
+	if err != nil {
+		t.Fatal(err)
+	}
+	state.Status = "firing"
+	state.LastFiredAt = &h.TriggeredAt
+	if err = routine.ResolveAlert(ctx, rule, state, info); err != nil {
+		t.Fatal(err)
+	}
+	h, err = db.AlertHistoryGetByID(ctx, h.HistoryID, "owner")
+	if err != nil || h.ResolvedAt == nil || h.RecoveryDelivery != "failed" {
+		t.Fatalf("recovery state: %+v %v", h, err)
+	}
+	failRecovery = false
+	routine.RetryFailedAlerts(ctx)
+	h, err = db.AlertHistoryGetByID(ctx, h.HistoryID, "owner")
+	if err != nil || h.ResolvedAt == nil || h.RecoveryDelivery != "success" || recoveries != 2 {
+		t.Fatalf("recovery retry: %+v calls=%d %v", h, recoveries, err)
+	}
+	events, total, err := db.AlertHistoryEvents(ctx, "owner", h.HistoryID, 1, 100)
+	if err != nil || total != 5 {
+		t.Fatalf("events: %+v %v", events, err)
+	}
+	rules, err := db.AlertList(ctx, "owner")
+	if err != nil || rules[0].Agents[0].Status != "ok" {
+		t.Fatalf("recovery refired: %+v %v", rules, err)
+	}
+}

@@ -200,5 +200,5 @@ func (s *Store) migrate() error {
 			return err
 		}
 	}
-	return nil
+	return s.migrateIncidentHistory()
 }

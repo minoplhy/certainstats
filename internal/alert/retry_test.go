@@ -4,6 +4,7 @@ import (
 	basealert "certainstats/internal/base/alert"
 	CSContext "certainstats/internal/context"
 	"certainstats/internal/store"
+	"certainstats/internal/store/sqlite"
 	"context"
 	"encoding/json"
 	"errors"
@@ -68,298 +69,143 @@ func (m *mockAlertsStore) AlertHistoryGetFailed(ctx context.Context) ([]*baseale
 	return nil, errors.New("GetFailedFunc not implemented")
 }
 
+func retryFixture(t *testing.T, destination string) (*sqlite.Store, store.Alert, string) {
+	t.Helper()
+	ctx := context.Background()
+	db, err := sqlite.New(t.TempDir() + "/history.db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	if err = db.CreateUser(ctx, "owner", "owner", "hash", false); err != nil {
+		t.Fatal(err)
+	}
+	if err = db.AgentProvision(ctx, "node", "owner", "token", "Node", "ltstats"); err != nil {
+		t.Fatal(err)
+	}
+	rule := store.Alert{AlertID: "rule", UserID: "owner", Nickname: "CPU", Enabled: true, Trigger: basealert.Trigger{Type: basealert.TriggerTypeCPU, Operator: basealert.OpGreaterThan, Threshold: 90}, Action: basealert.AlertAction{Type: basealert.DestWebhook, Destination: destination}, Agents: []basealert.AgentState{{AgentID: "node"}}}
+	if err = db.AlertCreate(ctx, rule); err != nil {
+		t.Fatal(err)
+	}
+	if err = db.AlertTrigger(ctx, rule, "node", "Node", "incident", 95, "pending", "", "", ""); err != nil {
+		t.Fatal(err)
+	}
+	e, err := db.AlertAttemptQueue(ctx, "owner", "incident", "firing", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err = db.AlertAttemptStart(ctx, e.EventID); err != nil {
+		t.Fatal(err)
+	}
+	if err = db.AlertAttemptComplete(ctx, e.EventID, "failed", "first attempt failed"); err != nil {
+		t.Fatal(err)
+	}
+	return db, rule, e.EventID
+}
+func retryRequest(handler http.HandlerFunc, id, user string) *httptest.ResponseRecorder {
+	req := httptest.NewRequest("POST", "/retry/"+id, nil)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", id)
+	req = req.WithContext(context.WithValue(context.WithValue(req.Context(), chi.RouteCtxKey, rctx), CSContext.UserIDKey, user))
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+	return w
+}
+func awaitDelivery(t *testing.T, db *sqlite.Store, phase string) {
+	t.Helper()
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		events, _, err := db.AlertHistoryEvents(context.Background(), "owner", "incident", 1, 100)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, e := range events {
+			if e.Phase == phase && e.Status == "success" {
+				return
+			}
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatal("retry did not complete")
+}
 func TestRetryAlertHandler(t *testing.T) {
-	t.Run("successful retry with webhook", func(t *testing.T) {
-		// Mock HTTP webhook server to return 200 OK
-		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(http.StatusOK)
-		}))
-		defer ts.Close()
-
-		var updatedHistoryID, updatedHistoryStatus, updatedHistoryErrMsg string
-		var updatedAlertID, updatedAgentID, updatedAgentStatus, updatedAgentErrMsg string
-
-		mockStore := &mockAlertsStore{
-			GetHistoryByIDFunc: func(ctx context.Context, historyID string, userID string) (*basealert.AlertHistory, error) {
-				return &basealert.AlertHistory{
-					HistoryID:     "history-123",
-					AlertID:       "alert-123",
-					AgentID:       "agent-123",
-					AgentNickname: "TestNode",
-					TriggerValue:  95.0,
-					TriggeredAt:   time.Now(),
-				}, nil
-			},
-			GetAlertInfoFunc: func(ctx context.Context, alertID string, userID string) (store.Alert, error) {
-				return store.Alert{
-					AlertID:  "alert-123",
-					UserID:   "user-123",
-					Nickname: "High CPU Usage",
-					Trigger: basealert.Trigger{
-						Type:      basealert.TriggerTypeCPU,
-						Operator:  basealert.OpGreaterThan,
-						Threshold: 90.0,
-					},
-					Action: basealert.AlertAction{
-						Type:        basealert.DestWebhook,
-						Destination: ts.URL,
-					},
-				}, nil
-			},
-			UpdateHistoryFunc: func(ctx context.Context, historyID string, status string, errMsg string) error {
-				updatedHistoryID = historyID
-				updatedHistoryStatus = status
-				updatedHistoryErrMsg = errMsg
-				return nil
-			},
-			UpdateAgentFunc: func(ctx context.Context, alertID string, agentID string, status string, errMsg string) error {
-				updatedAlertID = alertID
-				updatedAgentID = agentID
-				updatedAgentStatus = status
-				updatedAgentErrMsg = errMsg
-				return nil
-			},
-		}
-
-		handler := RetryAlertHandler(mockStore)
-
-		req := httptest.NewRequest("POST", "/api/alerts/history/retry/history-123", nil)
-		ctxVal := context.WithValue(req.Context(), CSContext.UserIDKey, "user-123")
-		
-		// Set URL parameter using chi routing context
-		rctx := chi.NewRouteContext()
-		rctx.URLParams.Add("id", "history-123")
-		ctxVal = context.WithValue(ctxVal, chi.RouteCtxKey, rctx)
-		req = req.WithContext(ctxVal)
-
-		rec := httptest.NewRecorder()
-		handler.ServeHTTP(rec, req)
-
-		if rec.Code != http.StatusOK {
-			t.Fatalf("expected status 200, got %d. Body: %s", rec.Code, rec.Body.String())
-		}
-
-		var resp map[string]string
-		if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
-			t.Fatalf("failed to decode response: %v", err)
-		}
-		if resp["status"] != "queued" {
-			t.Errorf("expected queued status, got %q", resp["status"])
-		}
-
-		// Allow background goroutine to execute
-		time.Sleep(50 * time.Millisecond)
-
-		if updatedHistoryID != "history-123" || updatedHistoryStatus != "success" || updatedHistoryErrMsg != "" {
-			t.Errorf("unexpected history status update: id=%s status=%s err=%s", updatedHistoryID, updatedHistoryStatus, updatedHistoryErrMsg)
-		}
-		if updatedAlertID != "alert-123" || updatedAgentID != "agent-123" || updatedAgentStatus != "firing" || updatedAgentErrMsg != "" {
-			t.Errorf("unexpected agent status update: id=%s agent=%s status=%s err=%s", updatedAlertID, updatedAgentID, updatedAgentStatus, updatedAgentErrMsg)
-		}
-	})
-
-	t.Run("failed retry with webhook", func(t *testing.T) {
-		// Mock HTTP webhook server to return 500
-		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(http.StatusInternalServerError)
-		}))
-		defer ts.Close()
-
-		var updatedHistoryID, updatedHistoryStatus, updatedHistoryErrMsg string
-		var updatedAlertID, updatedAgentID, updatedAgentStatus, updatedAgentErrMsg string
-
-		mockStore := &mockAlertsStore{
-			GetHistoryByIDFunc: func(ctx context.Context, historyID string, userID string) (*basealert.AlertHistory, error) {
-				return &basealert.AlertHistory{
-					HistoryID:     "history-123",
-					AlertID:       "alert-123",
-					AgentID:       "agent-123",
-					AgentNickname: "TestNode",
-					TriggerValue:  95.0,
-					TriggeredAt:   time.Now(),
-				}, nil
-			},
-			GetAlertInfoFunc: func(ctx context.Context, alertID string, userID string) (store.Alert, error) {
-				return store.Alert{
-					AlertID:  "alert-123",
-					UserID:   "user-123",
-					Nickname: "High CPU Usage",
-					Trigger: basealert.Trigger{
-						Type:      basealert.TriggerTypeCPU,
-						Operator:  basealert.OpGreaterThan,
-						Threshold: 90.0,
-					},
-					Action: basealert.AlertAction{
-						Type:        basealert.DestWebhook,
-						Destination: ts.URL,
-					},
-				}, nil
-			},
-			UpdateHistoryFunc: func(ctx context.Context, historyID string, status string, errMsg string) error {
-				updatedHistoryID = historyID
-				updatedHistoryStatus = status
-				updatedHistoryErrMsg = errMsg
-				return nil
-			},
-			UpdateAgentFunc: func(ctx context.Context, alertID string, agentID string, status string, errMsg string) error {
-				updatedAlertID = alertID
-				updatedAgentID = agentID
-				updatedAgentStatus = status
-				updatedAgentErrMsg = errMsg
-				return nil
-			},
-		}
-
-		handler := RetryAlertHandler(mockStore)
-
-		req := httptest.NewRequest("POST", "/api/alerts/history/retry/history-123", nil)
-		ctxVal := context.WithValue(req.Context(), CSContext.UserIDKey, "user-123")
-		
-		// Set URL parameter using chi routing context
-		rctx := chi.NewRouteContext()
-		rctx.URLParams.Add("id", "history-123")
-		ctxVal = context.WithValue(ctxVal, chi.RouteCtxKey, rctx)
-		req = req.WithContext(ctxVal)
-
-		rec := httptest.NewRecorder()
-		handler.ServeHTTP(rec, req)
-
-		if rec.Code != http.StatusOK {
-			t.Fatalf("expected status 200, got %d. Body: %s", rec.Code, rec.Body.String())
-		}
-
-		var resp map[string]string
-		if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
-			t.Fatalf("failed to decode response: %v", err)
-		}
-		if resp["status"] != "queued" {
-			t.Errorf("expected queued status, got %q", resp["status"])
-		}
-
-		// Allow background goroutine to execute
-		time.Sleep(50 * time.Millisecond)
-
-		if updatedHistoryID != "history-123" || updatedHistoryStatus != "failed" || updatedHistoryErrMsg == "" {
-			t.Errorf("unexpected history status update: id=%s status=%s err=%s", updatedHistoryID, updatedHistoryStatus, updatedHistoryErrMsg)
-		}
-		if updatedAlertID != "alert-123" || updatedAgentID != "agent-123" || updatedAgentStatus != "failed" || updatedAgentErrMsg == "" {
-			t.Errorf("unexpected agent status update: id=%s agent=%s status=%s err=%s", updatedAlertID, updatedAgentID, updatedAgentStatus, updatedAgentErrMsg)
-		}
-	})
-
-	t.Run("failed retry with preset target missing", func(t *testing.T) {
-		var updatedHistoryID, updatedHistoryStatus, updatedHistoryErrMsg string
-		var updatedAlertID, updatedAgentID, updatedAgentStatus, updatedAgentErrMsg string
-
-		mockStore := &mockAlertsStore{
-			GetHistoryByIDFunc: func(ctx context.Context, historyID string, userID string) (*basealert.AlertHistory, error) {
-				return &basealert.AlertHistory{
-					HistoryID:     "history-456",
-					AlertID:       "alert-456",
-					AgentID:       "agent-456",
-					AgentNickname: "TestNode2",
-					TriggerValue:  95.0,
-					TriggeredAt:   time.Now(),
-				}, nil
-			},
-			GetAlertInfoFunc: func(ctx context.Context, alertID string, userID string) (store.Alert, error) {
-				return store.Alert{
-					AlertID:  "alert-456",
-					UserID:   "user-123",
-					Nickname: "High CPU Usage Preset",
-					Trigger: basealert.Trigger{
-						Type:      basealert.TriggerTypeCPU,
-						Operator:  basealert.OpGreaterThan,
-						Threshold: 90.0,
-					},
-					Action: basealert.AlertAction{
-						Type:     basealert.DestPreset,
-						TargetID: "trg_missing",
-					},
-				}, nil
-			},
-			GetTargetByIDFunc: func(ctx context.Context, targetID string, userID string) (basealert.AlertTarget, error) {
-				return basealert.AlertTarget{}, errors.New("alert target not found")
-			},
-			UpdateHistoryFunc: func(ctx context.Context, historyID string, status string, errMsg string) error {
-				updatedHistoryID = historyID
-				updatedHistoryStatus = status
-				updatedHistoryErrMsg = errMsg
-				return nil
-			},
-			UpdateAgentFunc: func(ctx context.Context, alertID string, agentID string, status string, errMsg string) error {
-				updatedAlertID = alertID
-				updatedAgentID = agentID
-				updatedAgentStatus = status
-				updatedAgentErrMsg = errMsg
-				return nil
-			},
-		}
-
-		handler := RetryAlertHandler(mockStore)
-
-		req := httptest.NewRequest("POST", "/api/alerts/history/retry/history-456", nil)
-		ctxVal := context.WithValue(req.Context(), CSContext.UserIDKey, "user-123")
-		
-		// Set URL parameter using chi routing context
-		rctx := chi.NewRouteContext()
-		rctx.URLParams.Add("id", "history-456")
-		ctxVal = context.WithValue(ctxVal, chi.RouteCtxKey, rctx)
-		req = req.WithContext(ctxVal)
-
-		rec := httptest.NewRecorder()
-		handler.ServeHTTP(rec, req)
-
-		if rec.Code != http.StatusOK {
-			t.Fatalf("expected status 200, got %d. Body: %s", rec.Code, rec.Body.String())
-		}
-
-		var resp map[string]string
-		if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
-			t.Fatalf("failed to decode response: %v", err)
-		}
-		if resp["status"] != "queued" {
-			t.Errorf("expected queued status, got %q", resp["status"])
-		}
-
-		// Allow background goroutine to execute
-		time.Sleep(50 * time.Millisecond)
-
-		if updatedHistoryID != "history-456" || updatedHistoryStatus != "failed" || updatedHistoryErrMsg != "alert target not found" {
-			t.Errorf("unexpected history status update: id=%s status=%s err=%s", updatedHistoryID, updatedHistoryStatus, updatedHistoryErrMsg)
-		}
-		if updatedAlertID != "alert-456" || updatedAgentID != "agent-456" || updatedAgentStatus != "failed" || updatedAgentErrMsg != "alert target not found" {
-			t.Errorf("unexpected agent status update: id=%s agent=%s status=%s err=%s", updatedAlertID, updatedAgentID, updatedAgentStatus, updatedAgentErrMsg)
-		}
-	})
-
-	t.Run("rejected retry if already passed", func(t *testing.T) {
-		mockStore := &mockAlertsStore{
-			GetHistoryByIDFunc: func(ctx context.Context, historyID string, userID string) (*basealert.AlertHistory, error) {
-				return &basealert.AlertHistory{
-					HistoryID:      "history-789",
-					AlertID:        "alert-789",
-					AgentID:        "agent-789",
-					NotifiedStatus: "success",
-				}, nil
-			},
-		}
-
-		handler := RetryAlertHandler(mockStore)
-
-		req := httptest.NewRequest("POST", "/api/alerts/history/retry/history-789", nil)
-		ctxVal := context.WithValue(req.Context(), CSContext.UserIDKey, "user-123")
-		
-		rctx := chi.NewRouteContext()
-		rctx.URLParams.Add("id", "history-789")
-		ctxVal = context.WithValue(ctxVal, chi.RouteCtxKey, rctx)
-		req = req.WithContext(ctxVal)
-
-		rec := httptest.NewRecorder()
-		handler.ServeHTTP(rec, req)
-
-		if rec.Code != http.StatusBadRequest {
-			t.Fatalf("expected status 400, got %d. Body: %s", rec.Code, rec.Body.String())
-		}
-	})
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(200) }))
+	defer ts.Close()
+	db, _, eventID := retryFixture(t, ts.URL)
+	if w := retryRequest(RetryAlertHandler(db), "incident", "other"); w.Code != 404 {
+		t.Fatalf("ownership: %d", w.Code)
+	}
+	if w := retryRequest(RetryEventHandler(db), eventID, "other"); w.Code != 404 {
+		t.Fatalf("event ownership: %d", w.Code)
+	}
+	w := retryRequest(RetryAlertHandler(db), "incident", "owner")
+	if w.Code != 200 {
+		t.Fatalf("retry: %d %s", w.Code, w.Body)
+	}
+	var response map[string]string
+	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil || response["status"] != "queued" {
+		t.Fatalf("response: %v %v", response, err)
+	}
+	awaitDelivery(t, db, "firing")
+	if w = retryRequest(RetryAlertHandler(db), "incident", "owner"); w.Code != 409 {
+		t.Fatalf("successful notification retried: %d", w.Code)
+	}
+	events, total, err := db.AlertHistoryEvents(context.Background(), "owner", "incident", 1, 100)
+	if err != nil || total != 3 || events[1].Status != "failed" || events[2].Status != "success" || events[2].RetryOf != eventID {
+		t.Fatalf("attempt log: %+v %v", events, err)
+	}
+}
+func TestRetryRecoveryDoesNotRefire(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(200) }))
+	defer ts.Close()
+	db, rule, _ := retryFixture(t, ts.URL)
+	ctx := context.Background()
+	if err := db.AlertResolve(ctx, rule, "node"); err != nil {
+		t.Fatal(err)
+	}
+	e, err := db.AlertAttemptQueue(ctx, "owner", "incident", "recovery", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err = db.AlertAttemptStart(ctx, e.EventID); err != nil {
+		t.Fatal(err)
+	}
+	if err = db.AlertAttemptComplete(ctx, e.EventID, "failed", "recovery failed"); err != nil {
+		t.Fatal(err)
+	}
+	if w := retryRequest(RetryAlertHandler(db), "incident", "owner"); w.Code != 409 {
+		t.Fatalf("stale firing retry: %d", w.Code)
+	}
+	if w := retryRequest(RetryEventHandler(db), e.EventID, "owner"); w.Code != 200 {
+		t.Fatalf("recovery retry: %d %s", w.Code, w.Body)
+	}
+	awaitDelivery(t, db, "recovery")
+	rules, err := db.AlertList(ctx, "owner")
+	if err != nil || rules[0].Agents[0].Status != "ok" {
+		t.Fatalf("recovery refired: %+v %v", rules, err)
+	}
+}
+func TestHistoryAPI(t *testing.T) {
+	db, _, eventID := retryFixture(t, "https://example.com")
+	handler := HistoryAlertHandler(db)
+	req := httptest.NewRequest("GET", "/history?limit=999&agent_id=node", nil)
+	req = req.WithContext(context.WithValue(req.Context(), CSContext.UserIDKey, "owner"))
+	w := httptest.NewRecorder()
+	handler(w, req)
+	var data struct {
+		Limit, Total, TotalPages int
+		Data                     []basealert.AlertHistory
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &data); err != nil || w.Code != 200 || data.Limit != 100 || data.Total != 1 {
+		t.Fatalf("pagination: %s %v", w.Body, err)
+	}
+	if w := retryRequest(RetryEventHandler(db), eventID, ""); w.Code != 401 {
+		t.Fatalf("unauthenticated: %d", w.Code)
+	}
+	if err := db.AlertDelete(context.Background(), "rule", "owner"); err != nil {
+		t.Fatal(err)
+	}
+	if w := retryRequest(RetryAlertHandler(db), "incident", "owner"); w.Code != 409 {
+		t.Fatalf("deleted rule retry: %d", w.Code)
+	}
 }

@@ -2,8 +2,6 @@
   'use strict';
 
   let panelPath = '';
-  let incidentHistory = [];
-  let currentFilter = 'all';
 
   function handleTriggerTypeChange(selectEl, prefix) {
     const val = selectEl.value;
@@ -48,159 +46,16 @@
     });
   }
 
-  function esc(v) {
-    return String(v == null ? '' : v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
-  }
-
-  function formatDuration(triggeredAt, resolvedAt) {
-    if (!resolvedAt) return '<span class="history-status-ongoing">Ongoing</span>';
-    const diffMs = new Date(resolvedAt).getTime() - new Date(triggeredAt).getTime();
-    if (diffMs <= 0) return '< 1s';
-    const sec = Math.floor(diffMs / 1000);
-    if (sec < 60) return `${sec}s`;
-    const min = Math.floor(sec / 60);
-    const remSec = sec % 60;
-    if (min < 60) return `${min}m ${remSec}s`;
-    const hrs = Math.floor(min / 60);
-    const remMin = min % 60;
-    return `${hrs}h ${remMin}m`;
-  }
-
-  function formatBreachVal(item) {
-    const type = item.trigger ? item.trigger.type : '';
-    if (type === 'agent_down') return '<span class="muted">Offline</span>';
-    if (['net_rx', 'net_tx', 'disk_read', 'disk_write'].includes(type)) {
-      return `${(item.trigger_value || 0).toLocaleString()} KB/s`;
-    }
-    return `${(item.trigger_value || 0).toFixed(1)}%`;
-  }
-
-  function loadHistory() {
-    fetch(panelPath + '/api/alerts/history')
-      .then(r => r.json())
-      .then(data => {
-        incidentHistory = Array.isArray(data) ? data : (data.data || data.items || []);
-        renderHistory();
-      })
-      .catch(() => {
-        const tbody = document.getElementById('history-tbody');
-        if (tbody) {
-          tbody.innerHTML = '<tr><td colspan="6" class="table-empty">Could not load incident history. Reload the page to try again.</td></tr>';
-        }
-      });
-  }
-
-  function renderHistory() {
-    const tbody = document.getElementById('history-tbody');
-    if (!tbody) return;
-    const search = (document.getElementById('history-search')?.value || '').toLowerCase();
-
-    const filtered = incidentHistory.filter(item => {
-      if (currentFilter === 'firing' && item.resolved_at) return false;
-      if (currentFilter === 'resolved' && !item.resolved_at) return false;
-      if (search) {
-        const text = `${item.alert_nickname || ''} ${item.agent_nickname || ''} ${item.agent_id || ''} ${item.notified_status || ''}`.toLowerCase();
-        if (!text.includes(search)) return false;
-      }
-      return true;
-    });
-
-    // Active Incidents Banner
-    const firingCount = incidentHistory.filter(i => !i.resolved_at).length;
-    const banner = document.getElementById('active-incidents-banner');
-    if (banner) {
-      if (firingCount > 0) {
-        banner.style.display = 'flex';
-        const countLabel = document.getElementById('incidents-count-label');
-        if (countLabel) countLabel.textContent = firingCount === 1 ? '1 incident is firing' : `${firingCount} incidents are firing`;
-      } else {
-        banner.style.display = 'none';
-      }
-    }
-
-    if (filtered.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="6" class="table-empty">' + (incidentHistory.length ? 'No incidents match this filter.' : 'No incidents yet.') + '</td></tr>';
-      return;
-    }
-
-    tbody.innerHTML = filtered.map(item => {
-      const isFiring = !item.resolved_at;
-      const trigTime = item.triggered_at ? new Date(item.triggered_at).toLocaleString() : '-';
-      const breachVal = formatBreachVal(item);
-      const duration = formatDuration(item.triggered_at, item.resolved_at);
-
-      let notice;
-      if (item.notified_status === 'failed') {
-        notice = `<button type="button" class="btn btn-danger btn-sm retry-btn" data-id="${esc(item.history_id)}" title="${esc(item.error_message || 'Notification failed')}">Retry</button>`;
-      } else if (item.notified_status === 'pending') {
-        notice = '<span class="muted">Sending…</span>';
-      } else {
-        notice = '<span class="history-delivered">Delivered</span>';
-      }
-
-      return `
-        <tr>
-          <td>${esc(trigTime)}</td>
-          <td>
-            <span class="history-rule">
-              <span class="table-node-name">${esc(item.alert_nickname || 'Rule')}</span>
-              <span class="muted">${esc(item.agent_nickname || item.agent_id || 'Server')}</span>
-            </span>
-          </td>
-          <td class="mono">${breachVal}</td>
-          <td>${duration}</td>
-          <td><span class="badge ${isFiring ? 'badge-offline' : 'badge-online'}">${isFiring ? 'Firing' : 'Resolved'}</span></td>
-          <td>${notice}</td>
-        </tr>
-      `;
-    }).join('');
-
-    // Retry Handlers
-    tbody.querySelectorAll('.retry-btn').forEach(btn => {
-      btn.onclick = function() {
-        const incId = this.getAttribute('data-id');
-        const origText = this.textContent;
-        this.disabled = true;
-        this.textContent = 'Queueing...';
-        fetch(panelPath + '/api/alerts/history/retry/' + incId, { method: 'POST' })
-          .then(r => r.json().then(data => ({ ok: r.ok, data })))
-          .then(({ ok, data }) => {
-            if (ok) {
-              window.CertainStatsTelemetry.showToast(data.message || "Notification retry queued in background", true);
-              setTimeout(loadHistory, 1200);
-            } else {
-              window.CertainStatsTelemetry.showToast(data.message || "Retry request failed", false);
-              this.disabled = false;
-              this.textContent = origText;
-            }
-          })
-          .catch(() => {
-            window.CertainStatsTelemetry.showToast("Network error dispatching retry", false);
-            this.disabled = false;
-            this.textContent = origText;
-          });
-      };
-    });
-  }
+  let historyView;
+  function loadHistory() { if (historyView) return historyView.refresh(); }
 
   function init(options) {
     options = options || {};
     panelPath = options.panelPath || window.CertainStatsTelemetry.getPanelPath();
 
     window.CertainStatsTelemetry.onReady(function() {
-      loadHistory();
-
-      const searchInput = document.getElementById('history-search');
-      if (searchInput) searchInput.oninput = renderHistory;
-
-      document.querySelectorAll('.history-filter-btn').forEach(btn => {
-        btn.onclick = function() {
-          document.querySelectorAll('.history-filter-btn').forEach(b => b.classList.remove('active'));
-          btn.classList.add('active');
-          currentFilter = btn.getAttribute('data-status');
-          renderHistory();
-        };
-      });
+      const root = document.querySelector('[data-incident-history]');
+      if (root) historyView = window.CertainStatsIncidentHistory.mount(root, { panelPath });
 
       // Test Alert Rule Button
       document.querySelectorAll('.test-alert-btn').forEach(btn => {
@@ -349,7 +204,7 @@
     handleDestTypeChange: handleDestTypeChange,
     toggleAllNodes: toggleAllNodes,
     loadHistory: loadHistory,
-    renderHistory: renderHistory
+    renderHistory: loadHistory
   };
 
   // Backwards compatibility globals

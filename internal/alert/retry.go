@@ -1,105 +1,68 @@
 package alert
 
 import (
-	basealert "certainstats/internal/base/alert"
-	ctx "certainstats/internal/context"
-	"certainstats/internal/notifications"
+	"certainstats/internal/alertdelivery"
 	apiresponse "certainstats/internal/response"
 	"certainstats/internal/store"
 	"context"
 	"database/sql"
+	"errors"
+	"log"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
 )
 
-// RetryAlertHandler handles POST /api/alerts/history/retry/{id}
+// RetryAlertHandler preserves the original firing-notification retry endpoint.
 func RetryAlertHandler(db store.AlertsStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		userID, ok := r.Context().Value(ctx.UserIDKey).(string)
+		user, ok := historyUser(w, r)
 		if !ok {
-			apiresponse.Error(w, http.StatusUnauthorized, "Unauthorized")
 			return
 		}
-
-		historyID := chi.URLParam(r, "id")
-		if historyID == "" {
-			apiresponse.Error(w, http.StatusBadRequest, "Missing history ID")
+		id := chi.URLParam(r, "id")
+		if id == "" {
+			apiresponse.Error(w, 400, "Missing history ID")
 			return
 		}
-
-		// 1. Retrieve the alert history record
-		history, err := db.AlertHistoryGetByID(r.Context(), historyID, userID)
+		h, err := db.AlertHistoryGetByID(r.Context(), id, user)
+		if err == sql.ErrNoRows {
+			apiresponse.Error(w, 404, "Incident not found")
+			return
+		}
 		if err != nil {
-			if err == sql.ErrNoRows {
-				apiresponse.Error(w, http.StatusNotFound, "Alert history not found")
-				return
-			}
-			apiresponse.Error(w, http.StatusInternalServerError, "Database error reading history")
+			apiresponse.Error(w, 500, "Failed to retrieve incident")
 			return
 		}
-
-		// 1.5. Reject retry if the notification has already succeeded
-		if history.NotifiedStatus == "success" {
-			apiresponse.Error(w, http.StatusBadRequest, "Notification has already been successfully delivered")
+		latest, err := alertdelivery.LatestAttempt(r.Context(), db, user, id, "firing")
+		if err != nil {
+			apiresponse.Error(w, 500, "Failed to retrieve notification attempt")
 			return
 		}
-
-		// 2. Mark status as pending immediately so UI reflects in-progress state
-		_ = db.AlertHistoryUpdateStatus(r.Context(), historyID, "pending", "")
-
-		// 3. Queue notification dispatch to background without blocking HTTP response
-		go func(hID, aID, uID string, hist basealert.AlertHistory) {
-			bgCtx := context.Background()
-
-			alertVal, err := db.AlertGetInfo(bgCtx, hist.AlertID, uID)
-			if err != nil {
-				_ = db.AlertHistoryUpdateStatus(bgCtx, hID, "failed", "Database error reading alert info: "+err.Error())
-				return
-			}
-
-			nctx := notifications.NotificationContext{
-				AgentID:       hist.AgentID,
-				Nickname:      hist.AgentNickname,
-				TriggerType:   string(alertVal.Trigger.Type),
-				Status:        "FIRING",
-				Value:         hist.TriggerValue,
-				Operator:      string(alertVal.Trigger.Operator),
-				Threshold:     alertVal.Trigger.Threshold,
-				WentOfflineAt: &hist.TriggeredAt,
-			}
-
-			actionToDispatch := alertVal.Action
-			var notifErr error
-			if alertVal.Action.Type == basealert.DestPreset && alertVal.Action.TargetID != "" {
-				target, err := db.TargetGetByID(bgCtx, alertVal.Action.TargetID, uID)
-				if err == nil {
-					actionToDispatch.Type = target.Type
-					actionToDispatch.Destination = target.Destination
-					if actionToDispatch.Payload == "" {
-						actionToDispatch.Payload = target.Payload
-					}
-				} else {
-					notifErr = err
-				}
-			}
-
-			if notifErr == nil {
-				notifErr = notifications.DispatchNotification(actionToDispatch, nctx)
-			}
-
-			if notifErr != nil {
-				_ = db.AlertHistoryUpdateStatus(bgCtx, hID, "failed", notifErr.Error())
-				_ = db.AlertAgentUpdateStatus(bgCtx, alertVal.AlertID, hist.AgentID, "failed", notifErr.Error())
-			} else {
-				_ = db.AlertHistoryUpdateStatus(bgCtx, hID, "success", "")
-				_ = db.AlertAgentUpdateStatus(bgCtx, alertVal.AlertID, hist.AgentID, "firing", "")
-			}
-		}(historyID, history.AlertID, userID, *history)
-
-		apiresponse.JSON(w, http.StatusOK, map[string]string{
-			"status":  "queued",
-			"message": "Notification retry queued in background",
-		})
+		retryOf := ""
+		if latest != nil {
+			retryOf = latest.EventID
+		} else if !h.Legacy || (h.NotifiedStatus != "failed" && h.NotifiedStatus != "unknown") {
+			apiresponse.Error(w, 409, "No failed firing notification to retry")
+			return
+		}
+		queueHistoryRetry(w, r, db, user, id, "firing", retryOf)
 	}
+}
+func queueHistoryRetry(w http.ResponseWriter, r *http.Request, db store.AlertsStore, user, id, phase, retryOf string) {
+	attempt, err := db.AlertAttemptQueue(r.Context(), user, id, phase, retryOf)
+	if err != nil {
+		if errors.Is(err, store.ErrAlertAttemptUnavailable) {
+			apiresponse.Error(w, 409, "Notification is not eligible for retry")
+		} else {
+			apiresponse.Error(w, 500, "Failed to queue notification retry")
+		}
+		return
+	}
+	go func() {
+		if err := alertdelivery.Dispatch(context.Background(), db, attempt.EventID); err != nil {
+			log.Printf("Notification retry: %v", err)
+		}
+	}()
+	apiresponse.JSON(w, 200, map[string]string{"status": "queued", "message": "Notification retry queued", "event_id": attempt.EventID})
 }

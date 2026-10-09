@@ -84,19 +84,47 @@ type AgentState struct {
 	ErrorMessage string     `json:"error_message,omitempty"`
 }
 
-type AlertHistory struct {
+type HistoryNode struct {
+	AgentID  string `json:"agent_id"`
+	Nickname string `json:"nickname"`
+}
+
+// HistoryEvent is a lifecycle transition or one durable delivery attempt.
+// Completed attempts are immutable; a retry creates a new event.
+type HistoryEvent struct {
+	EventID        string     `json:"event_id"`
 	HistoryID      string     `json:"history_id"`
-	AlertID        string     `json:"alert_id"`
-	UserID         string     `json:"-"` // Denormalized for ultra-fast query
-	AgentID        string     `json:"agent_id"`
-	AgentNickname  string     `json:"agent_nickname"`
-	AlertNickname  string     `json:"alert_nickname"`
-	TriggeredAt    time.Time  `json:"triggered_at"`
-	ResolvedAt     *time.Time `json:"resolved_at,omitempty"`
-	TriggerValue   float64    `json:"trigger_value"`
-	NotifiedStatus string     `json:"notified_status"`
-	Trigger        Trigger    `json:"trigger"`
-	TargetID       string     `json:"target_id,omitempty"`
-	TargetName     string     `json:"target_name,omitempty"`
+	Kind           string     `json:"kind"`
+	Phase          string     `json:"phase,omitempty"`
+	Status         string     `json:"status,omitempty"`
+	CreatedAt      time.Time  `json:"created_at"`
+	StartedAt      *time.Time `json:"started_at,omitempty"`
+	CompletedAt    *time.Time `json:"completed_at,omitempty"`
 	ErrorMessage   string     `json:"error_message,omitempty"`
+	RetryOf        string     `json:"retry_of,omitempty"`
+	RetryAvailable bool       `json:"retry_available"`
+}
+
+type AlertHistory struct {
+	MonitoringAvailable bool       `json:"-"`
+	ClosedAt            *time.Time `json:"closed_at,omitempty"`
+	CloseReason         string     `json:"close_reason,omitempty"`
+	Legacy              bool       `json:"legacy"`
+	RetryAvailable      bool       `json:"retry_available"`
+	FiringDelivery      string     `json:"firing_delivery,omitempty"`
+	RecoveryDelivery    string     `json:"recovery_delivery,omitempty"`
+	HistoryID           string     `json:"history_id"`
+	AlertID             string     `json:"alert_id"`
+	UserID              string     `json:"-"` // Denormalized for ultra-fast query
+	AgentID             string     `json:"agent_id"`
+	AgentNickname       string     `json:"agent_nickname"`
+	AlertNickname       string     `json:"alert_nickname"`
+	TriggeredAt         time.Time  `json:"triggered_at"`
+	ResolvedAt          *time.Time `json:"resolved_at,omitempty"`
+	TriggerValue        float64    `json:"trigger_value"`
+	NotifiedStatus      string     `json:"notified_status"`
+	Trigger             Trigger    `json:"trigger"`
+	TargetID            string     `json:"target_id,omitempty"`
+	TargetName          string     `json:"target_name,omitempty"`
+	ErrorMessage        string     `json:"error_message,omitempty"`
 }

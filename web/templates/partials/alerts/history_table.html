@@ -1,34 +1,31 @@
+{{define "incident_history_controls"}}
+<div class="incident-toolbar">
+  <label class="incident-search"><span class="sr-only">Search rules and nodes</span><input type="search" data-history-search class="form-input" placeholder="Search rules and nodes"></label>
+  <label data-history-node-label><span class="sr-only">Filter by node</span><select data-history-node class="form-input"><option value="">All nodes</option></select></label>
+  <div class="toolbar-group" role="group" aria-label="Incident status">
+    <button type="button" class="toolbar-btn active" data-history-status="all" aria-pressed="true">All</button>
+    <button type="button" class="toolbar-btn" data-history-status="firing" aria-pressed="false">Firing</button>
+    <button type="button" class="toolbar-btn" data-history-status="resolved" aria-pressed="false">Resolved</button>
+    <button type="button" class="toolbar-btn" data-history-status="closed" aria-pressed="false">Closed</button>
+  </div>
+  <button type="button" class="btn btn-secondary btn-sm" data-history-refresh>Refresh</button>
+</div>
+<div data-history-message class="incident-message" role="status" aria-live="polite"></div>
+<div class="incident-list" data-history-list></div>
+<div class="incident-pagination">
+  <span data-history-count class="muted"></span>
+  <label class="incident-page-size">Per page <select data-history-limit class="form-input form-input-sm"><option>25</option><option>50</option><option>100</option></select></label>
+  <div class="incident-page-buttons">
+    <button type="button" class="btn btn-secondary btn-sm" data-history-prev disabled>Previous</button>
+    <span data-history-page class="muted"></span>
+    <button type="button" class="btn btn-secondary btn-sm" data-history-next disabled>Next</button>
+  </div>
+</div>
+{{end}}
+
 {{define "alerts_history_table"}}
 <section id="history-section" class="page-section">
-  <div class="section-header">
-    <h2 class="section-title">Incident history</h2>
-    <div class="page-actions">
-      <label class="sr-only" for="history-search">Search incidents</label>
-      <input type="search" id="history-search" class="form-input form-input-sm" placeholder="Search incidents">
-      <div class="toolbar-group" role="group" aria-label="Filter by status">
-        <button type="button" class="toolbar-btn history-filter-btn active" data-status="all">All</button>
-        <button type="button" class="toolbar-btn history-filter-btn" data-status="firing">Firing</button>
-        <button type="button" class="toolbar-btn history-filter-btn" data-status="resolved">Resolved</button>
-      </div>
-    </div>
-  </div>
-
-  <div class="table-responsive">
-    <table class="table" id="history-table">
-      <thead>
-        <tr>
-          <th>Started</th>
-          <th>Rule and server</th>
-          <th>Value</th>
-          <th>Duration</th>
-          <th>Status</th>
-          <th>Notification</th>
-        </tr>
-      </thead>
-      <tbody id="history-tbody">
-        <tr><td colspan="6" class="table-empty">Loading incident history…</td></tr>
-      </tbody>
-    </table>
-  </div>
+  <div class="section-header"><div><h2 class="section-title">Incident history</h2><p class="form-hint">What happened, how long it lasted, and which notifications reached their destination.</p></div></div>
+  <div data-incident-history>{{template "incident_history_controls" .}}</div>
 </section>
 {{end}}

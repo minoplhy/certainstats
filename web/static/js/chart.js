@@ -267,7 +267,6 @@
     renderMultiChart: function (canvasId, options) {
       function listen(target,type,callback,options={}) {target.addEventListener(type,callback,Object.assign({},options,{signal:listenerController.signal}));}
       const listenerController = new AbortController();
-      let touchZoom = false;
       const canvas = document.getElementById(canvasId);
       if (!canvas) return null;
 
@@ -784,29 +783,6 @@
         }
       });
 
-      // Touch Events (Mobile Drag Zoom)
-      listen(canvas, 'touchstart', function (e) {
-        if (touchZoom && e.touches && e.touches[0]) {
-          handleDragStart(e.touches[0].clientX);
-        }
-      }, { passive: true });
-
-      listen(canvas, 'touchmove', function (e) {
-        if (touchZoom && isDragging && e.touches && e.touches[0]) {
-          handleDragMove(e.touches[0].clientX);
-          e.preventDefault();
-        }
-      }, { passive: false });
-
-      listen(canvas, 'touchend', function () {
-        if (isDragging) {
-          handleDragEnd();
-        }
-      });
-
-      const zoomButton=document.createElement('button');zoomButton.type='button';zoomButton.className='btn btn-secondary btn-sm touch-zoom-toggle';zoomButton.textContent='Touch zoom';zoomButton.setAttribute('aria-pressed','false');
-      canvas.parentElement.append(zoomButton);
-      listen(zoomButton,'click',()=>{touchZoom=!touchZoom;zoomButton.setAttribute('aria-pressed',String(touchZoom));canvas.style.touchAction=touchZoom ? 'none' : 'pan-y';});
       draw();
 
       const onThemeChange = () => draw();
@@ -875,9 +851,8 @@
           }
         },
 
-        setTouchZoom: function (enabled) {touchZoom=!!enabled;canvas.style.touchAction=touchZoom ? "none" : "pan-y";},
         destroy: function () {
- listenerController.abort();zoomButton.remove();
+          listenerController.abort();
           window.removeEventListener('resize', draw);
           window.removeEventListener('certainstats_theme_change', onThemeChange);
         }

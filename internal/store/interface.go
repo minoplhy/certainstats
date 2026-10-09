@@ -97,6 +97,17 @@ type AlertsStore interface {
 	AlertAgentUpdateStatus(ctx context.Context, alertID string, agentID string, status string, errMsg string) error
 	AlertHistoryGetFailed(ctx context.Context) ([]*c.AlertHistory, error)
 
+	AlertHistoryListFiltered(ctx context.Context, userID string, page, limit int, search, status, agentID string) ([]c.AlertHistory, int, error)
+	AlertHistorySummary(ctx context.Context, userID string) (int, error)
+	AlertHistoryNodes(ctx context.Context, userID string) ([]c.HistoryNode, error)
+	AlertHistoryActive(ctx context.Context, userID, alertID, agentID string) (*c.AlertHistory, error)
+	AlertHistoryEvents(ctx context.Context, userID, historyID string, page, limit int) ([]c.HistoryEvent, int, error)
+	AlertAttemptQueue(ctx context.Context, userID, historyID, phase, retryOf string) (c.HistoryEvent, error)
+	AlertAttemptIncident(ctx context.Context, eventID string) (*c.AlertHistory, error)
+	AlertAttemptStart(ctx context.Context, eventID string) (*c.AlertHistory, c.HistoryEvent, error)
+	AlertAttemptComplete(ctx context.Context, eventID, status, message string) error
+	AlertAttemptsFailed(ctx context.Context) ([]c.HistoryEvent, error)
+
 	// Target CRUD Operations
 	TargetCreate(ctx context.Context, t c.AlertTarget) error
 	TargetList(ctx context.Context, userID string) ([]c.AlertTarget, error)

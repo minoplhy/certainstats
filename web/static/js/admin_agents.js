@@ -4,6 +4,7 @@
   let panelPath = '';
   let agentsData = [];
   let currentActiveAgentId = null;
+  let nodeHistory = null;
   let inpageTimePicker = null;
   let inpageCustomRange = null;
   let inpageCpuChart = null, inpageRamChart = null, inpageNetChart = null;
@@ -1061,6 +1062,9 @@
       setAgentViewMode(viewMode);
       loadSparklines();
 
+      const historyRoot = document.querySelector('[data-incident-history]');
+      if (historyRoot) nodeHistory = window.CertainStatsIncidentHistory.mount(historyRoot, { panelPath, nodeMode: true });
+
       // In-Place SPA Router (BASE_PATH/{AGENT_ID})
       window.CertainStatsTelemetry.initRouter({
         basePath: panelPath,
@@ -1074,12 +1078,14 @@
             if (detailView) detailView.hidden = true;
             if (overviewView) overviewView.hidden = false;
             currentActiveAgentId = null;
+            if (nodeHistory) nodeHistory.setNode(null);
             window.scrollTo({ top: savedScrollY, behavior: 'instant' });
             return;
           }
 
           savedScrollY = window.scrollY;
           currentActiveAgentId = agentId;
+          if (nodeHistory) nodeHistory.setNode(agentId);
           if (overviewView) overviewView.hidden = true;
           if (detailView) {
             detailView.hidden = false;

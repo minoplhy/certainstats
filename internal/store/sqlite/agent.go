@@ -173,7 +173,22 @@ func (s *Store) AgentUpdate(ctx context.Context, agentID, userID string, nicknam
 }
 
 func (s *Store) AgentDelete(ctx context.Context, agentID, userID string) error {
-	res, err := s.db.ExecContext(ctx,
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	var owned int
+	if err = tx.QueryRowContext(ctx, `SELECT count(*) FROM agents WHERE agent_id=? AND user_id=?`, agentID, userID).Scan(&owned); err != nil {
+		return err
+	}
+	if owned == 0 {
+		return sql.ErrNoRows
+	}
+	if err = closeIncidentMonitoring(ctx, tx, "agent_id", agentID); err != nil {
+		return err
+	}
+	res, err := tx.ExecContext(ctx,
 		`DELETE FROM agents WHERE agent_id = ? AND user_id = ?`,
 		agentID, userID,
 	)
@@ -186,6 +201,10 @@ func (s *Store) AgentDelete(ctx context.Context, agentID, userID string) error {
 	}
 	if n == 0 {
 		return sql.ErrNoRows
+	}
+
+	if err = tx.Commit(); err != nil {
+		return err
 	}
 
 	// Evict from identity cache immediately so in-flight submits are rejected.

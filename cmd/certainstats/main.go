@@ -327,6 +327,9 @@ func main() {
 			api.Route("/alerts", func(alertApi chi.Router) {
 				alertApi.Get("/", requireAuth(db, alert.ListAlertsHandler(db)))
 				alertApi.Get("/history", requireAuth(db, alert.HistoryAlertHandler(db)))
+				alertApi.Get("/history/summary", requireAuth(db, alert.HistorySummaryHandler(db)))
+				alertApi.Get("/history/{id}/events", requireAuth(db, alert.HistoryEventsHandler(db)))
+				alertApi.Post("/history/events/{id}/retry", requireAuth(db, alert.RetryEventHandler(db)))
 				alertApi.Post("/history/retry/{id}", requireAuth(db, alert.RetryAlertHandler(db)))
 				alertApi.Post("/", requireAuth(db, alert.CreateAlertHandler(db)))
 				alertApi.Post("/test", requireAuth(db, alert.TestAlertHandler(db)))

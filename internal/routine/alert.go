@@ -2,8 +2,8 @@ package routine
 
 import (
 	agentdata "certainstats/internal/agent_data"
-	basealert "certainstats/internal/base/alert"
-	"certainstats/internal/notifications"
+	"certainstats/internal/alertdelivery"
+	a "certainstats/internal/base/alert"
 	"certainstats/internal/store"
 	"context"
 	"fmt"
@@ -11,184 +11,91 @@ import (
 	"time"
 )
 
-func (e *Routine) TriggerAlert(ctx context.Context, alert store.Alert, agentState basealert.AgentState, info store.AgentInfo, violationValue float64) error {
-	historyID := fmt.Sprintf("alh_%d_%s", time.Now().UnixMicro(), agentdata.GenerateRandomString(8))
-
-	now := time.Now()
-	nctx := notifications.NotificationContext{
-		AgentID:       agentState.AgentID,
-		Nickname:      info.Nickname,
-		TriggerType:   string(alert.Trigger.Type),
-		Status:        "FIRING",
-		Value:         violationValue,
-		Operator:      string(alert.Trigger.Operator),
-		Threshold:     alert.Trigger.Threshold,
-		WentOfflineAt: &now,
-	}
-
-	actionToDispatch := alert.Action
-	var targetID, targetName string
-	var notifErr error
-	if alert.Action.Type == basealert.DestPreset && alert.Action.TargetID != "" {
-		target, err := e.Store.TargetGetByID(ctx, alert.Action.TargetID, alert.UserID)
-		if err == nil {
-			actionToDispatch.Type = target.Type
-			actionToDispatch.Destination = target.Destination
-			// Use action custom payload override if specified, otherwise target payload template
-			if actionToDispatch.Payload == "" {
-				actionToDispatch.Payload = target.Payload
-			}
-			targetID = target.TargetID
+func (e *Routine) TriggerAlert(ctx context.Context, rule store.Alert, state a.AgentState, info store.AgentInfo, value float64) error {
+	id := fmt.Sprintf("alh_%d_%s", time.Now().UnixMicro(), agentdata.GenerateRandomString(8))
+	targetID, targetName := rule.Action.TargetID, ""
+	if targetID != "" {
+		if target, err := e.Store.TargetGetByID(ctx, targetID, rule.UserID); err == nil {
 			targetName = target.Name
-		} else {
-			notifErr = fmt.Errorf("preset target %s missing or unauthorized: %w", alert.Action.TargetID, err)
 		}
 	}
-
-	// 1. Database Updates with status = "pending" first
-	// This ensures the alert history log and agent trigger status are updated immediately
-	// regardless of notification speed or success/failure.
-	err := e.Store.AlertTrigger(ctx, alert, agentState.AgentID, info.Nickname, historyID, violationValue, "pending", targetID, targetName, "")
-	if err != nil {
-		log.Printf("ALERT TRIGGER DB SAVE FAILED: %v", err)
+	if err := e.Store.AlertTrigger(ctx, rule, state.AgentID, info.Nickname, id, value, "pending", targetID, targetName, ""); err != nil {
 		return err
 	}
-
-	// 2. Send the Notification (Webhook, Discord, etc.)
-	if notifErr == nil {
-		notifErr = notifications.DispatchNotification(actionToDispatch, nctx)
-	}
-
-	// 3. Update the DB statuses based on dispatch result
-	if notifErr != nil {
-		log.Printf("ALERT NOTIFY FAILED: %v", notifErr)
-		_ = e.Store.AlertHistoryUpdateStatus(ctx, historyID, "failed", notifErr.Error())
-		_ = e.Store.AlertAgentUpdateStatus(ctx, alert.AlertID, agentState.AgentID, "failed", notifErr.Error())
-	} else {
-		_ = e.Store.AlertHistoryUpdateStatus(ctx, historyID, "success", "")
-		_ = e.Store.AlertAgentUpdateStatus(ctx, alert.AlertID, agentState.AgentID, "firing", "")
-	}
-
-	log.Printf("ALERT TRIGGERED: Alert %s for Agent %s (%s). Value: %.2f", alert.AlertID, agentState.AgentID, info.Nickname, violationValue)
-	return nil
-}
-
-func (e *Routine) ResolveAlert(ctx context.Context, alert store.Alert, agentState basealert.AgentState, info store.AgentInfo) error {
-	now := time.Now()
-	nctx := notifications.NotificationContext{
-		AgentID:       agentState.AgentID,
-		Nickname:      info.Nickname,
-		TriggerType:   string(alert.Trigger.Type),
-		Status:        "RESOLVED",
-		Value:         0,
-		Operator:      string(alert.Trigger.Operator),
-		Threshold:     alert.Trigger.Threshold,
-		WentOfflineAt: agentState.LastFiredAt,
-		ResolvedAt:    &now,
-	}
-
-	actionToDispatch := alert.Action
-	var notifErr error
-	if alert.Action.Type == basealert.DestPreset && alert.Action.TargetID != "" {
-		target, err := e.Store.TargetGetByID(ctx, alert.Action.TargetID, alert.UserID)
-		if err == nil {
-			actionToDispatch.Type = target.Type
-			actionToDispatch.Destination = target.Destination
-			// Use action custom payload override if specified, otherwise target payload template
-			if actionToDispatch.Payload == "" {
-				actionToDispatch.Payload = target.Payload
-			}
-		} else {
-			notifErr = fmt.Errorf("preset target %s missing or unauthorized: %w", alert.Action.TargetID, err)
-		}
-	}
-
-	// 1. Send "Resolved" Notification
-	if notifErr == nil {
-		notifErr = notifications.DispatchNotification(actionToDispatch, nctx)
-	}
-	if notifErr != nil {
-		log.Printf("ALERT RESOLVE NOTIFY FAILED: %v", notifErr)
-	}
-
-	err := e.Store.AlertResolve(ctx, alert, agentState.AgentID)
+	attempt, err := e.Store.AlertAttemptQueue(ctx, rule.UserID, id, "firing", "")
 	if err != nil {
 		return err
 	}
-
-	log.Printf("ALERT RESOLVED: Alert %s for Agent %s (%s).", alert.AlertID, agentState.AgentID, info.Nickname)
-	return nil
+	return alertdelivery.Dispatch(ctx, e.Store, attempt.EventID)
 }
-
+func (e *Routine) ResolveAlert(ctx context.Context, rule store.Alert, state a.AgentState, info store.AgentInfo) error {
+	h, err := e.Store.AlertHistoryActive(ctx, rule.UserID, rule.AlertID, state.AgentID)
+	if err != nil {
+		return err
+	}
+	if err = e.Store.AlertResolve(ctx, rule, state.AgentID); err != nil {
+		return err
+	}
+	attempt, err := e.Store.AlertAttemptQueue(ctx, rule.UserID, h.HistoryID, "recovery", "")
+	if err != nil {
+		return err
+	}
+	return alertdelivery.Dispatch(ctx, e.Store, attempt.EventID)
+}
 func (e *Routine) RetryFailedAlerts(ctx context.Context) {
-	failedHistory, err := e.Store.AlertHistoryGetFailed(ctx)
+	attempts, err := e.Store.AlertAttemptsFailed(ctx)
 	if err != nil {
-		log.Printf("ALERT RETRY WORKER ERROR: %v", err)
+		log.Printf("Alert retries: %v", err)
 		return
 	}
-
-	if len(failedHistory) == 0 {
+	for _, attempt := range attempts {
+		// The attempt lookup is owned by its incident; the worker is not user-facing.
+		// Failed legacy records are handled below without fabricating old attempts.
+		e.retryAttempt(ctx, attempt)
+	}
+	// Older databases have only a stored firing delivery result, not attempts.
+	legacy, err := e.Store.AlertHistoryGetFailed(ctx)
+	if err != nil {
+		log.Printf("Legacy alert retries: %v", err)
 		return
 	}
-
-	log.Printf("ALERT RETRY WORKER: Found %d failed alert notifications to retry", len(failedHistory))
-
-	for _, history := range failedHistory {
-		if history.ResolvedAt != nil {
-			// Incident has already resolved, skip sending stale FIRING notification
-			_ = e.Store.AlertHistoryUpdateStatus(ctx, history.HistoryID, "skipped", "Alert already resolved before retry")
+	for _, h := range legacy {
+		if h.ResolvedAt != nil || h.ClosedAt != nil {
+			_ = e.Store.AlertHistoryUpdateStatus(ctx, h.HistoryID, "skipped", "Incident already ended before retry")
 			continue
 		}
-
-		// 1. Fetch corresponding alert details
-		alertVal, err := e.Store.AlertGetInfo(ctx, history.AlertID, history.UserID)
-		if err != nil {
-			log.Printf("ALERT RETRY WORKER: Failed to fetch alert info for alert %s: %v", history.AlertID, err)
+		if !h.Legacy {
 			continue
 		}
-
-		// 2. Construct Notification Context
-		nctx := notifications.NotificationContext{
-			AgentID:       history.AgentID,
-			Nickname:      history.AgentNickname,
-			TriggerType:   string(alertVal.Trigger.Type),
-			Status:        "FIRING",
-			Value:         history.TriggerValue,
-			Operator:      string(alertVal.Trigger.Operator),
-			Threshold:     alertVal.Trigger.Threshold,
-			WentOfflineAt: &history.TriggeredAt,
+		latest, err := alertdelivery.LatestAttempt(ctx, e.Store, h.UserID, h.HistoryID, "firing")
+		if err != nil || latest != nil {
+			continue
 		}
-
-		// 3. Resolve destination / targets
-		actionToDispatch := alertVal.Action
-		var notifErr error
-		if alertVal.Action.Type == basealert.DestPreset && alertVal.Action.TargetID != "" {
-			target, err := e.Store.TargetGetByID(ctx, alertVal.Action.TargetID, history.UserID)
-			if err == nil {
-				actionToDispatch.Type = target.Type
-				actionToDispatch.Destination = target.Destination
-				if actionToDispatch.Payload == "" {
-					actionToDispatch.Payload = target.Payload
-				}
-			} else {
-				notifErr = fmt.Errorf("preset target %s missing or unauthorized: %w", alertVal.Action.TargetID, err)
+		attempt, err := e.Store.AlertAttemptQueue(ctx, h.UserID, h.HistoryID, "firing", "")
+		if err == nil {
+			if err = alertdelivery.Dispatch(ctx, e.Store, attempt.EventID); err != nil {
+				log.Printf("Legacy alert dispatch: %v", err)
 			}
 		}
-
-		// 4. Dispatch notification
-		if notifErr == nil {
-			notifErr = notifications.DispatchNotification(actionToDispatch, nctx)
+	}
+}
+func (e *Routine) retryAttempt(ctx context.Context, attempt a.HistoryEvent) {
+	// Find the owner through the failed-work query's durable attempt association.
+	h, err := e.Store.AlertAttemptIncident(ctx, attempt.EventID)
+	if err != nil {
+		log.Printf("Alert retry lookup: %v", err)
+		return
+	}
+	if h.ClosedAt != nil || (attempt.Phase == "firing" && h.ResolvedAt != nil) {
+		if attempt.Phase == "firing" {
+			_ = e.Store.AlertHistoryUpdateStatus(ctx, h.HistoryID, "skipped", "Incident already ended before retry")
 		}
-
-		// 5. Update DB statuses
-		if notifErr != nil {
-			log.Printf("ALERT RETRY WORKER: Notification retry failed for history %s: %v", history.HistoryID, notifErr)
-			_ = e.Store.AlertHistoryUpdateStatus(ctx, history.HistoryID, "failed", notifErr.Error())
-			_ = e.Store.AlertAgentUpdateStatus(ctx, alertVal.AlertID, history.AgentID, "failed", notifErr.Error())
-		} else {
-			log.Printf("ALERT RETRY WORKER: Notification retry succeeded for history %s", history.HistoryID)
-			_ = e.Store.AlertHistoryUpdateStatus(ctx, history.HistoryID, "success", "")
-			_ = e.Store.AlertAgentUpdateStatus(ctx, alertVal.AlertID, history.AgentID, "firing", "")
+		return
+	}
+	queued, err := e.Store.AlertAttemptQueue(ctx, h.UserID, h.HistoryID, attempt.Phase, attempt.EventID)
+	if err == nil {
+		if err = alertdelivery.Dispatch(ctx, e.Store, queued.EventID); err != nil {
+			log.Printf("Alert retry dispatch: %v", err)
 		}
 	}
 }

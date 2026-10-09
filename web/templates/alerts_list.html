@@ -24,6 +24,7 @@
 {{template "alerts_edit_target_modal" .}}
 {{template "alerts_template_guide_modal" .}}
 
+<script src="{{.StaticPath}}/{{asset "js/incident_history.js"}}" integrity="{{integrity "js/incident_history.js"}}"></script>
 <script src="{{.StaticPath}}/{{asset "js/admin_alerts.js"}}" integrity="{{integrity "js/admin_alerts.js"}}"></script>
 <script type="application/json" id="page-config" data-module="CertainStatsAdminAlerts">{{bootstrap .}}</script>
 <script src="{{.StaticPath}}/{{asset "js/bootstrap.js"}}" integrity="{{integrity "js/bootstrap.js"}}"></script>

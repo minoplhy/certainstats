@@ -236,7 +236,7 @@ func (s *Store) AlertUpdate(ctx context.Context, d store.Alert, newAgents []stri
 
 	// 2. Update the main alert record with the JSON strings
 	res, err := tx.ExecContext(ctx, `
-        UPDATE alerts 
+        UPDATE alerts
         SET nickname = ?, enabled = ?, trigger_config = ?, action_config = ?
         WHERE alert_id = ? AND user_id = ?
     `, d.Nickname, d.Enabled, string(triggerJSON), string(actionJSON), d.AlertID, d.UserID)
@@ -319,8 +319,23 @@ func (s *Store) AlertUpdate(ctx context.Context, d store.Alert, newAgents []stri
 
 // AlertDelete instantly deletes the alert (and cascades to delete all agent mappings!)
 func (s *Store) AlertDelete(ctx context.Context, alertID string, userID string) error {
-	res, err := s.db.ExecContext(ctx, `
-        DELETE FROM alerts 
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	var owned int
+	if err = tx.QueryRowContext(ctx, `SELECT count(*) FROM alerts WHERE alert_id=? AND user_id=?`, alertID, userID).Scan(&owned); err != nil {
+		return err
+	}
+	if owned == 0 {
+		return sql.ErrNoRows
+	}
+	if err = closeIncidentMonitoring(ctx, tx, "alert_id", alertID); err != nil {
+		return err
+	}
+	res, err := tx.ExecContext(ctx, `
+        DELETE FROM alerts
         WHERE alert_id = ? AND user_id = ?
     `, alertID, userID)
 	if err != nil {
@@ -335,11 +350,11 @@ func (s *Store) AlertDelete(ctx context.Context, alertID string, userID string) 
 		return sql.ErrNoRows
 	}
 
-	return nil
+	return tx.Commit()
 }
 
 func (s *Store) AlertTrigger(ctx context.Context, d store.Alert, agentID string, agentNickname string, historyID string, violationValue float64, notifStatus string, targetID string, targetName string, errorMsg string) error {
-	now := time.Now()
+	now := time.Now().UTC()
 
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -353,25 +368,35 @@ func (s *Store) AlertTrigger(ctx context.Context, d store.Alert, agentID string,
 	}
 
 	// Update the agent's state
-	_, err = tx.ExecContext(ctx, `UPDATE alert_agents SET status = ?, last_fired_at = ?, error_message = ? WHERE alert_id = ? AND agent_id = ?`,
+	res, err := tx.ExecContext(ctx, `UPDATE alert_agents SET status = ?, last_fired_at = ?, error_message = ? WHERE alert_id = ? AND agent_id = ? AND status='ok'`,
 		agentStatus, now, errorMsg, d.AlertID, agentID)
 	if err != nil {
 		return err
 	}
 
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n != 1 {
+		return sql.ErrNoRows
+	}
 	// Create a new History Log entry with all snapshot and denormalized columns
-	_, err = tx.ExecContext(ctx, `INSERT INTO alert_history (history_id, alert_id, user_id, agent_id, triggered_at, trigger_value, notified_status, target_id, target_name, agent_nickname, alert_nickname, error_message) 
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		historyID, d.AlertID, d.UserID, agentID, now, violationValue, notifStatus, targetID, targetName, agentNickname, d.Nickname, errorMsg)
+	_, err = tx.ExecContext(ctx, `INSERT INTO alert_history (history_id, alert_id, user_id, agent_id, triggered_at, trigger_value, notified_status, target_id, target_name, agent_nickname, alert_nickname, error_message, trigger_snapshot)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		historyID, d.AlertID, d.UserID, agentID, now, violationValue, notifStatus, targetID, targetName, agentNickname, d.Nickname, errorMsg, triggerSnapshot(d.Trigger))
 	if err != nil {
 		return err
 	}
 
+	if _, err = tx.ExecContext(ctx, `INSERT INTO alert_history_events(event_id,history_id,kind,created_at) VALUES (? ,?,'firing',?)`, historyID+"_firing", historyID, now); err != nil {
+		return err
+	}
 	return tx.Commit()
 }
 
 func (s *Store) AlertResolve(ctx context.Context, d store.Alert, agentID string) error {
-	now := time.Now()
+	now := time.Now().UTC()
 
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -386,11 +411,20 @@ func (s *Store) AlertResolve(ctx context.Context, d store.Alert, agentID string)
 		return err
 	}
 
-	// Update the most recent history log with a resolved_at timestamp
+	// Recovery is persisted before notification dispatch.
+	if _, err = tx.ExecContext(ctx, `INSERT INTO alert_history_events(event_id,history_id,kind,created_at)
+ SELECT history_id||'_resolved',history_id,'resolved',? FROM alert_history WHERE alert_id=? AND agent_id=? AND resolved_at IS NULL AND closed_at IS NULL`, now, d.AlertID, agentID); err != nil {
+		return err
+	}
+	if _, err = tx.ExecContext(ctx, `UPDATE alert_history_events SET status='skipped',completed_at=?,error_message='Incident recovered before dispatch'
+ WHERE status='queued' AND phase='firing' AND history_id IN (SELECT history_id FROM alert_history WHERE alert_id=? AND agent_id=? AND resolved_at IS NULL AND closed_at IS NULL)`, now, d.AlertID, agentID); err != nil {
+		return err
+	}
+	// Update the history log with a resolved_at timestamp
 	_, err = tx.ExecContext(ctx, `
-        UPDATE alert_history 
-        SET resolved_at = ? 
-        WHERE alert_id = ? AND agent_id = ? AND resolved_at IS NULL
+        UPDATE alert_history
+        SET resolved_at = ?
+        WHERE alert_id = ? AND agent_id = ? AND resolved_at IS NULL AND closed_at IS NULL
     `, now, d.AlertID, agentID)
 	if err != nil {
 		return err
@@ -401,8 +435,8 @@ func (s *Store) AlertResolve(ctx context.Context, d store.Alert, agentID string)
 
 func (s *Store) GetActiveAlertsWithState(ctx context.Context) ([]store.Alert, map[string]store.AgentInfo, error) {
 	query := `
-		SELECT 
-			a.alert_id, a.user_id, a.nickname, a.trigger_config, a.action_config, 
+		SELECT
+			a.alert_id, a.user_id, a.nickname, a.trigger_config, a.action_config,
 			aa.agent_id, aa.status, aa.last_fired_at, aa.error_message,
 			ag.is_online, COALESCE(ag.nickname, ag.agent_id),
 			ag.ram_size, ag.swap_size, ag.disk_size
@@ -489,242 +523,4 @@ func (s *Store) GetActiveAlertsWithState(ctx context.Context) ([]store.Alert, ma
 	}
 
 	return out, agentInfoMap, nil
-}
-
-func (s *Store) AlertHistoryListPaginated(ctx context.Context, userID string, page, limit int, search string, status string) ([]alert.AlertHistory, int, error) {
-	if page < 1 {
-		page = 1
-	}
-	if limit < 1 {
-		limit = 25
-	}
-	if limit > 100 {
-		limit = 100
-	}
-	offset := (page - 1) * limit
-
-	var conditions []string
-	var args []interface{}
-
-	// Direct filter by h.user_id instead of a.user_id to use the compound index
-	conditions = append(conditions, "h.user_id = ?")
-	args = append(args, userID)
-
-	switch status {
-	case "firing":
-		conditions = append(conditions, "h.resolved_at IS NULL")
-	case "resolved":
-		conditions = append(conditions, "h.resolved_at IS NOT NULL")
-	}
-
-	if search != "" {
-		searchPattern := "%" + search + "%"
-		conditions = append(conditions, "(h.agent_nickname LIKE ? OR h.agent_id LIKE ? OR h.alert_nickname LIKE ?)")
-		args = append(args, searchPattern, searchPattern, searchPattern)
-	}
-
-	whereClause := "WHERE " + strings.Join(conditions, " AND ")
-
-	// Zero-join count query! Extremely fast.
-	countQuery := fmt.Sprintf(`
-		SELECT COUNT(1)
-		FROM alert_history h
-		%s
-	`, whereClause)
-
-	var total int
-	err := s.db.QueryRowContext(ctx, countQuery, args...).Scan(&total)
-	if err != nil {
-		return nil, 0, err
-	}
-
-	// Build final query arguments
-	queryArgs := append(args, limit, offset)
-
-	// Fetch history with a single LEFT JOIN to alerts on primary key to get trigger_config
-	query := fmt.Sprintf(`
-		SELECT 
-			h.history_id, h.alert_id, h.agent_id, 
-			COALESCE(NULLIF(h.agent_nickname, ''), h.agent_id),
-			h.triggered_at, h.resolved_at, h.trigger_value, h.notified_status,
-			a.trigger_config, h.alert_nickname, h.target_id, h.target_name,
-			h.error_message
-		FROM alert_history h
-		LEFT JOIN alerts a ON h.alert_id = a.alert_id
-		%s
-		ORDER BY h.triggered_at DESC
-		LIMIT ? OFFSET ?
-	`, whereClause)
-
-	rows, err := s.db.QueryContext(ctx, query, queryArgs...)
-	if err != nil {
-		return nil, 0, err
-	}
-	defer rows.Close()
-
-	var out []alert.AlertHistory
-	for rows.Next() {
-		var h alert.AlertHistory
-		var resolvedAt sql.NullTime
-		var triggerJSON sql.NullString
-		var targetID, targetName sql.NullString
-		var errorMsg sql.NullString
-
-		err := rows.Scan(
-			&h.HistoryID, &h.AlertID, &h.AgentID,
-			&h.AgentNickname,
-			&h.TriggeredAt, &resolvedAt, &h.TriggerValue, &h.NotifiedStatus,
-			&triggerJSON, &h.AlertNickname,
-			&targetID, &targetName, &errorMsg,
-		)
-		if err != nil {
-			return nil, 0, err
-		}
-
-		if resolvedAt.Valid {
-			h.ResolvedAt = &resolvedAt.Time
-		}
-
-		if targetID.Valid {
-			h.TargetID = targetID.String
-		}
-		if targetName.Valid {
-			h.TargetName = targetName.String
-		}
-		if errorMsg.Valid {
-			h.ErrorMessage = errorMsg.String
-		}
-
-		if triggerJSON.Valid && triggerJSON.String != "" {
-			if err := json.Unmarshal([]byte(triggerJSON.String), &h.Trigger); err != nil {
-				// Log and continue
-			}
-		}
-
-		out = append(out, h)
-	}
-
-	return out, total, rows.Err()
-}
-
-func (s *Store) AlertHistoryGetByID(ctx context.Context, historyID string, userID string) (*alert.AlertHistory, error) {
-	var h alert.AlertHistory
-	var resolvedAt sql.NullTime
-	var triggerJSON sql.NullString
-	var targetID, targetName sql.NullString
-	var errorMsg sql.NullString
-
-	err := s.db.QueryRowContext(ctx, `
-		SELECT 
-			h.history_id, h.alert_id, h.agent_id, 
-			COALESCE(NULLIF(h.agent_nickname, ''), h.agent_id),
-			h.triggered_at, h.resolved_at, h.trigger_value, h.notified_status,
-			a.trigger_config, h.alert_nickname, h.target_id, h.target_name,
-			h.error_message
-		FROM alert_history h
-		LEFT JOIN alerts a ON h.alert_id = a.alert_id
-		WHERE h.history_id = ? AND h.user_id = ?
-	`, historyID, userID).Scan(
-		&h.HistoryID, &h.AlertID, &h.AgentID,
-		&h.AgentNickname,
-		&h.TriggeredAt, &resolvedAt, &h.TriggerValue, &h.NotifiedStatus,
-		&triggerJSON, &h.AlertNickname,
-		&targetID, &targetName, &errorMsg,
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	if resolvedAt.Valid {
-		h.ResolvedAt = &resolvedAt.Time
-	}
-	if targetID.Valid {
-		h.TargetID = targetID.String
-	}
-	if targetName.Valid {
-		h.TargetName = targetName.String
-	}
-	if triggerJSON.Valid && triggerJSON.String != "" {
-		_ = json.Unmarshal([]byte(triggerJSON.String), &h.Trigger)
-	}
-	if errorMsg.Valid {
-		h.ErrorMessage = errorMsg.String
-	}
-
-	return &h, nil
-}
-
-func (s *Store) AlertHistoryUpdateStatus(ctx context.Context, historyID string, status string, errMsg string) error {
-	_, err := s.db.ExecContext(ctx, `
-		UPDATE alert_history
-		SET notified_status = ?, error_message = ?
-		WHERE history_id = ?
-	`, status, errMsg, historyID)
-	return err
-}
-
-func (s *Store) AlertAgentUpdateStatus(ctx context.Context, alertID string, agentID string, status string, errMsg string) error {
-	_, err := s.db.ExecContext(ctx, `
-		UPDATE alert_agents
-		SET status = ?, error_message = ?
-		WHERE alert_id = ? AND agent_id = ?
-	`, status, errMsg, alertID, agentID)
-	return err
-}
-
-func (s *Store) AlertHistoryGetFailed(ctx context.Context) ([]*alert.AlertHistory, error) {
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT 
-			h.history_id, h.alert_id, h.agent_id, h.user_id,
-			COALESCE(NULLIF(h.agent_nickname, ''), h.agent_id),
-			h.triggered_at, h.resolved_at, h.trigger_value, h.notified_status,
-			a.trigger_config, h.alert_nickname, h.target_id, h.target_name,
-			h.error_message
-		FROM alert_history h
-		LEFT JOIN alerts a ON h.alert_id = a.alert_id
-		WHERE h.notified_status = 'failed' AND h.triggered_at > ?
-	`, time.Now().Add(-24*time.Hour))
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var out []*alert.AlertHistory
-	for rows.Next() {
-		var h alert.AlertHistory
-		var resolvedAt sql.NullTime
-		var triggerJSON sql.NullString
-		var targetID, targetName sql.NullString
-		var errorMsg sql.NullString
-
-		err := rows.Scan(
-			&h.HistoryID, &h.AlertID, &h.AgentID, &h.UserID,
-			&h.AgentNickname,
-			&h.TriggeredAt, &resolvedAt, &h.TriggerValue, &h.NotifiedStatus,
-			&triggerJSON, &h.AlertNickname,
-			&targetID, &targetName, &errorMsg,
-		)
-		if err != nil {
-			return nil, err
-		}
-
-		if resolvedAt.Valid {
-			h.ResolvedAt = &resolvedAt.Time
-		}
-		if targetID.Valid {
-			h.TargetID = targetID.String
-		}
-		if targetName.Valid {
-			h.TargetName = targetName.String
-		}
-		if triggerJSON.Valid && triggerJSON.String != "" {
-			_ = json.Unmarshal([]byte(triggerJSON.String), &h.Trigger)
-		}
-		if errorMsg.Valid {
-			h.ErrorMessage = errorMsg.String
-		}
-		out = append(out, &h)
-	}
-
-	return out, rows.Err()
 }
