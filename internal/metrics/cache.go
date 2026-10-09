@@ -1,8 +1,8 @@
 package metrics
 
 import (
-	agentdata "certainstats/internal/agent_data"
 	agentparser "certainstats/internal/agent_parser"
+	"math"
 	"sync"
 	"time"
 )
@@ -12,8 +12,9 @@ const windowTTL = 24 * time.Hour
 
 // AgentSnapshot holds the most recent data for an agent.
 type AgentSnapshot struct {
-	AgentID   string    `json:"agent_id"`
-	Timestamp time.Time `json:"timestamp"`
+	Missing   map[string]bool `json:"missing,omitempty"`
+	AgentID   string          `json:"agent_id"`
+	Timestamp time.Time       `json:"timestamp"`
 
 	// Latest Telemetry
 	CPUUsagePercent  float64                     `json:"cpu_usage_percent"`
@@ -97,18 +98,11 @@ func (c *RealtimeCache) EvictExpiredWindows() {
 			}
 		}
 
-		// 2. Mark for deletion if empty.
-		isEmpty := len(window.Points) == 0
-		window.mu.Unlock()
-
-		// 3. Delete from sync.Map.
-		// Note: A minuscule TOCTOU race exists here where a new point could be appended
-		// between Unlock and Delete, resulting in the loss of that single point.
-		// For 24-hour telemetry on previously idle metrics, this is an acceptable tradeoff
-		// to avoid complex lock-free data structures.
-		if isEmpty {
+		if len(window.Points) == 0 {
 			c.windows.Delete(key)
 		}
+		window.mu.Unlock()
+
 		return true
 	})
 }
@@ -127,10 +121,18 @@ func windowKey(userID, agentID, metricName, path string) string {
 func (c *RealtimeCache) appendPoint(key string, tMs int64, val float64) {
 	// LoadOrStore guarantees exactly one *TimeseriesWindow per key even under
 	// concurrent first-writes, eliminating the previous TOCTOU race.
-	actual, _ := c.windows.LoadOrStore(key, &TimeseriesWindow{})
-	window := actual.(*TimeseriesWindow)
+	var window *TimeseriesWindow
+	for {
+		actual, _ := c.windows.LoadOrStore(key, &TimeseriesWindow{})
+		window = actual.(*TimeseriesWindow)
+		window.mu.Lock()
+		current, ok := c.windows.Load(key)
+		if ok && current == window {
+			break
+		}
+		window.mu.Unlock()
+	}
 
-	window.mu.Lock()
 	defer window.mu.Unlock()
 
 	window.Points = append(window.Points, TimeseriesPoint{Timestamp: tMs, Value: val})
@@ -206,26 +208,29 @@ func (c *RealtimeCache) Update(userID, agentID string, data *agentparser.ParsedD
 		c.agents[agentID] = snapshot
 	}
 
-	if exists {
-		dt := latest.Timestamp.Sub(snapshot.Timestamp).Seconds()
-		if dt > 0 {
-			rxRate := max0(latest.RXBytes / dt)
-			txRate := max0(latest.TXBytes / dt)
-			snapshot.RXBps = rxRate
-			snapshot.TXBps = txRate
-
-			if len(latest.Disks) > 0 {
-				var totalRead, totalWrite float64
-				for _, d := range latest.Disks {
-					totalRead += float64(d.ReadBytes)
-					totalWrite += float64(d.WriteBytes)
-				}
-				snapshot.DiskReadBps = max0(totalRead / dt)
-				snapshot.DiskWriteBps = max0(totalWrite / dt)
-			}
+	dt := latest.IntervalSeconds
+	if dt <= 0 && exists {
+		dt = latest.Timestamp.Sub(snapshot.Timestamp).Seconds()
+	}
+	if dt > 0 {
+		snapshot.RXBps = max0(latest.RXBytes / dt)
+		snapshot.TXBps = max0(latest.TXBytes / dt)
+		var read, write float64
+		for _, d := range latest.Disks {
+			read += float64(d.ReadBytes)
+			write += float64(d.WriteBytes)
 		}
+		snapshot.DiskReadBps = max0(read / dt)
+		snapshot.DiskWriteBps = max0(write / dt)
 	}
 
+	snapshot.Missing = make(map[string]bool, len(latest.Missing)+2)
+	for key, missing := range latest.Missing {
+		snapshot.Missing[key] = missing
+	}
+	if latest.NetworkMissing {
+		snapshot.Missing["agent_rx_bytes"], snapshot.Missing["agent_tx_bytes"] = true, true
+	}
 	snapshot.Timestamp = latest.Timestamp
 	snapshot.CPUUsagePercent = latest.CPUUsagePercent
 	snapshot.CPUIOWaitPercent = latest.CPUIOWaitPercent
@@ -234,7 +239,13 @@ func (c *RealtimeCache) Update(userID, agentID string, data *agentparser.ParsedD
 	snapshot.RAMSwapUsedBytes = latest.RAMSwapUsedBytes
 	snapshot.RXBytes = latest.RXBytes
 	snapshot.TXBytes = latest.TXBytes
-	snapshot.Disks = latest.Disks
+	snapshot.Disks = append([]agentparser.DiskTelemetry(nil), latest.Disks...)
+	if dt > 0 {
+		for i := range snapshot.Disks {
+			snapshot.Disks[i].ReadBytes = uint64(float64(snapshot.Disks[i].ReadBytes) / dt)
+			snapshot.Disks[i].WriteBytes = uint64(float64(snapshot.Disks[i].WriteBytes) / dt)
+		}
+	}
 	snapshot.LoadAvg = latest.LoadAvg
 	snapshot.Temperatures = latest.Temperatures
 	if len(latest.Disks) > 0 {
@@ -250,32 +261,34 @@ func (c *RealtimeCache) Update(userID, agentID string, data *agentparser.ParsedD
 		snapshot.Metadata = data.AgentInfo
 	}
 
+	c.agents[agentID] = cloneSnapshot(snapshot)
 	c.mu.Unlock() // release before the sliding-window writes (sync.Map is independent)
 
 	// --- 2. Append to sliding-window cache (lock-free per window) -------------
-	now := time.Now()
-	for i, s := range data.Metrics {
-		ago := len(data.Metrics) - 1 - i
-		tMs := now.Add(time.Duration(-ago*agentdata.TIME_DIFF) * time.Second).UnixMilli()
+	for _, s := range data.Metrics {
+		tMs := s.Timestamp.UnixMilli()
+		c.appendSample(windowKey(userID, agentID, "agent_sample_interval_seconds", ""), tMs, s.IntervalSeconds, s.Missing["agent_sample_interval_seconds"])
 
-		c.appendPoint(windowKey(userID, agentID, "agent_cpu_usage", ""), tMs, s.CPUUsagePercent)
-		c.appendPoint(windowKey(userID, agentID, "agent_cpu_iowait", ""), tMs, s.CPUIOWaitPercent)
-		c.appendPoint(windowKey(userID, agentID, "agent_cpu_steal", ""), tMs, s.CPUStealPercent)
-		c.appendPoint(windowKey(userID, agentID, "agent_ram_used", ""), tMs, float64(s.RAMUsedBytes))
-		c.appendPoint(windowKey(userID, agentID, "agent_swap_used", ""), tMs, float64(s.RAMSwapUsedBytes))
-		c.appendPoint(windowKey(userID, agentID, "agent_rx_bytes", ""), tMs, s.RXBytes)
-		c.appendPoint(windowKey(userID, agentID, "agent_tx_bytes", ""), tMs, s.TXBytes)
+		c.appendSample(windowKey(userID, agentID, "agent_cpu_usage", ""), tMs, s.CPUUsagePercent, s.Missing["agent_cpu_usage"])
+		c.appendSample(windowKey(userID, agentID, "agent_cpu_iowait", ""), tMs, s.CPUIOWaitPercent, s.Missing["agent_cpu_iowait"])
+		c.appendSample(windowKey(userID, agentID, "agent_cpu_steal", ""), tMs, s.CPUStealPercent, s.Missing["agent_cpu_steal"])
+		c.appendSample(windowKey(userID, agentID, "agent_ram_used", ""), tMs, float64(s.RAMUsedBytes), s.Missing["agent_ram_used"])
+		c.appendSample(windowKey(userID, agentID, "agent_swap_used", ""), tMs, float64(s.RAMSwapUsedBytes), s.Missing["agent_swap_used"])
+		if !s.NetworkMissing {
+			c.appendSample(windowKey(userID, agentID, "agent_rx_bytes", ""), tMs, s.RXBytes, s.Missing["agent_rx_bytes"])
+			c.appendSample(windowKey(userID, agentID, "agent_tx_bytes", ""), tMs, s.TXBytes, s.Missing["agent_tx_bytes"])
+		}
 
 		for _, disk := range s.Disks {
-			c.appendPoint(windowKey(userID, agentID, "agent_disk_used", disk.Path), tMs, float64(disk.UsedBytes))
-			c.appendPoint(windowKey(userID, agentID, "agent_disk_read_bytes", disk.Path), tMs, float64(disk.ReadBytes))
-			c.appendPoint(windowKey(userID, agentID, "agent_disk_write_bytes", disk.Path), tMs, float64(disk.WriteBytes))
+			c.appendSample(windowKey(userID, agentID, "agent_disk_used", disk.Path), tMs, float64(disk.UsedBytes), s.Missing["agent_disk_used"])
+			c.appendSample(windowKey(userID, agentID, "agent_disk_read_bytes", disk.Path), tMs, float64(disk.ReadBytes), s.Missing["agent_disk_read_bytes"])
+			c.appendSample(windowKey(userID, agentID, "agent_disk_write_bytes", disk.Path), tMs, float64(disk.WriteBytes), s.Missing["agent_disk_write_bytes"])
 
-			usagePct := 0.0
+			usagePct := math.NaN()
 			if disk.TotalBytes > 0 {
 				usagePct = float64(disk.UsedBytes) / float64(disk.TotalBytes) * 100.0
 			}
-			c.appendPoint(windowKey(userID, agentID, "agent_disk_usage", disk.Path), tMs, usagePct)
+			c.appendSample(windowKey(userID, agentID, "agent_disk_usage", disk.Path), tMs, usagePct, s.Missing["agent_disk_usage"])
 		}
 	}
 }
@@ -285,7 +298,10 @@ func (c *RealtimeCache) Get(agentID string) (*AgentSnapshot, bool) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	s, ok := c.agents[agentID]
-	return s, ok
+	if !ok {
+		return nil, false
+	}
+	return cloneSnapshot(s), true
 }
 
 // Delete evicts the latest snapshot for an agent from memory.
@@ -301,7 +317,7 @@ func (c *RealtimeCache) GetAll() map[string]*AgentSnapshot {
 	defer c.mu.RUnlock()
 	out := make(map[string]*AgentSnapshot, len(c.agents))
 	for k, v := range c.agents {
-		out[k] = v
+		out[k] = cloneSnapshot(v)
 	}
 	return out
 }
@@ -311,4 +327,36 @@ func max0(v float64) float64 {
 		return 0
 	}
 	return v
+}
+
+func cloneSnapshot(s *AgentSnapshot) *AgentSnapshot {
+	if s == nil {
+		return nil
+	}
+	out := *s
+	if s.Missing != nil {
+		out.Missing = make(map[string]bool, len(s.Missing))
+		for k, v := range s.Missing {
+			out.Missing[k] = v
+		}
+	}
+	out.Disks = append([]agentparser.DiskTelemetry(nil), s.Disks...)
+	if s.Metadata != nil {
+		info := *s.Metadata
+		out.Metadata = &info
+	}
+	if s.Temperatures != nil {
+		out.Temperatures = make(map[string]float64, len(s.Temperatures))
+		for k, v := range s.Temperatures {
+			out.Temperatures[k] = v
+		}
+	}
+	return &out
+}
+
+func (c *RealtimeCache) appendSample(key string, t int64, value float64, missing bool) {
+	if missing {
+		value = math.NaN()
+	}
+	c.appendPoint(key, t, value)
 }

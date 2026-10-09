@@ -1,5 +1,8 @@
 # CertainStats — Frontend Design Document (legacy React frontend)
 
+
+> Current security, caching, ingestion and deployment behavior is described in [security and rollout](security-and-rollout.md). Where this older design document differs, that implementation reference takes precedence.
+
 > **Superseded.** This document describes the old React/TypeScript frontends in `frontend-admin/` and `frontend-public/`, which the Go template UI has replaced. See [design_frontend.md](design_frontend.md) for the current design system.
 
 > **Version:** 2.0 · **Date:** 2026-07-20 · **Author:** Minoplhy

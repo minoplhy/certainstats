@@ -14,7 +14,7 @@
     {{end}}
   </div>
 
-  <form id="dashboard-form" action="{{if .IsCreate}}{{$.PanelPath}}/dashboards/new{{else}}{{$.PanelPath}}/dashboards/{{.Dashboard.DashboardID}}{{end}}" method="POST" class="form-stack">
+  <form id="dashboard-form" action="{{if .IsCreate}}{{$.PanelPath}}/dashboards/new{{else}}{{$.PanelPath}}/dashboards/{{.Dashboard.DashboardID}}{{end}}" method="POST" class="form-stack"><input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
     {{if not .IsCreate}}
     <input type="hidden" name="id" value="{{.Dashboard.DashboardID}}">
     {{end}}
@@ -31,7 +31,8 @@
 
       <div class="form-group">
         <label class="form-label" for="dash-title-input">Title</label>
-        <input type="text" id="dash-title-input" name="title" required value="{{if not .IsCreate}}{{.Dashboard.Title}}{{end}}" placeholder="e.g. US East cluster" class="form-input">
+        <input type="text" id="dash-title-input" name="title" required value="{{.Dashboard.Title}}" placeholder="e.g. US East cluster" class="form-input">
+{{with .Errors}}{{with index . "title"}}<p class="form-error" role="alert">{{.}}</p>{{end}}{{end}}
       </div>
 
       <div class="form-grid-2">
@@ -41,7 +42,8 @@
             <span class="input-prefix-text">
               {{$.PublicPath}}/
             </span>
-            <input type="text" id="dash-slug-input" name="slug" required pattern="[a-z0-9-]+" title="Lowercase letters, numbers and dashes" value="{{if not .IsCreate}}{{.Dashboard.Slug}}{{end}}" class="form-input">
+            <input type="text" id="dash-slug-input" name="slug" required pattern="[a-z0-9-]+" title="Lowercase letters, numbers and dashes" value="{{.Dashboard.Slug}}" class="form-input">
+{{with .Errors}}{{with index . "slug"}}<p class="form-error" role="alert">{{.}}</p>{{end}}{{end}}
           </div>
         </div>
 
@@ -71,50 +73,50 @@
       <div class="toggle-grid">
         {{$rules := index .Dashboard.AccessRules "public"}}
         
-        <label class="toggle-pill {{if or $.IsCreate (hasFeature $rules "is_online")}}active{{end}}">
-          <input type="checkbox" name="features" value="is_online" {{if or $.IsCreate (hasFeature $rules "is_online")}}checked{{end}} onchange="togglePill(this)">
+        <label class="toggle-pill {{if (hasFeature $rules "is_online")}}active{{end}}">
+          <input type="checkbox" name="features" value="is_online" {{if (hasFeature $rules "is_online")}}checked{{end}} data-change-action="togglePill" data-expr0="this">
           <span class="toggle-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>
           <span>Online Status</span>
         </label>
 
-        <label class="toggle-pill {{if or $.IsCreate (hasFeature $rules "uptime")}}active{{end}}">
-          <input type="checkbox" name="features" value="uptime" {{if or $.IsCreate (hasFeature $rules "uptime")}}checked{{end}} onchange="togglePill(this)">
+        <label class="toggle-pill {{if (hasFeature $rules "uptime")}}active{{end}}">
+          <input type="checkbox" name="features" value="uptime" {{if (hasFeature $rules "uptime")}}checked{{end}} data-change-action="togglePill" data-expr0="this">
           <span class="toggle-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>
           <span>Uptime</span>
         </label>
 
-        <label class="toggle-pill {{if or $.IsCreate (hasFeature $rules "linux_version")}}active{{end}}">
-          <input type="checkbox" name="features" value="linux_version" {{if or $.IsCreate (hasFeature $rules "linux_version")}}checked{{end}} onchange="togglePill(this)">
+        <label class="toggle-pill {{if (hasFeature $rules "linux_version")}}active{{end}}">
+          <input type="checkbox" name="features" value="linux_version" {{if (hasFeature $rules "linux_version")}}checked{{end}} data-change-action="togglePill" data-expr0="this">
           <span class="toggle-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>
           <span>OS Kernel</span>
         </label>
 
-        <label class="toggle-pill {{if or $.IsCreate (hasFeature $rules "cpu_model")}}active{{end}}">
-          <input type="checkbox" name="features" value="cpu_model" {{if or $.IsCreate (hasFeature $rules "cpu_model")}}checked{{end}} onchange="togglePill(this)">
+        <label class="toggle-pill {{if (hasFeature $rules "cpu_model")}}active{{end}}">
+          <input type="checkbox" name="features" value="cpu_model" {{if (hasFeature $rules "cpu_model")}}checked{{end}} data-change-action="togglePill" data-expr0="this">
           <span class="toggle-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>
           <span>CPU Model</span>
         </label>
 
-        <label class="toggle-pill {{if or $.IsCreate (hasFeature $rules "cpu_cores")}}active{{end}}">
-          <input type="checkbox" name="features" value="cpu_cores" {{if or $.IsCreate (hasFeature $rules "cpu_cores")}}checked{{end}} onchange="togglePill(this)">
+        <label class="toggle-pill {{if (hasFeature $rules "cpu_cores")}}active{{end}}">
+          <input type="checkbox" name="features" value="cpu_cores" {{if (hasFeature $rules "cpu_cores")}}checked{{end}} data-change-action="togglePill" data-expr0="this">
           <span class="toggle-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>
           <span>CPU Cores</span>
         </label>
 
-        <label class="toggle-pill {{if or $.IsCreate (hasFeature $rules "ram_size")}}active{{end}}">
-          <input type="checkbox" name="features" value="ram_size" {{if or $.IsCreate (hasFeature $rules "ram_size")}}checked{{end}} onchange="togglePill(this)">
+        <label class="toggle-pill {{if (hasFeature $rules "ram_size")}}active{{end}}">
+          <input type="checkbox" name="features" value="ram_size" {{if (hasFeature $rules "ram_size")}}checked{{end}} data-change-action="togglePill" data-expr0="this">
           <span class="toggle-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>
           <span>Total RAM</span>
         </label>
 
-        <label class="toggle-pill {{if or $.IsCreate (hasFeature $rules "swap_size")}}active{{end}}">
-          <input type="checkbox" name="features" value="swap_size" {{if or $.IsCreate (hasFeature $rules "swap_size")}}checked{{end}} onchange="togglePill(this)">
+        <label class="toggle-pill {{if (hasFeature $rules "swap_size")}}active{{end}}">
+          <input type="checkbox" name="features" value="swap_size" {{if (hasFeature $rules "swap_size")}}checked{{end}} data-change-action="togglePill" data-expr0="this">
           <span class="toggle-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>
           <span>Total Swap</span>
         </label>
 
-        <label class="toggle-pill {{if or $.IsCreate (hasFeature $rules "disk_size")}}active{{end}}">
-          <input type="checkbox" name="features" value="disk_size" {{if or $.IsCreate (hasFeature $rules "disk_size")}}checked{{end}} onchange="togglePill(this)">
+        <label class="toggle-pill {{if (hasFeature $rules "disk_size")}}active{{end}}">
+          <input type="checkbox" name="features" value="disk_size" {{if (hasFeature $rules "disk_size")}}checked{{end}} data-change-action="togglePill" data-expr0="this">
           <span class="toggle-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>
           <span>Total Disk</span>
         </label>
@@ -125,62 +127,62 @@
     <section class="card form-section">
       <div class="section-header"><div><h2 class="section-title">Metrics</h2><p class="form-hint">Live values and history charts visitors can see.</p></div></div>
       <div class="toggle-grid">
-        <label class="toggle-pill {{if or $.IsCreate (hasMetric $rules "agent_cpu_usage")}}active{{end}}">
-          <input type="checkbox" name="metrics" value="agent_cpu_usage" {{if or $.IsCreate (hasMetric $rules "agent_cpu_usage")}}checked{{end}} onchange="togglePill(this)">
+        <label class="toggle-pill {{if (hasMetric $rules "agent_cpu_usage")}}active{{end}}">
+          <input type="checkbox" name="metrics" value="agent_cpu_usage" {{if (hasMetric $rules "agent_cpu_usage")}}checked{{end}} data-change-action="togglePill" data-expr0="this">
           <span class="toggle-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>
           <span>CPU Usage</span>
         </label>
 
-        <label class="toggle-pill {{if or $.IsCreate (hasMetric $rules "agent_cpu_iowait")}}active{{end}}">
-          <input type="checkbox" name="metrics" value="agent_cpu_iowait" {{if or $.IsCreate (hasMetric $rules "agent_cpu_iowait")}}checked{{end}} onchange="togglePill(this)">
+        <label class="toggle-pill {{if (hasMetric $rules "agent_cpu_iowait")}}active{{end}}">
+          <input type="checkbox" name="metrics" value="agent_cpu_iowait" {{if (hasMetric $rules "agent_cpu_iowait")}}checked{{end}} data-change-action="togglePill" data-expr0="this">
           <span class="toggle-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>
           <span>CPU IO Wait</span>
         </label>
 
-        <label class="toggle-pill {{if or $.IsCreate (hasMetric $rules "agent_cpu_steal")}}active{{end}}">
-          <input type="checkbox" name="metrics" value="agent_cpu_steal" {{if or $.IsCreate (hasMetric $rules "agent_cpu_steal")}}checked{{end}} onchange="togglePill(this)">
+        <label class="toggle-pill {{if (hasMetric $rules "agent_cpu_steal")}}active{{end}}">
+          <input type="checkbox" name="metrics" value="agent_cpu_steal" {{if (hasMetric $rules "agent_cpu_steal")}}checked{{end}} data-change-action="togglePill" data-expr0="this">
           <span class="toggle-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>
           <span>CPU Steal</span>
         </label>
 
-        <label class="toggle-pill {{if or $.IsCreate (hasMetric $rules "agent_ram_used")}}active{{end}}">
-          <input type="checkbox" name="metrics" value="agent_ram_used" {{if or $.IsCreate (hasMetric $rules "agent_ram_used")}}checked{{end}} onchange="togglePill(this)">
+        <label class="toggle-pill {{if (hasMetric $rules "agent_ram_used")}}active{{end}}">
+          <input type="checkbox" name="metrics" value="agent_ram_used" {{if (hasMetric $rules "agent_ram_used")}}checked{{end}} data-change-action="togglePill" data-expr0="this">
           <span class="toggle-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>
           <span>RAM Usage</span>
         </label>
 
-        <label class="toggle-pill {{if or $.IsCreate (hasMetric $rules "agent_swap_used")}}active{{end}}">
-          <input type="checkbox" name="metrics" value="agent_swap_used" {{if or $.IsCreate (hasMetric $rules "agent_swap_used")}}checked{{end}} onchange="togglePill(this)">
+        <label class="toggle-pill {{if (hasMetric $rules "agent_swap_used")}}active{{end}}">
+          <input type="checkbox" name="metrics" value="agent_swap_used" {{if (hasMetric $rules "agent_swap_used")}}checked{{end}} data-change-action="togglePill" data-expr0="this">
           <span class="toggle-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>
           <span>Swap Usage</span>
         </label>
 
-        <label class="toggle-pill {{if or $.IsCreate (hasMetric $rules "agent_disk_used")}}active{{end}}">
-          <input type="checkbox" name="metrics" value="agent_disk_used" {{if or $.IsCreate (hasMetric $rules "agent_disk_used")}}checked{{end}} onchange="togglePill(this)">
+        <label class="toggle-pill {{if (hasMetric $rules "agent_disk_used")}}active{{end}}">
+          <input type="checkbox" name="metrics" value="agent_disk_used" {{if (hasMetric $rules "agent_disk_used")}}checked{{end}} data-change-action="togglePill" data-expr0="this">
           <span class="toggle-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>
           <span>Disk Usage</span>
         </label>
 
-        <label class="toggle-pill {{if or $.IsCreate (hasMetric $rules "agent_disk_read_bytes")}}active{{end}}">
-          <input type="checkbox" name="metrics" value="agent_disk_read_bytes" {{if or $.IsCreate (hasMetric $rules "agent_disk_read_bytes")}}checked{{end}} onchange="togglePill(this)">
+        <label class="toggle-pill {{if (hasMetric $rules "agent_disk_read_bytes")}}active{{end}}">
+          <input type="checkbox" name="metrics" value="agent_disk_read_bytes" {{if (hasMetric $rules "agent_disk_read_bytes")}}checked{{end}} data-change-action="togglePill" data-expr0="this">
           <span class="toggle-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>
           <span>Disk Read</span>
         </label>
 
-        <label class="toggle-pill {{if or $.IsCreate (hasMetric $rules "agent_disk_write_bytes")}}active{{end}}">
-          <input type="checkbox" name="metrics" value="agent_disk_write_bytes" {{if or $.IsCreate (hasMetric $rules "agent_disk_write_bytes")}}checked{{end}} onchange="togglePill(this)">
+        <label class="toggle-pill {{if (hasMetric $rules "agent_disk_write_bytes")}}active{{end}}">
+          <input type="checkbox" name="metrics" value="agent_disk_write_bytes" {{if (hasMetric $rules "agent_disk_write_bytes")}}checked{{end}} data-change-action="togglePill" data-expr0="this">
           <span class="toggle-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>
           <span>Disk Write</span>
         </label>
 
-        <label class="toggle-pill {{if or $.IsCreate (hasMetric $rules "agent_rx_bytes")}}active{{end}}">
-          <input type="checkbox" name="metrics" value="agent_rx_bytes" {{if or $.IsCreate (hasMetric $rules "agent_rx_bytes")}}checked{{end}} onchange="togglePill(this)">
+        <label class="toggle-pill {{if (hasMetric $rules "agent_rx_bytes")}}active{{end}}">
+          <input type="checkbox" name="metrics" value="agent_rx_bytes" {{if (hasMetric $rules "agent_rx_bytes")}}checked{{end}} data-change-action="togglePill" data-expr0="this">
           <span class="toggle-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>
           <span>Network RX</span>
         </label>
 
-        <label class="toggle-pill {{if or $.IsCreate (hasMetric $rules "agent_tx_bytes")}}active{{end}}">
-          <input type="checkbox" name="metrics" value="agent_tx_bytes" {{if or $.IsCreate (hasMetric $rules "agent_tx_bytes")}}checked{{end}} onchange="togglePill(this)">
+        <label class="toggle-pill {{if (hasMetric $rules "agent_tx_bytes")}}active{{end}}">
+          <input type="checkbox" name="metrics" value="agent_tx_bytes" {{if (hasMetric $rules "agent_tx_bytes")}}checked{{end}} data-change-action="togglePill" data-expr0="this">
           <span class="toggle-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>
           <span>Network TX</span>
         </label>
@@ -196,8 +198,8 @@
         </div>
         <div class="page-actions">
           <label class="sr-only" for="agent-search">Search servers</label>
-          <input type="search" id="agent-search" placeholder="Search servers" class="form-input form-input-sm" oninput="filterAgents()">
-          <button type="button" id="btn-select-all" class="btn btn-secondary btn-sm" onclick="toggleSelectAll()">Select all</button>
+          <input type="search" id="agent-search" placeholder="Search servers" class="form-input form-input-sm" data-input-action="filterAgents">
+          <button type="button" id="btn-select-all" class="btn btn-secondary btn-sm" data-click-action="toggleSelectAll">Select all</button>
         </div>
       </div>
 
@@ -218,7 +220,7 @@
 
         <div class="agent-select-row" data-agent-id="{{.AgentID}}" data-agent-name="{{.Nickname}}">
           <label class="agent-select-label">
-            <input type="checkbox" name="agents" value="{{.AgentID}}" {{if $isAssigned}}checked{{end}} onchange="onAgentCheckboxChange('{{.AgentID}}', this.checked)">
+            <input type="checkbox" name="agents" value="{{.AgentID}}" {{if $isAssigned}}checked{{end}} data-change-action="onAgentCheckboxChange" data-arg0="{{.AgentID}}" data-expr1="this.checked">
             <span class="agent-select-text">
               <span class="agent-select-name">{{.Nickname}}</span>
               <span class="agent-select-id mono">{{.AgentID}}</span>
@@ -226,7 +228,7 @@
           </label>
           <div class="agent-alias-container" id="alias-box-{{.AgentID}}"{{if not $isAssigned}} style="display: none;"{{end}}>
             <label class="agent-alias-label" for="alias-input-{{.AgentID}}">Shown as</label>
-            <input type="text" name="alias_{{.AgentID}}" id="alias-input-{{.AgentID}}" value="{{$alias}}" {{if not $isAssigned}}disabled{{end}} placeholder="Public name" class="form-input form-input-sm" oninput="onAliasChange('{{.AgentID}}', this.value)">
+            <input type="text" name="alias_{{.AgentID}}" id="alias-input-{{.AgentID}}" value="{{$alias}}" {{if not $isAssigned}}disabled{{end}} placeholder="Public name" class="form-input form-input-sm" data-input-action="onAliasChange" data-arg0="{{.AgentID}}" data-expr1="this.value">
           </div>
         </div>
         {{end}}
@@ -239,7 +241,7 @@
             <h3 class="section-title">Order</h3>
             <p class="form-hint">Drag to set the order visitors see, or use the arrow buttons. Alphabetical unless you change it.</p>
           </div>
-          <button type="button" id="btn-reset-order" class="btn btn-secondary btn-sm" onclick="resetToAlphabetical()" style="display: none;">Reset to alphabetical</button>
+          <button type="button" id="btn-reset-order" class="btn btn-secondary btn-sm" data-click-action="resetToAlphabetical" style="display: none;">Reset to alphabetical</button>
         </div>
         <div id="reorder-list" class="reorder-list">
         </div>
@@ -267,28 +269,13 @@
   </div>
   <div class="modal-footer">
     <button type="button" class="btn btn-secondary" data-close-modal>Cancel</button>
-    <button type="button" class="btn btn-danger" onclick="confirmDeleteDashboard()">Delete status page</button>
+    <button type="button" class="btn btn-danger" data-click-action="confirmDeleteDashboard">Delete status page</button>
   </div>
 </dialog>
 {{end}}
 
 
 <script src="{{.StaticPath}}/{{asset "js/dashboard_edit.js"}}" integrity="{{integrity "js/dashboard_edit.js"}}"></script>
-<script>
-  window.CertainStatsDashboardEdit.init({
-    selectedAgentsOrder: [
-      {{range .DashboardAgents}}
-      '{{.AgentID}}',
-      {{end}}
-    ],
-    agents_order: [
-      {{range .DashboardAgents}}
-      '{{.AgentID}}',
-      {{end}}
-    ],
-    isDragged: {{if or .IsDragged (hasSortKey .DashboardAgents)}}true{{else}}false{{end}},
-    isCreate: {{if .IsCreate}}true{{else}}false{{end}},
-    dashboardId: '{{.Dashboard.DashboardID}}'
-  });
-</script>
+<script type="application/json" id="page-config" data-module="CertainStatsDashboardEdit">{{bootstrap .}}</script>
+<script src="{{.StaticPath}}/{{asset "js/bootstrap.js"}}" integrity="{{integrity "js/bootstrap.js"}}"></script>
 {{end}}

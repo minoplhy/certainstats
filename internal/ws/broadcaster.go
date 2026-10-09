@@ -15,15 +15,19 @@ type UIUpdate struct {
 
 // AgentBroadcaster manages WebSocket connections from browsers (Admin and Public)
 type AgentBroadcaster struct {
-	mu          sync.RWMutex
-	userClients map[string]map[*websocket.Conn]bool // userID -> connections
-	dashClients map[string]map[*websocket.Conn]bool // dashID -> connections
+	mu             sync.RWMutex
+	sessionClients map[string]map[*websocket.Conn]bool
+	writers        map[*websocket.Conn]*browserWriter
+	userClients    map[string]map[*websocket.Conn]bool // userID -> connections
+	dashClients    map[string]map[*websocket.Conn]bool // dashID -> connections
 }
 
 func NewAgentBroadcaster() *AgentBroadcaster {
 	return &AgentBroadcaster{
-		userClients: make(map[string]map[*websocket.Conn]bool),
-		dashClients: make(map[string]map[*websocket.Conn]bool),
+		writers:        make(map[*websocket.Conn]*browserWriter),
+		userClients:    make(map[string]map[*websocket.Conn]bool),
+		sessionClients: make(map[string]map[*websocket.Conn]bool),
+		dashClients:    make(map[string]map[*websocket.Conn]bool),
 	}
 }
 
@@ -36,6 +40,7 @@ func (b *AgentBroadcaster) SubscribeUser(userID string, conn *websocket.Conn) {
 		b.userClients[userID] = make(map[*websocket.Conn]bool)
 	}
 	b.userClients[userID][conn] = true
+	b.startWriter(conn)
 }
 
 // UnsubscribeUser removes a user connection
@@ -45,6 +50,7 @@ func (b *AgentBroadcaster) UnsubscribeUser(userID string, conn *websocket.Conn) 
 
 	if clients, exists := b.userClients[userID]; exists {
 		delete(clients, conn)
+		b.stopWriter(conn)
 		if len(clients) == 0 {
 			delete(b.userClients, userID)
 		}
@@ -60,6 +66,7 @@ func (b *AgentBroadcaster) SubscribeDash(dashID string, conn *websocket.Conn) {
 		b.dashClients[dashID] = make(map[*websocket.Conn]bool)
 	}
 	b.dashClients[dashID][conn] = true
+	b.startWriter(conn)
 }
 
 // UnsubscribeDash removes a public dashboard connection
@@ -69,6 +76,7 @@ func (b *AgentBroadcaster) UnsubscribeDash(dashID string, conn *websocket.Conn) 
 
 	if clients, exists := b.dashClients[dashID]; exists {
 		delete(clients, conn)
+		b.stopWriter(conn)
 		if len(clients) == 0 {
 			delete(b.dashClients, dashID)
 		}
@@ -118,8 +126,26 @@ func (b *AgentBroadcaster) sendTo(targets []*websocket.Conn, update UIUpdate) {
 	}
 
 	for _, conn := range targets {
-		_ = websocket.Message.Send(conn, string(payload))
+		b.mu.RLock()
+		writer := b.writers[conn]
+		b.mu.RUnlock()
+		if writer == nil {
+			continue
+		}
+		select {
+		case writer.queue <- payload:
+		default:
+			select {
+			case <-writer.queue:
+			default:
+			}
+			select {
+			case writer.queue <- payload:
+			default:
+			}
+		}
 	}
+
 }
 
 // GetActiveUserIDs returns all users currently viewing their dashboard
@@ -144,4 +170,59 @@ func (b *AgentBroadcaster) GetActiveDashIDs() []string {
 		ids = append(ids, id)
 	}
 	return ids
+}
+
+func (b *AgentBroadcaster) CloseDash(id string) {
+	b.mu.Lock()
+	targets := b.dashClients[id]
+	delete(b.dashClients, id)
+	b.mu.Unlock()
+	for c := range targets {
+		c.Close()
+	}
+}
+
+func (b *AgentBroadcaster) CloseAll() {
+	b.mu.Lock()
+	var targets []*websocket.Conn
+	for _, clients := range b.userClients {
+		for c := range clients {
+			targets = append(targets, c)
+		}
+	}
+	for _, clients := range b.dashClients {
+		for c := range clients {
+			targets = append(targets, c)
+		}
+	}
+	b.mu.Unlock()
+	for _, c := range targets {
+		c.Close()
+	}
+}
+
+func (b *AgentBroadcaster) SubscribeSession(token string, conn *websocket.Conn) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.sessionClients[token] == nil {
+		b.sessionClients[token] = make(map[*websocket.Conn]bool)
+	}
+	b.sessionClients[token][conn] = true
+}
+func (b *AgentBroadcaster) UnsubscribeSession(token string, conn *websocket.Conn) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	delete(b.sessionClients[token], conn)
+	if len(b.sessionClients[token]) == 0 {
+		delete(b.sessionClients, token)
+	}
+}
+func (b *AgentBroadcaster) CloseSession(token string) {
+	b.mu.Lock()
+	clients := b.sessionClients[token]
+	delete(b.sessionClients, token)
+	b.mu.Unlock()
+	for conn := range clients {
+		conn.Close()
+	}
 }

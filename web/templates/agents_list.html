@@ -28,40 +28,6 @@
 {{template "uninstall_modal" .}}
 
 <script src="{{.StaticPath}}/{{asset "js/admin_agents.js"}}" integrity="{{integrity "js/admin_agents.js"}}"></script>
-<script>
-  window.CertainStatsAdminAgents.init({
-    agents: [
-      {{range .Agents}}
-      {
-        agent_id: '{{.AgentID}}',
-        nickname: '{{.Nickname}}',
-        agent_type: '{{.AgentType}}',
-        note: '{{if .Note}}{{.Note}}{{end}}',
-        cpu_model: '{{.CpuModel}}',
-        linux_version: '{{.LinuxVersion}}',
-        cpu_cores: {{.CpuCores}},
-        ram_size: {{.RamSize}},
-        disk_size: {{.DiskSize}},
-        swap_size: {{.SwapSize}},
-        uptime: {{.Uptime}},
-        is_online: {{.IsOnline}},
-        total_rx_bytes: {{.TotalRxBytes}},
-        total_tx_bytes: {{.TotalTxBytes}},
-        total_disk_read_bytes: {{.TotalDiskReadBytes}},
-        total_disk_write_bytes: {{.TotalDiskWriteBytes}},
-        disks: [
-          {{range .Disks}}
-          {
-            path: '{{.Path}}',
-            total_bytes: {{.TotalBytes}},
-            read_bytes: {{.ReadBytes}},
-            write_bytes: {{.WriteBytes}}
-          },
-          {{end}}
-        ]
-      },
-      {{end}}
-    ]
-  });
-</script>
+<script type="application/json" id="page-config" data-module="CertainStatsAdminAgents">{{bootstrap .}}</script>
+<script src="{{.StaticPath}}/{{asset "js/bootstrap.js"}}" integrity="{{integrity "js/bootstrap.js"}}"></script>
 {{end}}

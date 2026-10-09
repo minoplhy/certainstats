@@ -7,10 +7,10 @@
       <p class="muted">Welcome back to CertainStats.</p>
     </div>
 
-    <form class="card auth-form" action="{{.PanelPath}}/login" method="POST">
+    <form class="card auth-form" action="{{.PanelPath}}/login" method="POST"><input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
       <div class="form-group">
         <label class="form-label" for="username">Username</label>
-        <input type="text" id="username" name="username" class="form-input" required autofocus autocomplete="username">
+        <input type="text" id="username" name="username" value="{{.Username}}" class="form-input" required autofocus autocomplete="username">
       </div>
 
       <div class="form-group">

@@ -9,7 +9,7 @@
       {{template "modal_close"}}
     </div>
 
-    <form action="{{.PanelPath}}/alerts/targets/create" method="POST">
+    <form action="{{.PanelPath}}/alerts/targets/create" method="POST"><input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
       <div class="modal-body">
       <div class="form-group">
         <label class="form-label" for="create-tgt-name">Name</label>

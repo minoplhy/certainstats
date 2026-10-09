@@ -1,10 +1,10 @@
 package alert
 
 import (
+	"bytes"
 	basealert "certainstats/internal/base/alert"
 	CSContext "certainstats/internal/context"
 	"certainstats/internal/store"
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"

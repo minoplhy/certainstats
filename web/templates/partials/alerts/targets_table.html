@@ -40,7 +40,7 @@
                 data-type="{{$t.Type}}"
                 data-destination="{{$t.Destination}}"
                 data-payload="{{$t.Payload}}">Edit</button>
-              <form action="{{$.PanelPath}}/alerts/targets/delete" method="POST" onsubmit="return confirm('Delete the target \'{{$t.Name}}\'? Rules that use it will stop sending notifications.')">
+              <form action="{{$.PanelPath}}/alerts/targets/delete" method="POST" data-submit-action="confirm" data-arg0="Delete the target '{{$t.Name}}'? Rules that use it will stop sending notifications."><input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
                 <input type="hidden" name="id" value="{{$t.TargetID}}">
                 <button type="submit" class="btn btn-danger btn-sm">Delete</button>
               </form>

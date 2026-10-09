@@ -1,6 +1,6 @@
 {{define "confirm_modal"}}
 <dialog id="confirm-modal" class="modal modal-confirm" aria-labelledby="confirm-modal-title" aria-describedby="confirm-modal-message">
-  <form method="dialog" id="confirm-modal-form">
+  <form method="dialog" id="confirm-modal-form"><input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
     <div class="modal-header">
       <h2 class="modal-title" id="confirm-modal-title">Are you sure?</h2>
       {{template "modal_close"}}

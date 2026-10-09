@@ -1,6 +1,7 @@
 package sqlite
 
 import (
+	csctx "certainstats/internal/context"
 	"certainstats/internal/store"
 	"context"
 	"errors"
@@ -67,6 +68,70 @@ func (s *Store) CreateUser(ctx context.Context, userID, username, passwordHash s
 			return errors.New("username already exists")
 		}
 		return err
+	}
+	return nil
+}
+
+// CreateInitialUser is a single conditional SQLite write, safe across processes.
+func (s *Store) CreateInitialUser(ctx context.Context, userID, username, passwordHash string) error {
+	res, err := s.db.ExecContext(ctx, `INSERT INTO users(user_id,username,password_hash,is_admin,created_at) SELECT ?,?,?,1,? WHERE NOT EXISTS (SELECT 1 FROM users)`, userID, username, passwordHash, time.Now())
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n != 1 {
+		return errors.New("setup already completed")
+	}
+	return nil
+}
+
+func (s *Store) ChangePasswordAndRevoke(ctx context.Context, userID, oldHash, newHash, currentToken string) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	rows, err := tx.QueryContext(ctx, "SELECT session_token FROM sessions WHERE user_id = ? AND session_token != ?", userID, currentToken)
+	if err != nil {
+		return err
+	}
+	var revoked []string
+	for rows.Next() {
+		var token string
+		if err := rows.Scan(&token); err != nil {
+			rows.Close()
+			return err
+		}
+		revoked = append(revoked, token)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return err
+	}
+	rows.Close()
+
+	res, err := tx.ExecContext(ctx, "UPDATE users SET password_hash = ? WHERE user_id = ? AND password_hash = ?", newHash, userID, oldHash)
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n != 1 {
+		return errors.New("password changed concurrently")
+	}
+	if _, err = tx.ExecContext(ctx, "DELETE FROM sessions WHERE user_id = ? AND session_token != ?", userID, currentToken); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	for _, token := range revoked {
+		csctx.SessionRevoked(token)
 	}
 	return nil
 }

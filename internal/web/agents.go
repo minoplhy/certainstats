@@ -4,16 +4,12 @@ import (
 	"certainstats/internal/agent"
 	agentdata "certainstats/internal/agent_data"
 	ctx "certainstats/internal/context"
-	"certainstats/internal/store"
-	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/hex"
-	"encoding/pem"
 	"net/http"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
-	"golang.org/x/crypto/ssh"
 )
 
 func (h *WebHandler) AgentsListHandler(w http.ResponseWriter, r *http.Request) {
@@ -93,21 +89,9 @@ func (h *WebHandler) AgentProvisionHandler(w http.ResponseWriter, r *http.Reques
 	}
 
 	if agentType == "beszel" {
-		pub, priv, err := ed25519.GenerateKey(rand.Reader)
-		if err == nil {
-			privPEM, err := ssh.MarshalPrivateKey(priv, "")
-			if err == nil {
-				sshPub, err := ssh.NewPublicKey(pub)
-				if err == nil {
-					privBlock := pem.EncodeToMemory(privPEM)
-					pubBytes := ssh.MarshalAuthorizedKey(sshPub)
-					_ = h.Store.BeszelSSHSave(r.Context(), store.BeszelSSH{
-						AgentID:    agentID,
-						PublicKey:  strings.TrimSpace(string(pubBytes)),
-						PrivateKey: string(privBlock),
-					}, userID)
-				}
-			}
+		if _, err := agent.GenerateAndSaveSSH(r.Context(), h.Store, agentID, userID); err != nil {
+			http.Error(w, "Agent created; SSH key generation failed", 500)
+			return
 		}
 	}
 
@@ -131,10 +115,16 @@ func (h *WebHandler) AgentResetTokenHandler(w http.ResponseWriter, r *http.Reque
 	agentID := r.FormValue("agent_id")
 
 	tokBytes := make([]byte, 16)
-	rand.Read(tokBytes)
+	if _, err := rand.Read(tokBytes); err != nil {
+		http.Error(w, "Token generation failed", 500)
+		return
+	}
 	newToken := hex.EncodeToString(tokBytes)
 
-	_ = h.Store.AgentResetToken(r.Context(), agentID, userID, newToken)
+	if err := h.Store.AgentResetToken(r.Context(), agentID, userID, newToken); err != nil {
+		http.Error(w, "Failed to persist change", 500)
+		return
+	}
 
 	redir := r.FormValue("redirect_to")
 	if redir == "" {
@@ -152,21 +142,9 @@ func (h *WebHandler) AgentResetSSHHandler(w http.ResponseWriter, r *http.Request
 	userID := getUserID(r)
 	agentID := r.FormValue("agent_id")
 
-	pub, priv, err := ed25519.GenerateKey(rand.Reader)
-	if err == nil {
-		privPEM, err := ssh.MarshalPrivateKey(priv, "")
-		if err == nil {
-			sshPub, err := ssh.NewPublicKey(pub)
-			if err == nil {
-				privBlock := pem.EncodeToMemory(privPEM)
-				pubAuthorizedKey := strings.TrimSpace(string(ssh.MarshalAuthorizedKey(sshPub)))
-				_ = h.Store.BeszelSSHSave(r.Context(), store.BeszelSSH{
-					AgentID:    agentID,
-					PublicKey:  pubAuthorizedKey,
-					PrivateKey: string(privBlock),
-				}, userID)
-			}
-		}
+	if _, err := agent.GenerateAndSaveSSH(r.Context(), h.Store, agentID, userID); err != nil {
+		http.Error(w, "SSH key generation failed", 500)
+		return
 	}
 
 	redir := r.FormValue("redirect_to")
@@ -221,7 +199,10 @@ func (h *WebHandler) AgentDeleteHandler(w http.ResponseWriter, r *http.Request) 
 	userID := getUserID(r)
 	agentID := r.FormValue("agent_id")
 
-	_ = h.Store.AgentDelete(r.Context(), agentID, userID)
+	if err := h.Store.AgentDelete(r.Context(), agentID, userID); err != nil {
+		http.Error(w, "Failed to persist change", 500)
+		return
+	}
 	h.Cache.Delete(agentID)
 
 	redir := r.FormValue("redirect_to")

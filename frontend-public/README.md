@@ -1,3 +1,7 @@
+# Inactive React archive
+
+Production uses Go templates and vanilla JavaScript in `web/`. This directory is retained for reference and is excluded from release builds. See [current architecture and rollout](../docs/security-and-rollout.md).
+
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
 ## Getting Started

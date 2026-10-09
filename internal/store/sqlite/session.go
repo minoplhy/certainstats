@@ -1,6 +1,7 @@
 package sqlite
 
 import (
+	csctx "certainstats/internal/context"
 	"certainstats/internal/store"
 	"context"
 	"database/sql"
@@ -77,6 +78,9 @@ func (s *Store) SessionDelete(ctx context.Context, token string) error {
 	_, err := s.db.ExecContext(ctx,
 		`DELETE FROM sessions WHERE session_token = ?`, token,
 	)
+	if err == nil {
+		csctx.SessionRevoked(token)
+	}
 	return err
 }
 
@@ -85,11 +89,33 @@ func (s *Store) SessionDelete(ctx context.Context, token string) error {
 // NULL last_connected_at are only removed via their expires_at date, not evicted
 // immediately as if they had been idle since the epoch.
 func (s *Store) SessionDeleteExpired(ctx context.Context) error {
-	_, err := s.db.ExecContext(ctx,
-		`DELETE FROM sessions WHERE expires_at < ? OR (last_connected_at IS NOT NULL AND last_connected_at < ?)`,
-		time.Now(), time.Now().Add(-15*24*time.Hour),
-	)
-	return err
+	now := time.Now()
+	idle := now.Add(-15 * 24 * time.Hour)
+	rows, err := s.db.QueryContext(ctx, "SELECT session_token FROM sessions WHERE expires_at < ? OR (last_connected_at IS NOT NULL AND last_connected_at < ?)", now, idle)
+	if err != nil {
+		return err
+	}
+	var tokens []string
+	for rows.Next() {
+		var token string
+		if err := rows.Scan(&token); err != nil {
+			rows.Close()
+			return err
+		}
+		tokens = append(tokens, token)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return err
+	}
+	rows.Close()
+	if _, err := s.db.ExecContext(ctx, "DELETE FROM sessions WHERE expires_at < ? OR (last_connected_at IS NOT NULL AND last_connected_at < ?)", now, idle); err != nil {
+		return err
+	}
+	for _, token := range tokens {
+		csctx.SessionRevoked(token)
+	}
+	return nil
 }
 
 func (s *Store) SessionUpdateActivity(ctx context.Context, token string, lastConnected time.Time) error {
@@ -128,12 +154,20 @@ func (s *Store) SessionListByUser(ctx context.Context, userID string) ([]store.S
 	return sessions, rows.Err()
 }
 
-func (s *Store) SessionDeleteOther(ctx context.Context, userID string, currentToken string) error {
-	_, err := s.db.ExecContext(ctx,
-		`DELETE FROM sessions WHERE user_id = ? AND session_token != ?`,
-		userID, currentToken,
-	)
-	return err
+func (s *Store) SessionDeleteOther(ctx context.Context, userID, currentToken string) error {
+	sessions, err := s.SessionListByUser(ctx, userID)
+	if err != nil {
+		return err
+	}
+	if _, err := s.db.ExecContext(ctx, "DELETE FROM sessions WHERE user_id = ? AND session_token != ?", userID, currentToken); err != nil {
+		return err
+	}
+	for _, session := range sessions {
+		if session.Token != currentToken {
+			csctx.SessionRevoked(session.Token)
+		}
+	}
+	return nil
 }
 
 // ErrNotFound is returned by Get when the session doesn't exist.

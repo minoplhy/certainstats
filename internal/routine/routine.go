@@ -2,11 +2,14 @@ package routine
 
 import (
 	a "certainstats/internal/base/alert"
+	csctx "certainstats/internal/context"
 	log "certainstats/internal/logger"
 	"certainstats/internal/metrics"
+	"certainstats/internal/security"
 	"certainstats/internal/ws"
 	"context"
 	"crypto/rand"
+	"encoding/json"
 	"os"
 	"strconv"
 	"time"
@@ -90,7 +93,7 @@ func (e *Routine) Start(ctx context.Context) {
 			}
 		case <-ticker.C:
 			// Task 1: Agent Health Check (Mark offline agents before evaluation)
-			if offlineIDs, err := e.Store.AgentMarkOffline(ctx, interval*2); err == nil && len(offlineIDs) > 0 {
+			if offlineIDs, err := e.Store.AgentMarkOffline(ctx, 3*time.Minute); err == nil && len(offlineIDs) > 0 {
 				log.Debugf("[Timer] Marked %d agents as offline", len(offlineIDs))
 				for _, id := range offlineIDs {
 					e.Cache.Delete(id)
@@ -113,7 +116,16 @@ func (e *Routine) Start(ctx context.Context) {
 }
 
 func (e *Routine) runCleanup(ctx context.Context) {
-	log.Debugln("[Timer] Running hourly maintenance cleanup...")
+	csctx.ExpireResponses()
+	log.Printf("[Maintenance] response_cache=%v builds=%v public_limits=%v", csctx.CacheStatistics(), csctx.BuildStatistics(), security.PublicLimits.Statistics())
+	{
+		pending, err := e.Store.IngestionPending(ctx)
+		if err != nil {
+			log.Printf("journal status error: %v", err)
+		} else {
+			log.Printf("[Maintenance] ingestion_journal_pending=%d", len(pending))
+		}
+	}
 
 	// 1. Purge expired web sessions
 	if err := e.Store.SessionDeleteExpired(ctx); err != nil {
@@ -194,20 +206,29 @@ func (e *Routine) EvaluateAll(ctx context.Context) {
 				// Convert unit representation based on trigger type
 				switch alert.Trigger.Type {
 				case a.TriggerTypeRAM:
+					if info.RamSize == 0 {
+						continue
+					}
 					if info.RamSize > 0 {
 						valToEvaluate = (avgValue / float64(info.RamSize)) * 100.0
 					}
 				case a.TriggerTypeDisk:
+					if info.DiskSize == 0 {
+						continue
+					}
 					if info.DiskSize > 0 {
 						valToEvaluate = (avgValue / float64(info.DiskSize)) * 100.0
 					}
 				case a.TriggerTypeSwap:
+					if info.SwapSize == 0 {
+						continue
+					}
 					if info.SwapSize > 0 {
 						valToEvaluate = (avgValue / float64(info.SwapSize)) * 100.0
 					}
 				case a.TriggerTypeNetRx, a.TriggerTypeNetTx, a.TriggerTypeDiskRead, a.TriggerTypeDiskWrite:
 					// Convert TSDB's delta bytes in average interval to KB/s rate (bytes/60 / 1024)
-					valToEvaluate = (avgValue / 60.0) / 1024.0
+					valToEvaluate = avgValue / 1024.0
 				}
 
 				isViolating = e.evaluate(valToEvaluate, alert.Trigger.Operator, alert.Trigger.Threshold)
@@ -253,9 +274,30 @@ func (e *Routine) PulseSync(ctx context.Context) {
 	// 2. Pulse Admins
 	activeUsers := e.Broadcaster.GetActiveUserIDs()
 	for _, userID := range activeUsers {
+		ownedSnaps := make(map[string]any)
+		agents, err := e.Store.AgentList(ctx, userID)
+		if err != nil {
+			continue
+		}
+		for _, a := range agents {
+			if snap, ok := allSnaps[a.AgentID]; ok {
+				raw, err := json.Marshal(snap)
+				if err != nil {
+					continue
+				}
+				var fields map[string]any
+				if err := json.Unmarshal(raw, &fields); err != nil {
+					continue
+				}
+				fields["is_online"], fields["available"] = a.IsOnline, true
+				ownedSnaps[a.AgentID] = fields
+			} else {
+				ownedSnaps[a.AgentID] = map[string]any{"is_online": a.IsOnline, "available": false}
+			}
+		}
 		e.Broadcaster.BroadcastToUser(userID, ws.UIUpdate{
 			Type: "agent_update",
-			Data: allSnaps,
+			Data: ownedSnaps,
 		})
 	}
 
@@ -264,18 +306,40 @@ func (e *Routine) PulseSync(ctx context.Context) {
 	for _, dashID := range activeDashes {
 		dash, agents, err := e.Store.DashboardGetPulseConfig(ctx, dashID)
 		if err != nil {
+			e.Broadcaster.CloseDash(dashID)
 			continue
 		}
 
 		rule, ok := dash.AccessRules["public"]
-		if !ok {
+		if !ok || rule.IsEmpty() {
+			e.Broadcaster.CloseDash(dashID)
 			continue
 		}
 
 		filteredData := make(map[string]any)
 		for _, agentID := range agents {
 			if snap, ok := allSnaps[agentID.AgentID]; ok {
-				filteredData[agentID.PublicAgentID] = e.filterSnapshot(snap, rule.MetricSet())
+				allowed := rule.MetricSet()
+				for feature := range rule.FeatureSet() {
+					allowed[feature] = struct{}{}
+				}
+				filtered := e.filterSnapshot(snap, allowed)
+
+				if _, ok := rule.FeatureSet()["disk_size"]; ok {
+					filtered["DiskTotalBytes"] = snap.DiskTotalBytes
+				}
+				filteredData[agentID.PublicAgentID] = filtered
+			}
+			if _, allowed := rule.FeatureSet()["is_online"]; allowed {
+				info, err := e.Store.AgentGetByID(ctx, agentID.AgentID, dash.UserID)
+				if err == nil {
+					item, ok := filteredData[agentID.PublicAgentID].(map[string]any)
+					if !ok {
+						item = map[string]any{"available": false}
+						filteredData[agentID.PublicAgentID] = item
+					}
+					item["is_online"] = info.IsOnline
+				}
 			}
 		}
 
@@ -329,8 +393,27 @@ func (e *Routine) filterSnapshot(snap *metrics.AgentSnapshot, allowed map[string
 
 	if allowedDiskUsed {
 		out["DiskUsedBytes"] = snap.DiskUsedBytes
-		out["DiskTotalBytes"] = snap.DiskTotalBytes
-		out["Disks"] = snap.Disks
+
+	}
+	if allowedDiskUsed || allowedDiskReadBytes || allowedDiskWriteBytes {
+		disks := make([]map[string]any, 0, len(snap.Disks))
+		for _, d := range snap.Disks {
+			item := map[string]any{"path": d.Path}
+			if _, ok := allowed["disk_size"]; ok {
+				item["total_bytes"] = d.TotalBytes
+			}
+			if allowedDiskUsed {
+				item["used_bytes"] = d.UsedBytes
+			}
+			if allowedDiskReadBytes {
+				item["read_bytes"] = d.ReadBytes
+			}
+			if allowedDiskWriteBytes {
+				item["write_bytes"] = d.WriteBytes
+			}
+			disks = append(disks, item)
+		}
+		out["Disks"] = disks
 	}
 	if allowedDiskReadBytes {
 		out["DiskReadBps"] = snap.DiskReadBps
@@ -347,5 +430,22 @@ func (e *Routine) filterSnapshot(snap *metrics.AgentSnapshot, allowed map[string
 		out["TXBps"] = snap.TXBps
 	}
 
+	names := map[string]string{"agent_cpu_usage": "CPUUsagePercent", "agent_cpu_iowait": "CPUIOWaitPercent", "agent_cpu_steal": "CPUStealPercent", "agent_ram_used": "RAMUsedBytes", "agent_swap_used": "RAMSwapUsedBytes", "agent_disk_used": "DiskUsedBytes"}
+	for metric, field := range names {
+		if snap.Missing[metric] {
+			if _, ok := out[field]; ok {
+				out[field] = nil
+			}
+		}
+	}
+	for metric, fields := range map[string][]string{"agent_rx_bytes": {"RXBytes", "RXBps"}, "agent_tx_bytes": {"TXBytes", "TXBps"}, "agent_disk_read_bytes": {"DiskReadBps"}, "agent_disk_write_bytes": {"DiskWriteBps"}} {
+		if snap.Missing[metric] {
+			for _, field := range fields {
+				if _, ok := out[field]; ok {
+					out[field] = nil
+				}
+			}
+		}
+	}
 	return out
 }

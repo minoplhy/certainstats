@@ -26,8 +26,8 @@ func ChangePasswordHandler(users store.UserStore) http.HandlerFunc {
 			return
 		}
 
-		if req.NewPassword == "" {
-			apiresponse.Error(w, http.StatusBadRequest, "New password cannot be empty")
+		if err := ValidatePassword(req.NewPassword, req.NewPassword); err != nil {
+			apiresponse.Error(w, http.StatusBadRequest, err.Error())
 			return
 		}
 
@@ -53,7 +53,7 @@ func ChangePasswordHandler(users store.UserStore) http.HandlerFunc {
 			return
 		}
 
-		if err := users.UpdatePassword(r.Context(), userID, string(newHash)); err != nil {
+		if err := PersistPassword(r, users, userID, user.PasswordHash, string(newHash)); err != nil {
 			apiresponse.Error(w, http.StatusInternalServerError, "Failed to update password")
 			return
 		}

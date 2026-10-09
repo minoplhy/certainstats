@@ -1,6 +1,6 @@
 {{define "agents_notes_modal"}}
 <dialog id="notes-modal" class="modal" aria-labelledby="notes-modal-title">
-  <form id="notes-form" onsubmit="event.preventDefault(); document.getElementById('save-notes-btn').click();">
+  <form id="notes-form" data-submit-action="save-notes"><input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
     <div class="modal-header">
       <div>
         <h2 class="modal-title" id="notes-modal-title">Private notes</h2>

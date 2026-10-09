@@ -20,7 +20,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -tags embed -ldflags="-w -s" -o certainstats ./cmd/certainstats
 
 # Stage 2: Final Production Runtime Image
-FROM alpine:latest
+FROM alpine:3.22.1
 WORKDIR /app
 RUN apk add --no-cache ca-certificates tzdata
 
@@ -28,7 +28,8 @@ RUN apk add --no-cache ca-certificates tzdata
 COPY --from=backend-builder /app/certainstats .
 
 # Create directory for persistent database/TSDB data
-RUN mkdir -p /app/data
+RUN addgroup -g 10001 certainstats && adduser -D -u 10001 -G certainstats certainstats && mkdir -p /app/data && chown 10001:10001 /app/data
+USER 10001:10001
 
 # Default production environment variables
 ENV PANEL_PATH="/"

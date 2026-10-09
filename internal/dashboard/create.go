@@ -58,7 +58,11 @@ func CreateDashboardHandler(dashboard store.DashboardStore) http.HandlerFunc {
 		// 6. Insert each selected agent into the mapping table with a secure public_id
 		err = dashboard.DashboardAddAgents(r.Context(), storeDashboard, CreateDashboardReq.Agents)
 		if err != nil {
-			apiresponse.Error(w, http.StatusConflict, "Failed to add Agents ")
+			if cleanupErr := dashboard.DashboardDelete(r.Context(), dashboardID, userID); cleanupErr != nil {
+				apiresponse.Error(w, 500, "Failed to roll back dashboard creation")
+				return
+			}
+			apiresponse.Error(w, http.StatusConflict, "Failed to add agents")
 			return
 		}
 		// 8. Return success!

@@ -58,7 +58,7 @@ func formatMetricValue(t string, val float64) string {
 	case "cpu_usage", "cpu_iowait", "cpu_steal", "ram_usage", "swap_usage", "disk_usage":
 		return fmt.Sprintf("%.2f%%", val)
 	case "net_rx", "net_tx", "disk_read", "disk_write":
-		return fmt.Sprintf("%.2f KB/s", val)
+		return fmt.Sprintf("%.2f KiB/s", val)
 	default:
 		return fmt.Sprintf("%.2f", val)
 	}
@@ -285,6 +285,9 @@ func sendDiscordWebhook(action alert.AlertAction, nctx NotificationContext) erro
 		}
 	}
 
+	if err := ValidateWebhook(action.Destination); err != nil {
+		return err
+	}
 	req, err := http.NewRequest(http.MethodPost, action.Destination, bytes.NewBuffer(payloadBytes))
 	if err != nil {
 		return fmt.Errorf("failed to create discord request: %w", err)
@@ -333,6 +336,9 @@ func sendWebhook(action alert.AlertAction, nctx NotificationContext) error {
 	}
 
 	// 3. Create and execute the HTTP POST request
+	if err := ValidateWebhook(action.Destination); err != nil {
+		return err
+	}
 	req, err := http.NewRequest(http.MethodPost, action.Destination, bytes.NewBuffer(payloadBytes))
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)

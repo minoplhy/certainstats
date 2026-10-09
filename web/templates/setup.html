@@ -7,16 +7,18 @@
       <p class="muted">Create the administrator account. You can add servers right after.</p>
     </div>
 
-    <form class="card auth-form" action="{{.PanelPath}}/first-time-setup" method="POST" id="setup-form">
+    <form class="card auth-form" action="{{.PanelPath}}/first-time-setup" method="POST" id="setup-form"><input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
       <input type="hidden" name="token" value="{{.Token}}">
 
       <div class="form-group">
         <label class="form-label" for="username">Username</label>
-        <input type="text" id="username" name="username" class="form-input" required autofocus autocomplete="username">
+        {{with .FieldErrors.username}}<p class="field-error" role="alert">{{.}}</p>{{end}}
+        <input type="text" id="username" name="username" value="{{.Username}}" class="form-input" required autofocus autocomplete="username">
       </div>
 
       <div class="form-group">
         <label class="form-label" for="password">Password</label>
+        {{with .FieldErrors.password}}<p class="field-error" role="alert">{{.}}</p>{{end}}
         <input type="password" id="password" name="password" class="form-input" required autocomplete="new-password">
       </div>
 
@@ -29,13 +31,6 @@
     </form>
   </div>
 </div>
-<script>
-  (function () {
-    var pw = document.getElementById('password');
-    var confirmPw = document.getElementById('confirm_password');
-    function check() { confirmPw.setCustomValidity(confirmPw.value && confirmPw.value !== pw.value ? 'Passwords do not match.' : ''); }
-    pw.addEventListener('input', check);
-    confirmPw.addEventListener('input', check);
-  })();
-</script>
+<script type="application/json" id="page-config" data-module="setup">{{bootstrap .}}</script>
+<script src="{{.StaticPath}}/{{asset "js/bootstrap.js"}}" integrity="{{integrity "js/bootstrap.js"}}"></script>
 {{end}}

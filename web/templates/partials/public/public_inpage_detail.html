@@ -2,7 +2,7 @@
 <div id="public-detail-view" hidden data-max-days="{{.AccessRules.MaxDays}}">
   <section class="detail-hero">
     <div class="hero-eyebrow">
-      <a href="{{.PublicPath}}/{{.Dashboard.Slug}}" onclick="event.preventDefault(); closePublicDetail();">&larr; {{.Dashboard.Title}}</a>
+      <a href="{{.PublicPath}}/{{.Dashboard.Slug}}" data-click-action="closePublicDetail" data-prevent-default="true">&larr; {{.Dashboard.Title}}</a>
     </div>
     <h1 class="detail-title" id="pub-inpage-name">Server</h1>
     <div class="spec-row">
@@ -62,6 +62,7 @@
       <span class="odometer-label-group">Network traffic, all time</span>
       <span class="odometer-values" id="pub-inpage-odo-net"><span>↓ 0 B</span><span>↑ 0 B</span></span>
     </div>
+<p class="form-hint">Lifetime totals count traffic observed since this server was added. Collection gaps are excluded. Recreating the agent resets these totals.</p>
     {{end}}
     {{if or (hasMetric .AccessRules "agent_disk_read_bytes") (hasMetric .AccessRules "agent_disk_write_bytes")}}
     <div class="odometer-tile">

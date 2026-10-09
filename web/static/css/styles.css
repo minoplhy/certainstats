@@ -3697,3 +3697,9 @@ dialog.modal.modal-confirm {
   color: var(--muted);
   font-size: 13px;
 }
+
+.feed-status { padding: .5rem 1rem; color: var(--muted); font-size: .8rem; text-align: center; }
+.request-status { margin-bottom: .75rem; color: var(--muted); }
+.chart-container { touch-action: pan-y; }
+.touch-zoom-toggle { margin: .25rem; }
+@media (max-width: 480px) { .container { max-width: 100%; } .time-range-bar { flex-wrap: wrap; } .chart-card { min-width: 0; } .picker-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }

@@ -16,7 +16,7 @@
   let lastPubSyncTime = Date.now();
 
   function safeId(p) {
-    return (!p || p === '/') ? 'root' : p.replace(/[^a-zA-Z0-9_-]/g, '_');
+    return window.CertainStatsDiskDOM.pathId(p);
   }
 
   // The page is served at {prefix}/{slug} or {prefix}/{slug}/{pubId}; read the
@@ -31,7 +31,7 @@
   }
 
   function handlePubItemClick(event, pubId) {
-    if (event.ctrlKey || event.metaKey || event.button === 1) {
+    if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey || event.button !== 0) {
       return; // Allow standard browser new tab
     }
     event.preventDefault();
@@ -80,6 +80,10 @@
         el.style.display = 'none';
       }
     });
+    const matches=new Set(Array.from(document.querySelectorAll('.public-monitor-item, .public-monitor-row')).filter(node=>node.style.display!=='none').map(node=>node.getAttribute('data-pub-id')));
+    let count=document.getElementById('public-search-input-count');if (!count) {count=document.createElement('p');count.id='public-search-input-count';count.className='muted';count.setAttribute('role','status');document.getElementById('public-search-input').parentElement.after(count);}
+    count.textContent=matches.size ? matches.size+' matching servers' : 'No matching servers.';
+
   }
 
   function renderPubInpageLiveState(pubId) {
@@ -92,21 +96,21 @@
     if (inpageDisksGrid && pubAllowedMetrics.includes('agent_disk_used')) {
       const disks = (agent.disks && agent.disks.length > 0) ? agent.disks : [];
       const showIO = pubAllowedMetrics.includes('agent_disk_read_bytes') || pubAllowedMetrics.includes('agent_disk_write_bytes');
-      let disksHtml = '';
+      const partitionCards = [];
       if (disks && disks.length > 0) {
         disks.forEach(d => {
           const path = d.path || '/';
           const snapDisk = (snap && snap.disks) ? snap.disks.find(x => x.path === path) : null;
-          const used = snapDisk ? snapDisk.used_bytes : (d.used_bytes || 0);
+          const used = snapDisk ? snapDisk.used_bytes : (d.used_bytes ?? null);
           const total = d.total_bytes || (snapDisk ? snapDisk.total_bytes : 0) || 0;
-          disksHtml += window.CertainStatsTelemetry.partitionCardHtml(path, used, total, d.read_bytes || 0, d.write_bytes || 0, { showIO: showIO });
+          partitionCards.push({path, used, total, read:d.read_bytes ?? null, write:d.write_bytes ?? null});
         });
       } else {
-        const diskUsed = snap ? (snap.disk_used_bytes || 0) : 0;
+        const diskUsed = snap ? (snap.disk_used_bytes ?? null) : null;
         const diskTotal = agent.disk_size || (snap ? snap.disk_total_bytes : 0) || 0;
-        disksHtml += window.CertainStatsTelemetry.partitionCardHtml('/', diskUsed, diskTotal, agent.total_disk_read_bytes || 0, agent.total_disk_write_bytes || 0, { showIO: showIO });
+        partitionCards.push({path:'/', used:diskUsed, total:diskTotal, read:agent.total_disk_read_bytes ?? null, write:agent.total_disk_write_bytes ?? null});
       }
-      inpageDisksGrid.innerHTML = disksHtml;
+      window.CertainStatsTelemetry.renderPartitions(inpageDisksGrid, partitionCards, {showIO, showRead:pubAllowedMetrics.includes('agent_disk_read_bytes'), showWrite:pubAllowedMetrics.includes('agent_disk_write_bytes')});
     }
 
     if (snap) {
@@ -121,18 +125,18 @@
 
       if (inpageCpu && pubAllowedMetrics.includes('agent_cpu_usage')) inpageCpu.style.width = Math.min(snap.cpu_usage_percent, 100) + '%';
       if (inpageRam && pubAllowedMetrics.includes('agent_ram_used')) inpageRam.style.width = Math.min(ramPct, 100) + '%';
-      if (inpageDisk && diskPct > 0 && pubAllowedMetrics.includes('agent_disk_used')) inpageDisk.style.width = Math.min(diskPct, 100) + '%';
-      if (inpageSwap && swapPct > 0 && pubAllowedMetrics.includes('agent_swap_used')) inpageSwap.style.width = Math.min(swapPct, 100) + '%';
+      if (inpageDisk && pubAllowedMetrics.includes('agent_disk_used')) inpageDisk.style.width = Math.min(diskPct, 100) + '%';
+      if (inpageSwap && pubAllowedMetrics.includes('agent_swap_used')) inpageSwap.style.width = Math.min(swapPct, 100) + '%';
 
       const fmt = window.CertainStatsChart.formatBytes;
-      const tileCpu = document.getElementById('pub-inpage-tile-cpu'); if (tileCpu) tileCpu.textContent = snap.cpu_usage_percent.toFixed(1) + '%';
+      const tileCpu = document.getElementById('pub-inpage-tile-cpu'); if (tileCpu) tileCpu.textContent = (snap.cpu_usage_percent == null ? "Unavailable" : snap.cpu_usage_percent.toFixed(1) + "%");
       const tileRam = document.getElementById('pub-inpage-tile-ram'); if (tileRam) tileRam.textContent = fmt(snap.ram_used_bytes);
-      const tileDisk = document.getElementById('pub-inpage-tile-disk'); if (tileDisk) tileDisk.textContent = snap.disk_used_bytes > 0 ? fmt(snap.disk_used_bytes) : '–';
+      const tileDisk = document.getElementById('pub-inpage-tile-disk'); if (tileDisk) tileDisk.textContent = fmt(snap.disk_used_bytes);
       const tileSwap = document.getElementById('pub-inpage-tile-swap'); if (tileSwap) tileSwap.textContent = fmt(snap.ram_swap_used_bytes);
 
-      const inpageCpuUsr = document.getElementById('pub-inpage-live-cpu-usr'); if (inpageCpuUsr && pubAllowedMetrics.includes('agent_cpu_usage')) inpageCpuUsr.textContent = snap.cpu_usage_percent.toFixed(1) + '%';
-      const inpageCpuIo = document.getElementById('pub-inpage-live-cpu-io'); if (inpageCpuIo && pubAllowedMetrics.includes('agent_cpu_iowait')) inpageCpuIo.textContent = snap.cpu_iowait_percent.toFixed(1) + '%';
-      const inpageCpuStl = document.getElementById('pub-inpage-live-cpu-stl'); if (inpageCpuStl && pubAllowedMetrics.includes('agent_cpu_steal')) inpageCpuStl.textContent = snap.cpu_steal_percent.toFixed(1) + '%';
+      const inpageCpuUsr = document.getElementById('pub-inpage-live-cpu-usr'); if (inpageCpuUsr && pubAllowedMetrics.includes('agent_cpu_usage')) inpageCpuUsr.textContent = (snap.cpu_usage_percent == null ? "Unavailable" : snap.cpu_usage_percent.toFixed(1) + "%");
+      const inpageCpuIo = document.getElementById('pub-inpage-live-cpu-io'); if (inpageCpuIo && pubAllowedMetrics.includes('agent_cpu_iowait')) inpageCpuIo.textContent = (snap.cpu_iowait_percent == null ? "Unavailable" : snap.cpu_iowait_percent.toFixed(1) + "%");
+      const inpageCpuStl = document.getElementById('pub-inpage-live-cpu-stl'); if (inpageCpuStl && pubAllowedMetrics.includes('agent_cpu_steal')) inpageCpuStl.textContent = (snap.cpu_steal_percent == null ? "Unavailable" : snap.cpu_steal_percent.toFixed(1) + "%");
       const inpageRamUsed = document.getElementById('pub-inpage-live-ram-used'); if (inpageRamUsed && pubAllowedMetrics.includes('agent_ram_used')) inpageRamUsed.textContent = window.CertainStatsChart.formatBytes(snap.ram_used_bytes);
       const inpageRamSwap = document.getElementById('pub-inpage-live-ram-swap'); if (inpageRamSwap && pubAllowedMetrics.includes('agent_swap_used')) inpageRamSwap.textContent = window.CertainStatsChart.formatBytes(snap.ram_swap_used_bytes);
       const inpageNetRx = document.getElementById('pub-inpage-live-net-rx'); if (inpageNetRx && pubAllowedMetrics.includes('agent_rx_bytes')) inpageNetRx.textContent = '↓ ' + window.CertainStatsChart.formatBps(snap.rx_bps);
@@ -146,6 +150,11 @@
   }
 
   function loadPublicDetailMetrics(pubId, hours, customRange) {
+    if (maxDays <= 0 || !pubAllowedMetrics.length) return;
+    const supported=[1,6,12,24,48,168,720,2160,4320,8760,17520].filter(value=>value<=maxDays*24);
+    if (!supported.includes(hours)) hours=supported.includes(6) ? 6 : supported[0];
+    customRange=null;
+    const requestGroup = window.CertainStatsRequests.begin('public-detail-view', () => loadPublicDetailMetrics(pubId, hours, customRange));
     const publicPath = (document.body?.getAttribute('data-public-path') || '').replace(/\/+$/, '');
     const agent = pubAgentsData.find(a => a.public_id === pubId);
     let baseQuery = 'dashboard_id=' + encodeURIComponent(dashId) + '&agent_id=' + encodeURIComponent(pubId);
@@ -157,13 +166,13 @@
     const qEnd = customRange ? customRange.end : Date.now();
 
     if (agent) {
-      const isOnline = agent.is_online === true || (agent.last_seen && (Date.now() - new Date(agent.last_seen).getTime()) < 120000);
+      const isOnline = agent.is_online;
       const dotEl = document.getElementById('pub-inpage-dot');
       const badgeEl = document.getElementById('pub-inpage-badge');
-      if (dotEl) dotEl.className = 'status-dot ' + (isOnline ? 'online' : 'offline');
+      if (dotEl) dotEl.className = 'status-dot ' + (isOnline === undefined || isOnline === null ? '' : isOnline ? 'online' : 'offline');
       if (badgeEl) {
-        badgeEl.className = 'badge ' + (isOnline ? 'badge-online' : 'badge-offline');
-        badgeEl.textContent = isOnline ? 'Online' : 'Offline';
+        badgeEl.className = 'badge ' + (isOnline === undefined || isOnline === null ? '' : isOnline ? 'badge-online' : 'badge-offline');
+        badgeEl.textContent = isOnline === undefined || isOnline === null ? 'Status unavailable' : isOnline ? 'Online' : 'Offline';
       }
 
       const elName = document.getElementById('pub-inpage-name');
@@ -207,20 +216,21 @@
     // 1. Fetch CPU (Usr, IO, Steal)
     if (pubAllowedMetrics.includes('agent_cpu_usage') || pubAllowedMetrics.includes('agent_cpu_iowait') || pubAllowedMetrics.includes('agent_cpu_steal')) {
       Promise.all([
-        pubAllowedMetrics.includes('agent_cpu_usage') ? fetch(publicPath + '/api/public/metrics?' + baseQuery + '&metric=agent_cpu_usage').then(r => r.json()).catch(() => ({ series: [] })) : Promise.resolve({ series: [] }),
-        pubAllowedMetrics.includes('agent_cpu_iowait') ? fetch(publicPath + '/api/public/metrics?' + baseQuery + '&metric=agent_cpu_iowait').then(r => r.json()).catch(() => ({ series: [] })) : Promise.resolve({ series: [] }),
-        pubAllowedMetrics.includes('agent_cpu_steal') ? fetch(publicPath + '/api/public/metrics?' + baseQuery + '&metric=agent_cpu_steal').then(r => r.json()).catch(() => ({ series: [] })) : Promise.resolve({ series: [] })
+        pubAllowedMetrics.includes('agent_cpu_usage') ? requestGroup.json(publicPath + '/api/public/metrics?' + baseQuery + '&metric=agent_cpu_usage').catch(() => ({ series: [] })) : Promise.resolve({ series: [] }),
+        pubAllowedMetrics.includes('agent_cpu_iowait') ? requestGroup.json(publicPath + '/api/public/metrics?' + baseQuery + '&metric=agent_cpu_iowait').catch(() => ({ series: [] })) : Promise.resolve({ series: [] }),
+        pubAllowedMetrics.includes('agent_cpu_steal') ? requestGroup.json(publicPath + '/api/public/metrics?' + baseQuery + '&metric=agent_cpu_steal').catch(() => ({ series: [] })) : Promise.resolve({ series: [] })
       ]).then(([resUsr, resIO, resStl]) => {
+      if (requestGroup.signal.aborted) return;
         const ptsUsr = (resUsr && resUsr.series && resUsr.series[0]) ? resUsr.series[0].data : [];
         const ptsIO = (resIO && resIO.series && resIO.series[0]) ? resIO.series[0].data : [];
         const ptsStl = (resStl && resStl.series && resStl.series[0]) ? resStl.series[0].data : [];
 
-        const lastUsr = ptsUsr.length ? ptsUsr[ptsUsr.length - 1][1] : 0;
-        const lastIO = ptsIO.length ? ptsIO[ptsIO.length - 1][1] : 0;
-        const lastStl = ptsStl.length ? ptsStl[ptsStl.length - 1][1] : 0;
-        const elUsr = document.getElementById('pub-inpage-live-cpu-usr'); if (elUsr) elUsr.textContent = lastUsr.toFixed(1) + '%';
-        const elIO = document.getElementById('pub-inpage-live-cpu-io'); if (elIO) elIO.textContent = lastIO.toFixed(1) + '%';
-        const elStl = document.getElementById('pub-inpage-live-cpu-stl'); if (elStl) elStl.textContent = lastStl.toFixed(1) + '%';
+        const lastUsr = ptsUsr.length ? ptsUsr[ptsUsr.length - 1][1] : null;
+        const lastIO = ptsIO.length ? ptsIO[ptsIO.length - 1][1] : null;
+        const lastStl = ptsStl.length ? ptsStl[ptsStl.length - 1][1] : null;
+        const elUsr = document.getElementById('pub-inpage-live-cpu-usr'); if (elUsr) elUsr.textContent = (lastUsr == null ? "Unavailable" : lastUsr.toFixed(1) + "%");
+        const elIO = document.getElementById('pub-inpage-live-cpu-io'); if (elIO) elIO.textContent = (lastIO == null ? "Unavailable" : lastIO.toFixed(1) + "%");
+        const elStl = document.getElementById('pub-inpage-live-cpu-stl'); if (elStl) elStl.textContent = (lastStl == null ? "Unavailable" : lastStl.toFixed(1) + "%");
 
         const seriesList = [];
         if (pubAllowedMetrics.includes('agent_cpu_usage')) {
@@ -252,15 +262,16 @@
     // 2. Fetch RAM (RAM, Swap)
     if (pubAllowedMetrics.includes('agent_ram_used') || pubAllowedMetrics.includes('agent_swap_used')) {
       Promise.all([
-        pubAllowedMetrics.includes('agent_ram_used') ? fetch(publicPath + '/api/public/metrics?' + baseQuery + '&metric=agent_ram_used').then(r => r.json()).catch(() => ({ series: [] })) : Promise.resolve({ series: [] }),
-        pubAllowedMetrics.includes('agent_swap_used') ? fetch(publicPath + '/api/public/metrics?' + baseQuery + '&metric=agent_swap_used').then(r => r.json()).catch(() => ({ series: [] })) : Promise.resolve({ series: [] })
+        pubAllowedMetrics.includes('agent_ram_used') ? requestGroup.json(publicPath + '/api/public/metrics?' + baseQuery + '&metric=agent_ram_used').catch(() => ({ series: [] })) : Promise.resolve({ series: [] }),
+        pubAllowedMetrics.includes('agent_swap_used') ? requestGroup.json(publicPath + '/api/public/metrics?' + baseQuery + '&metric=agent_swap_used').catch(() => ({ series: [] })) : Promise.resolve({ series: [] })
       ]).then(([resRam, resSwap]) => {
+      if (requestGroup.signal.aborted) return;
         const ptsRam = (resRam && resRam.series && resRam.series[0]) ? resRam.series[0].data : [];
         const ptsSwap = (resSwap && resSwap.series && resSwap.series[0]) ? resSwap.series[0].data : [];
         const maxCapacity = Math.max(agent ? agent.ram_size : 0, agent ? agent.swap_size : 0);
 
-        const lastRam = ptsRam.length ? ptsRam[ptsRam.length - 1][1] : 0;
-        const lastSwap = ptsSwap.length ? ptsSwap[ptsSwap.length - 1][1] : 0;
+        const lastRam = ptsRam.length ? ptsRam[ptsRam.length - 1][1] : null;
+        const lastSwap = ptsSwap.length ? ptsSwap[ptsSwap.length - 1][1] : null;
         const elRam = document.getElementById('pub-inpage-live-ram-used'); if (elRam) elRam.textContent = window.CertainStatsChart.formatBytes(lastRam);
         const elSwap = document.getElementById('pub-inpage-live-ram-swap'); if (elSwap) elSwap.textContent = window.CertainStatsChart.formatBytes(lastSwap);
 
@@ -290,16 +301,17 @@
     // 3. Fetch Network RX/TX
     if (pubAllowedMetrics.includes('agent_rx_bytes') || pubAllowedMetrics.includes('agent_tx_bytes')) {
       Promise.all([
-        pubAllowedMetrics.includes('agent_rx_bytes') ? fetch(publicPath + '/api/public/metrics?' + baseQuery + '&metric=agent_rx_bytes').then(r => r.json()).catch(() => ({ series: [] })) : Promise.resolve({ series: [] }),
-        pubAllowedMetrics.includes('agent_tx_bytes') ? fetch(publicPath + '/api/public/metrics?' + baseQuery + '&metric=agent_tx_bytes').then(r => r.json()).catch(() => ({ series: [] })) : Promise.resolve({ series: [] })
+        pubAllowedMetrics.includes('agent_rx_bytes') ? requestGroup.json(publicPath + '/api/public/metrics?' + baseQuery + '&metric=agent_rx_bytes').catch(() => ({ series: [] })) : Promise.resolve({ series: [] }),
+        pubAllowedMetrics.includes('agent_tx_bytes') ? requestGroup.json(publicPath + '/api/public/metrics?' + baseQuery + '&metric=agent_tx_bytes').catch(() => ({ series: [] })) : Promise.resolve({ series: [] })
       ]).then(([resRx, resTx]) => {
+      if (requestGroup.signal.aborted) return;
         const ptsRx = (resRx && resRx.series && resRx.series[0]) ? resRx.series[0].data : [];
         const ptsTx = (resTx && resTx.series && resTx.series[0]) ? resTx.series[0].data : [];
 
-        const rateRx = window.CertainStatsChart.convertDeltaToRate(ptsRx);
-        const rateTx = window.CertainStatsChart.convertDeltaToRate(ptsTx);
-        const lastRx = rateRx.length ? rateRx[rateRx.length - 1][1] : 0;
-        const lastTx = rateTx.length ? rateTx[rateTx.length - 1][1] : 0;
+        const rateRx = (resRx?.series?.[0]?.rate_data || window.CertainStatsChart.convertDeltaToRate(ptsRx));
+        const rateTx = (resTx?.series?.[0]?.rate_data || window.CertainStatsChart.convertDeltaToRate(ptsTx));
+        const lastRx = rateRx.length ? rateRx[rateRx.length - 1][1] : null;
+        const lastTx = rateTx.length ? rateTx[rateTx.length - 1][1] : null;
         const elRx = document.getElementById('pub-inpage-live-net-rx'); if (elRx) elRx.textContent = '↓ ' + window.CertainStatsChart.formatBps(lastRx);
         const elTx = document.getElementById('pub-inpage-live-net-tx'); if (elTx) elTx.textContent = '↑ ' + window.CertainStatsChart.formatBps(lastTx);
 
@@ -328,10 +340,11 @@
     // 4. Fetch Disk Usage & Disk I/O Rates (Separated Per Disk Partition)
     if (pubAllowedMetrics.includes('agent_disk_used') || pubAllowedMetrics.includes('agent_disk_read_bytes') || pubAllowedMetrics.includes('agent_disk_write_bytes')) {
       Promise.all([
-        pubAllowedMetrics.includes('agent_disk_used') ? fetch(publicPath + '/api/public/metrics?' + baseQuery + '&metric=agent_disk_used').then(r => r.json()).catch(() => ({ series: [] })) : Promise.resolve({ series: [] }),
-        pubAllowedMetrics.includes('agent_disk_read_bytes') ? fetch(publicPath + '/api/public/metrics?' + baseQuery + '&metric=agent_disk_read_bytes').then(r => r.json()).catch(() => ({ series: [] })) : Promise.resolve({ series: [] }),
-        pubAllowedMetrics.includes('agent_disk_write_bytes') ? fetch(publicPath + '/api/public/metrics?' + baseQuery + '&metric=agent_disk_write_bytes').then(r => r.json()).catch(() => ({ series: [] })) : Promise.resolve({ series: [] })
+        pubAllowedMetrics.includes('agent_disk_used') ? requestGroup.json(publicPath + '/api/public/metrics?' + baseQuery + '&metric=agent_disk_used').catch(() => ({ series: [] })) : Promise.resolve({ series: [] }),
+        pubAllowedMetrics.includes('agent_disk_read_bytes') ? requestGroup.json(publicPath + '/api/public/metrics?' + baseQuery + '&metric=agent_disk_read_bytes').catch(() => ({ series: [] })) : Promise.resolve({ series: [] }),
+        pubAllowedMetrics.includes('agent_disk_write_bytes') ? requestGroup.json(publicPath + '/api/public/metrics?' + baseQuery + '&metric=agent_disk_write_bytes').catch(() => ({ series: [] })) : Promise.resolve({ series: [] })
       ]).then(([resDisk, resRead, resWrite]) => {
+      if (requestGroup.signal.aborted) return;
         const diskSeries = (resDisk && resDisk.series) ? resDisk.series : [];
         const readSeries = (resRead && resRead.series) ? resRead.series : [];
         const writeSeries = (resWrite && resWrite.series) ? resWrite.series : [];
@@ -356,33 +369,7 @@
           });
           pubInpageDiskCharts = {};
 
-          let html = '';
-          paths.forEach(p => {
-            const safe = safeId(p);
-            const showUsage = pubAllowedMetrics.includes('agent_disk_used');
-            const showIO = pubAllowedMetrics.includes('agent_disk_read_bytes') || pubAllowedMetrics.includes('agent_disk_write_bytes');
-            html += `
-              <div class="chart-card" id="pub-inpage-disk-card-usage-${safe}"${showUsage ? '' : ' hidden'}>
-                <div class="chart-header-row">
-                  <h3 class="chart-header-title">Disk usage <span class="muted mono">${p}</span></h3>
-                  <div class="chart-legend-pills">
-                    <span class="chart-legend-item"><span class="chart-legend-dot sw-s1"></span>Used <span class="chart-legend-val" id="pub-inpage-live-disk-used-${safe}">0 B</span></span>
-                  </div>
-                </div>
-                <div class="chart-container"><canvas id="pub-inpage-chart-disk-${safe}" class="chart-canvas"></canvas></div>
-              </div>
-              <div class="chart-card" id="pub-inpage-disk-card-io-${safe}"${showIO ? '' : ' hidden'}>
-                <div class="chart-header-row">
-                  <h3 class="chart-header-title">Disk I/O <span class="muted mono">${p}</span></h3>
-                  <div class="chart-legend-pills">
-                    ${pubAllowedMetrics.includes('agent_disk_read_bytes') ? `<span class="chart-legend-item"><span class="chart-legend-dot sw-s2"></span>Read <span class="chart-legend-val" id="pub-inpage-live-disk-read-${safe}">0 B/s</span></span>` : ''}
-                    ${pubAllowedMetrics.includes('agent_disk_write_bytes') ? `<span class="chart-legend-item"><span class="chart-legend-dot sw-s3"></span>Write <span class="chart-legend-val" id="pub-inpage-live-disk-write-${safe}">0 B/s</span></span>` : ''}
-                  </div>
-                </div>
-                <div class="chart-container"><canvas id="pub-inpage-chart-disk-io-${safe}" class="chart-canvas"></canvas></div>
-              </div>`;
-          });
-          container.innerHTML = html;
+          window.CertainStatsDiskDOM.render(container, paths, 'pub-inpage-', pubAllowedMetrics);
         }
 
         paths.forEach(p => {
@@ -392,12 +379,12 @@
           const sWrite = writeSeries.find(s => (s.labels?.path || '/') === p);
 
           const ptsUsed = sDisk ? (sDisk.data || []) : [];
-          const rateRead = window.CertainStatsChart.convertDeltaToRate(sRead ? (sRead.data || []) : []);
-          const rateWrite = window.CertainStatsChart.convertDeltaToRate(sWrite ? (sWrite.data || []) : []);
+          const rateRead = (sRead?.rate_data || window.CertainStatsChart.convertDeltaToRate(sRead?.data || []));
+          const rateWrite = (sWrite?.rate_data || window.CertainStatsChart.convertDeltaToRate(sWrite?.data || []));
 
-          const lastUsed = ptsUsed.length ? (ptsUsed[ptsUsed.length - 1][1] || 0) : 0;
-          const lastR = rateRead.length ? (rateRead[rateRead.length - 1][1] || 0) : 0;
-          const lastW = rateWrite.length ? (rateWrite[rateWrite.length - 1][1] || 0) : 0;
+          const lastUsed = ptsUsed.length ? ptsUsed[ptsUsed.length - 1][1] : null;
+          const lastR = rateRead.length ? rateRead[rateRead.length - 1][1] : null;
+          const lastW = rateWrite.length ? rateWrite[rateWrite.length - 1][1] : null;
 
           const elUsed = document.getElementById('pub-inpage-live-disk-used-' + safe); if (elUsed) elUsed.textContent = window.CertainStatsChart.formatBytes(lastUsed);
           const elR = document.getElementById('pub-inpage-live-disk-read-' + safe); if (elR) elR.textContent = window.CertainStatsChart.formatBps(lastR);
@@ -476,6 +463,8 @@
       if (!snap) continue;
 
       const agent = pubAgentsData.find(a => a.public_id === id) || {};
+      if (snap.is_online !== undefined) {agent.is_online=snap.is_online;document.querySelectorAll('[data-pub-id="' + id + '"]').forEach(node=>node.classList.toggle('is-offline',!snap.is_online));}
+      if (snap.available===false) continue;
       agent.latest_snap = snap;
       if (snap.disks && snap.disks.length > 0 && agent.disks) {
         snap.disks.forEach(sd => {
@@ -495,8 +484,8 @@
       const tdSegCpu = document.getElementById('pub-td-seg-cpu-' + id);
       const tdCpu = document.getElementById('pub-td-cpu-' + id);
 
-      if (valCpu) valCpu.textContent = snap.cpu_usage_percent.toFixed(1) + '%';
-      if (tdCpu) tdCpu.textContent = snap.cpu_usage_percent.toFixed(1) + '%';
+      if (valCpu) valCpu.textContent = (snap.cpu_usage_percent == null ? "Unavailable" : snap.cpu_usage_percent.toFixed(1) + "%");
+      if (tdCpu) tdCpu.textContent = (snap.cpu_usage_percent == null ? "Unavailable" : snap.cpu_usage_percent.toFixed(1) + "%");
       if (segUsr) segUsr.style.width = Math.min(snap.cpu_usage_percent, 100) + '%';
       if (segIo) segIo.style.width = Math.min(snap.cpu_iowait_percent, 100) + '%';
       if (segStl) segStl.style.width = Math.min(snap.cpu_steal_percent, 100) + '%';
@@ -588,9 +577,9 @@
       const trackCpu = document.getElementById('pub-track-cpu-' + id);
       if (trackCpu) {
         const rows = [];
-        if (pubAllowedMetrics.includes('agent_cpu_usage')) rows.push({ label: 'Used', val: snap.cpu_usage_percent.toFixed(1) + '%', color: 'var(--s1)' });
-        if (pubAllowedMetrics.includes('agent_cpu_iowait')) rows.push({ label: 'IO wait', val: snap.cpu_iowait_percent.toFixed(1) + '%', color: 'var(--s2)' });
-        if (pubAllowedMetrics.includes('agent_cpu_steal')) rows.push({ label: 'Steal', val: snap.cpu_steal_percent.toFixed(1) + '%', color: 'var(--s3)' });
+        if (pubAllowedMetrics.includes('agent_cpu_usage')) rows.push({ label: 'Used', val: (snap.cpu_usage_percent == null ? "Unavailable" : snap.cpu_usage_percent.toFixed(1) + "%"), color: 'var(--s1)' });
+        if (pubAllowedMetrics.includes('agent_cpu_iowait')) rows.push({ label: 'IO wait', val: (snap.cpu_iowait_percent == null ? "Unavailable" : snap.cpu_iowait_percent.toFixed(1) + "%"), color: 'var(--s2)' });
+        if (pubAllowedMetrics.includes('agent_cpu_steal')) rows.push({ label: 'Steal', val: (snap.cpu_steal_percent == null ? "Unavailable" : snap.cpu_steal_percent.toFixed(1) + "%"), color: 'var(--s3)' });
         trackCpu.setAttribute('data-tooltip-rows', JSON.stringify(rows));
       }
       const trackRam = document.getElementById('pub-track-ram-' + id);
@@ -643,9 +632,9 @@
         // Update in-page Disks Section and live specs
         renderPubInpageLiveState(id);
 
-        const inpageCpuUsr = document.getElementById('pub-inpage-live-cpu-usr'); if (inpageCpuUsr && pubAllowedMetrics.includes('agent_cpu_usage')) inpageCpuUsr.textContent = snap.cpu_usage_percent.toFixed(1) + '%';
-        const inpageCpuIo = document.getElementById('pub-inpage-live-cpu-io'); if (inpageCpuIo && pubAllowedMetrics.includes('agent_cpu_iowait')) inpageCpuIo.textContent = snap.cpu_iowait_percent.toFixed(1) + '%';
-        const inpageCpuStl = document.getElementById('pub-inpage-live-cpu-stl'); if (inpageCpuStl && pubAllowedMetrics.includes('agent_cpu_steal')) inpageCpuStl.textContent = snap.cpu_steal_percent.toFixed(1) + '%';
+        const inpageCpuUsr = document.getElementById('pub-inpage-live-cpu-usr'); if (inpageCpuUsr && pubAllowedMetrics.includes('agent_cpu_usage')) inpageCpuUsr.textContent = (snap.cpu_usage_percent == null ? "Unavailable" : snap.cpu_usage_percent.toFixed(1) + "%");
+        const inpageCpuIo = document.getElementById('pub-inpage-live-cpu-io'); if (inpageCpuIo && pubAllowedMetrics.includes('agent_cpu_iowait')) inpageCpuIo.textContent = (snap.cpu_iowait_percent == null ? "Unavailable" : snap.cpu_iowait_percent.toFixed(1) + "%");
+        const inpageCpuStl = document.getElementById('pub-inpage-live-cpu-stl'); if (inpageCpuStl && pubAllowedMetrics.includes('agent_cpu_steal')) inpageCpuStl.textContent = (snap.cpu_steal_percent == null ? "Unavailable" : snap.cpu_steal_percent.toFixed(1) + "%");
         const inpageRamUsed = document.getElementById('pub-inpage-live-ram-used'); if (inpageRamUsed && pubAllowedMetrics.includes('agent_ram_used')) inpageRamUsed.textContent = window.CertainStatsChart.formatBytes(snap.ram_used_bytes);
         const inpageRamSwap = document.getElementById('pub-inpage-live-ram-swap'); if (inpageRamSwap && pubAllowedMetrics.includes('agent_swap_used')) inpageRamSwap.textContent = window.CertainStatsChart.formatBytes(snap.ram_swap_used_bytes);
         const inpageNetRx = document.getElementById('pub-inpage-live-net-rx'); if (inpageNetRx && pubAllowedMetrics.includes('agent_rx_bytes')) inpageNetRx.textContent = '↓ ' + window.CertainStatsChart.formatBps(snap.rx_bps);
@@ -749,23 +738,23 @@
             existing.is_online = fa.is_online;
             const isOnline = !!fa.is_online;
             const cardDot = document.getElementById('pub-dot-' + fa.public_id);
-            if (cardDot) cardDot.className = 'status-dot ' + (isOnline ? 'online' : 'offline');
+            if (cardDot) cardDot.className = 'status-dot ' + (isOnline === undefined || isOnline === null ? '' : isOnline ? 'online' : 'offline');
             const tdDot = document.getElementById('pub-td-dot-' + fa.public_id);
-            if (tdDot) tdDot.className = 'status-dot ' + (isOnline ? 'online' : 'offline');
+            if (tdDot) tdDot.className = 'status-dot ' + (isOnline === undefined || isOnline === null ? '' : isOnline ? 'online' : 'offline');
             ['pub-badge-', 'pub-td-badge-'].forEach(prefix => {
               const badge = document.getElementById(prefix + fa.public_id);
               if (badge) {
-                badge.className = 'badge ' + (isOnline ? 'badge-online' : 'badge-offline');
+                badge.className = 'badge ' + (isOnline === undefined || isOnline === null ? '' : isOnline ? 'badge-online' : 'badge-offline');
                 badge.textContent = isOnline ? 'Online' : 'Offline';
               }
             });
             document.querySelectorAll('[data-pub-id="' + CSS.escape(fa.public_id) + '"]').forEach(el => el.classList.toggle('is-offline', !isOnline));
             if (currentActivePubId === fa.public_id) {
               const inpageDot = document.getElementById('pub-inpage-dot');
-              if (inpageDot) inpageDot.className = 'status-dot ' + (isOnline ? 'online' : 'offline');
+              if (inpageDot) inpageDot.className = 'status-dot ' + (isOnline === undefined || isOnline === null ? '' : isOnline ? 'online' : 'offline');
               const inpageBadge = document.getElementById('pub-inpage-badge');
               if (inpageBadge) {
-                inpageBadge.className = 'badge ' + (isOnline ? 'badge-online' : 'badge-offline');
+                inpageBadge.className = 'badge ' + (isOnline === undefined || isOnline === null ? '' : isOnline ? 'badge-online' : 'badge-offline');
                 inpageBadge.textContent = isOnline ? 'Online' : 'Offline';
               }
             }
@@ -818,7 +807,7 @@
     options = options || {};
     dashId = options.dashId || '';
     dashSlug = options.dashSlug || '';
-    maxDays = options.maxDays || 30;
+    maxDays = options.maxDays ?? 0;
     pubAllowedMetrics = options.allowedMetrics || [];
     pubAgentsData = options.agents || [];
 
@@ -844,10 +833,14 @@
           const overviewView = document.getElementById('public-overview-view');
           const detailView = document.getElementById('public-detail-view');
 
-          if (!pubId) {
+          if (!pubId || !pubAgentsData.some(agent => agent.public_id === pubId)) {
             if (detailView) detailView.hidden = true;
             if (overviewView) overviewView.hidden = false;
+            const previousId = currentActivePubId;
             currentActivePubId = null;
+            const returnTarget=Array.from(document.querySelectorAll('[data-pub-id]')).find(node=>node.getAttribute('data-pub-id')===previousId && node.getClientRects().length);
+            returnTarget?.querySelector('a,button')?.focus({preventScroll:true});
+ window.CertainStatsRequests?.cancelAll();
             window.scrollTo({ top: savedPubScrollY, behavior: 'instant' });
             return;
           }
@@ -857,12 +850,14 @@
           if (overviewView) overviewView.hidden = true;
           if (detailView) {
             detailView.hidden = false;
+ const heading=detailView.querySelector("h1,h2");if (heading) {heading.setAttribute("tabindex","-1");heading.focus({preventScroll:true});}
             window.scrollTo({ top: 0, behavior: 'instant' });
 
             renderPubInpageLiveState(pubId);
 
             window.CertainStatsTelemetry.initTimeRangeBar('pub-inpage-time-range-bar', {
               maxDays: maxDays,
+              isPublic:true,
               onSelect: function(h) {
                 loadPublicDetailMetrics(pubId, h);
               }
@@ -875,7 +870,7 @@
       });
     });
 
-    setInterval(syncPublicDashboardMetadata, PUB_METADATA_SYNC_INTERVAL_MS);
+    const metadataTimer=setInterval(syncPublicDashboardMetadata, PUB_METADATA_SYNC_INTERVAL_MS);window.addEventListener("pagehide",()=>clearInterval(metadataTimer),{once:true});
   }
 
   // Export module namespace

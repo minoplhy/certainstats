@@ -3,11 +3,14 @@
 <html lang="en" data-theme="light">
 <head>
   <meta charset="UTF-8">
+  <meta name="csrf-token" content="{{.CSRFToken}}">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{{.Title}} — Status</title>
-  {{template "theme_bootstrap"}}
+  {{template "theme_bootstrap" .}}
   <link rel="preload" href="{{.StaticPath}}/fonts/figtree-latin.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="{{.StaticPath}}/{{asset "css/styles.css"}}" integrity="{{integrity "css/styles.css"}}">
+  <script src="{{.StaticPath}}/{{asset "js/disk_dom.js"}}" integrity="{{integrity "js/disk_dom.js"}}"></script>
+  <script src="{{.StaticPath}}/{{asset "js/requests.js"}}" integrity="{{integrity "js/requests.js"}}"></script>
   <script src="{{.StaticPath}}/{{asset "js/chart.js"}}" integrity="{{integrity "js/chart.js"}}"></script>
   <script src="{{.StaticPath}}/{{asset "js/telemetry.js"}}" integrity="{{integrity "js/telemetry.js"}}"></script>
 </head>
@@ -21,8 +24,8 @@
           <span class="brand-text-group">
             <span class="brand-title">{{if and .Data .Data.Dashboard .Data.Dashboard.Title}}{{.Data.Dashboard.Title}}{{else}}Status{{end}}</span>
             <span class="brand-status-sub" role="status">
-              <span class="status-dot online" id="public-overall-status-dot"></span>
-              <span class="status-text" id="public-overall-status-text">Operational</span>
+              <span class="status-dot" id="public-overall-status-dot"></span>
+              <span class="status-text" id="public-overall-status-text">Status unavailable</span>
             </span>
           </span>
         </a>
@@ -45,6 +48,7 @@
     </div>
   </footer>
 
+  <div id="feed-status" hidden class="feed-status" role="status">Connecting to live feed…</div>
   <div id="toast-container" aria-live="polite"></div>
 </body>
 </html>{{end}}

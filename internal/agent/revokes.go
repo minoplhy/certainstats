@@ -49,7 +49,10 @@ func RevokeAgentHandler(agent store.AgentStore, tdb *tsdb.DB, cache *metrics.Rea
 				labels.MustNewMatcher(labels.MatchEqual, "agent_id", agentID),
 			}
 			// Delete all data for this agent across all metrics
-			_ = tdb.Delete(r.Context(), math.MinInt64, math.MaxInt64, matchers...)
+			if err := tdb.Delete(r.Context(), math.MinInt64, math.MaxInt64, matchers...); err != nil {
+				api_response.Error(w, 500, "Agent revoked; metrics purge failed")
+				return
+			}
 		}
 
 		w.Header().Set("Content-Type", "application/json")

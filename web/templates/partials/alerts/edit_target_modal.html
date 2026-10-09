@@ -9,7 +9,7 @@
       {{template "modal_close"}}
     </div>
 
-    <form action="{{.PanelPath}}/alerts/targets/edit" method="POST">
+    <form action="{{.PanelPath}}/alerts/targets/edit" method="POST"><input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
       <div class="modal-body">
       <input type="hidden" id="edit-target-id-input" name="id" value="">
 

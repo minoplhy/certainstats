@@ -16,6 +16,7 @@ import (
 )
 
 type PageData struct {
+	CSRFToken     string
 	Title         string
 	PanelPath     string
 	PublicPath    string
@@ -90,6 +91,7 @@ func middleTrim(s string, head, tail int) string {
 
 func NewRenderer() (*TemplateRenderer, error) {
 	funcMap := template.FuncMap{
+		"bootstrap": bootstrap,
 		"asset":     minify.AssetPath,
 		"integrity": minify.AssetIntegrity,
 		"isOnline": func(val any) bool {
@@ -111,7 +113,7 @@ func NewRenderer() (*TemplateRenderer, error) {
 			if bytes == 0 {
 				return "0 B"
 			}
-			units := []string{"B", "KB", "MB", "GB", "TB", "PB"}
+			units := []string{"B", "KiB", "MiB", "GiB", "TiB", "PiB"}
 			i := int(math.Floor(math.Log(float64(bytes)) / math.Log(1024)))
 			if i >= len(units) {
 				i = len(units) - 1

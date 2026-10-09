@@ -2,6 +2,7 @@ package alert
 
 import (
 	"certainstats/internal/base/alert"
+	"certainstats/internal/notifications"
 	"fmt"
 	"strings"
 )
@@ -39,7 +40,7 @@ func ParseAction(a *alert.AlertAction) error {
 		if a.Destination == "" {
 			return fmt.Errorf("alert: destination URL is required for custom %s action", a.Type)
 		}
-		if !strings.HasPrefix(a.Destination, "http://") && !strings.HasPrefix(a.Destination, "https://") {
+		if err := notifications.ValidateWebhook(a.Destination); err != nil {
 			return fmt.Errorf("alert: destination must be a valid HTTP or HTTPS URL")
 		}
 		a.TargetID = ""

@@ -118,7 +118,14 @@ func (b *BeszelStats) Parse(data []byte) (*agentparser.ParsedData, error) {
 		totalRX = float64(combined.Stats.Bandwidth[1])
 	}
 
+	outer := map[uint64]cbor.RawMessage{}
+	_ = cbor.Unmarshal(data, &outer)
+	rawStats := map[uint64]cbor.RawMessage{}
+	_ = cbor.Unmarshal(outer[0], &rawStats)
+	missing := map[string]bool{"agent_cpu_usage": rawStats[0] == nil, "agent_ram_used": rawStats[3] == nil, "agent_disk_used": rawStats[10] == nil, "agent_cpu_iowait": len(combined.Stats.CpuBreakdown) < 4, "agent_cpu_steal": len(combined.Stats.CpuBreakdown) < 4, "agent_swap_used": rawStats[7] == nil}
 	telemetry := agentparser.Telemetry{
+		Missing:          missing,
+		NetworkMissing:   rawStats[26] == nil && rawStats[31] == nil,
 		Timestamp:        time.Now(),
 		CPUUsagePercent:  combined.Stats.Cpu,
 		RAMUsedBytes:     uint64(combined.Stats.MemUsed * 1024 * 1024 * 1024),

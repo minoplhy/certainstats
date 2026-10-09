@@ -98,9 +98,7 @@ export default function FirstTimeSetupView() {
         }),
       });
 
-      await fetchAPI('/api/first-time-setup/restart', {
-        method: 'POST',
-      });
+
 
       setSuccess(true);
     } catch (err: any) {

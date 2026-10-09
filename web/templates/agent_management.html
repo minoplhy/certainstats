@@ -100,7 +100,7 @@
               data-confirm-title="Reset token for {{.Nickname}}?"
               data-confirm="{{.Nickname}} stops reporting until it's reinstalled with the new token."
               data-confirm-label="Reset token"
-              data-confirm-flash="Token reset. Copy the new one into the agent.">
+              data-confirm-flash="Token reset. Copy the new one into the agent."><input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
           <input type="hidden" name="agent_id" value="{{.AgentID}}">
           <input type="hidden" name="redirect_to" value="{{$redir}}">
           <button type="submit" class="btn btn-secondary btn-sm">Reset token</button>
@@ -111,7 +111,7 @@
               data-confirm-title="New SSH key for {{.Nickname}}?"
               data-confirm="The agent needs the new public key before it can connect again."
               data-confirm-label="Generate new key"
-              data-confirm-flash="New SSH key generated. Copy it into the agent.">
+              data-confirm-flash="New SSH key generated. Copy it into the agent."><input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
           <input type="hidden" name="agent_id" value="{{.AgentID}}">
           <input type="hidden" name="redirect_to" value="{{$redir}}">
           <button type="submit" class="btn btn-secondary btn-sm">Reset SSH key</button>
@@ -126,7 +126,7 @@
               data-confirm-label="Delete agent"
               data-confirm-danger
               data-confirm-match="{{.Nickname}}"
-              data-confirm-flash="{{.Nickname}} deleted.">
+              data-confirm-flash="{{.Nickname}} deleted."><input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
           <input type="hidden" name="agent_id" value="{{.AgentID}}">
           <input type="hidden" name="redirect_to" value="{{$.PanelPath}}/agents/management">
           <button type="submit" class="btn btn-danger btn-sm">Delete agent</button>
@@ -145,7 +145,6 @@
 {{template "confirm_modal"}}
 
 <script src="{{.StaticPath}}/{{asset "js/agent_management.js"}}" integrity="{{integrity "js/agent_management.js"}}"></script>
-<script>
-  window.CertainStatsAgentManagement.init();
-</script>
+<script type="application/json" id="page-config" data-module="CertainStatsAgentManagement">{{bootstrap .}}</script>
+<script src="{{.StaticPath}}/{{asset "js/bootstrap.js"}}" integrity="{{integrity "js/bootstrap.js"}}"></script>
 {{end}}

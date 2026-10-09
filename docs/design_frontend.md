@@ -1,5 +1,8 @@
 # CertainStats — Frontend Design Document
 
+
+> Current security, caching, ingestion and deployment behavior is described in [security and rollout](security-and-rollout.md). Where this older design document differs, that implementation reference takes precedence.
+
 > **Version:** 4.0 · **Date:** 2026-10-02 · **Author:** Minoplhy
 >
 > Version 4 is the "Editorial" redesign: light-first with a tuned dark theme, a deep teal accent, plain-language page headlines and self-hosted type.

@@ -10,6 +10,7 @@ import (
 )
 
 type FullStore interface {
+	IngestionJournal
 	AgentStore
 	SessionStore
 	AlertsStore
@@ -106,6 +107,8 @@ type AlertsStore interface {
 
 // UserStore handles user account lookups and updates.
 type UserStore interface {
+	CreateInitialUser(context.Context, string, string, string) error
+	ChangePasswordAndRevoke(context.Context, string, string, string, string) error
 	GetByUsername(ctx context.Context, username string) (*User, error)
 	GetByID(ctx context.Context, userID string) (*User, error)
 	UpdatePassword(ctx context.Context, userID string, passwordHash string) error

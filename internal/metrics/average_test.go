@@ -38,9 +38,12 @@ func TestGetAverageMetric_SumsSeries(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	cases := map[string]float64{"agent_disk_used": 140, "agent_cpu_usage": 30, "agent_ram_used": 0}
+	if _, err := GetAverageMetric(ctx, db, "agt_1", "agent_ram_used", 2*time.Minute); err == nil {
+		t.Fatal("missing telemetry must be unavailable")
+	}
+	cases := map[string]float64{"agent_disk_used": 140, "agent_cpu_usage": 30}
 	for metric, want := range cases {
-		got, err := GetAverageMetric(ctx, db, "agt_1", metric, 10*time.Minute)
+		got, err := GetAverageMetric(ctx, db, "agt_1", metric, 2*time.Minute)
 		if err != nil {
 			t.Fatalf("%s: %v", metric, err)
 		}

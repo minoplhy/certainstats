@@ -4,6 +4,7 @@ import (
 	"certainstats/internal/auth"
 	ctx "certainstats/internal/context"
 	"certainstats/internal/metrics"
+	"certainstats/internal/security"
 	"certainstats/internal/store"
 	"net/http"
 	"time"
@@ -43,12 +44,14 @@ func (h *WebHandler) newPageData(r *http.Request, title, activeNav string, data 
 			}
 		}
 	}
+	m["CSRFToken"] = security.CSRFToken(r)
 	m["PanelPath"] = h.PanelPath
 	m["PublicPath"] = h.PublicPath
 	m["StaticPath"] = h.StaticPath
 
 	return PageData{
 		Title:         title,
+		CSRFToken:     security.CSRFToken(r),
 		PanelPath:     h.PanelPath,
 		PublicPath:    h.PublicPath,
 		StaticPath:    h.StaticPath,
@@ -62,14 +65,9 @@ func (h *WebHandler) newPageData(r *http.Request, title, activeNav string, data 
 // RequireAuthWeb redirects unauthenticated requests to login page.
 func (h *WebHandler) RequireAuthWeb(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		cookie, err := r.Cookie("session_token")
+		w.Header().Set("Cache-Control", "private, no-store")
+		sess, err := auth.Authenticate(r, h.Store)
 		if err != nil {
-			http.Redirect(w, r, h.PanelPath+"/login", http.StatusSeeOther)
-			return
-		}
-
-		sess, err := h.Store.SessionGet(r.Context(), cookie.Value)
-		if err != nil || time.Now().After(sess.ExpiresAt) {
 			auth.ClearSessionCookie(w)
 			http.Redirect(w, r, h.PanelPath+"/login", http.StatusSeeOther)
 			return

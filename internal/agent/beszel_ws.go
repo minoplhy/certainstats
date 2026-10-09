@@ -7,7 +7,6 @@ import (
 	"crypto/rand"
 	"net/http"
 
-	agentparser "certainstats/internal/agent_parser"
 	beszelparser "certainstats/internal/agent_parser/Beszel"
 	"certainstats/internal/metrics"
 	"certainstats/internal/store"
@@ -36,14 +35,14 @@ func BeszelWSHandler(db store.AgentStore, tdb *tsdb.DB, wsManager *ws.Manager, c
 		// 1. Resolve Agent Identity (Validate Token)
 		identity, err := db.AgentGetByToken(r.Context(), token)
 		if err != nil {
-			log.Printf("[WS] Unauthorized agent connection attempt: %s", token)
+			log.Printf("[WS] Unauthorized agent connection attempt (invalid credentials)")
 			apiresponse.Error(w, http.StatusUnauthorized, "Unauthorized")
 			return
 		}
 
 		acr.Upgrade(w, r, token, version, func(conn *websocket.Conn, token string, version string) {
 			ctx := context.Background()
-			log.Debugf("[WS] Agent connected: %s (version: %s)", token, version)
+			log.Debugf("[WS] Agent connected: %s (version: %s)", identity.AgentID, version)
 
 			hub := ws.NewHub()
 			hub.SetConn(conn)
@@ -91,7 +90,7 @@ func BeszelWSHandler(db store.AgentStore, tdb *tsdb.DB, wsManager *ws.Manager, c
 				Id: &authID,
 			}
 			if err := hub.Send(authReq); err != nil {
-				log.Printf("[WS] Failed to send auth challenge to %s: %v", token, err)
+				log.Printf("[WS] Failed to send auth challenge to %s: %v", identity.AgentID, err)
 				return
 			}
 
@@ -107,7 +106,7 @@ func BeszelWSHandler(db store.AgentStore, tdb *tsdb.DB, wsManager *ws.Manager, c
 			for {
 				var resp ws.AgentResponse
 				if err := hub.Receive(&resp); err != nil {
-					log.Printf("[WS] Connection lost for %s: %v", token, err)
+					log.Printf("[WS] Connection lost for %s: %v", identity.AgentID, err)
 					break
 				}
 
@@ -116,86 +115,19 @@ func BeszelWSHandler(db store.AgentStore, tdb *tsdb.DB, wsManager *ws.Manager, c
 					// Use the standardized Beszel parser
 					parsed, err := parser.Parse(payload)
 					if err == nil {
-						// Trigger detail update asynchronously to prevent database locks from blocking the websocket message loop
-						go func(agentID, userID string, info *agentparser.ParsedMetadata) {
-							ctxBg := context.Background()
-							var dbErr error
-							if info != nil {
-								dbErr = db.AgentUpsertDetails(ctxBg, store.Agent{
-									AgentID:      agentID,
-									UserID:       userID,
-									Uptime:       info.Uptime,
-									LinuxVersion: info.LinuxVersion,
-									CpuModel:     info.CpuModel,
-									CpuCores:     info.CpuCores,
-									RamSize:      info.RamSize,
-									DiskSize:     info.DiskSize,
-									SwapSize:     info.SwapSize,
-								})
-							} else {
-								dbErr = db.AgentUpdateHeartbeat(ctxBg, agentID, userID)
-							}
-							if dbErr != nil {
-								log.Printf("[WS] background state update error for %s: %v", agentID, dbErr)
-							}
-						}(identity.AgentID, identity.UserID, parsed.AgentInfo)
-
-						// Normalize IO metrics to delta bytes (in-place) before TSDB + cache
-						if len(parsed.Metrics) > 0 {
-							normalizeIOMetrics(identity.AgentID, parsed.Metrics)
-
-							var batchRX, batchTX float64
-							diskDeltas := make(map[string]*store.DiskDelta)
-							for _, m := range parsed.Metrics {
-								batchRX += m.RXBytes
-								batchTX += m.TXBytes
-								for _, d := range m.Disks {
-									if d.Path == "" {
-										continue
-									}
-									if existing, ok := diskDeltas[d.Path]; ok {
-										if d.TotalBytes > 0 {
-											existing.TotalBytes = d.TotalBytes
-										}
-										existing.ReadBytes += d.ReadBytes
-										existing.WriteBytes += d.WriteBytes
-									} else {
-										diskDeltas[d.Path] = &store.DiskDelta{
-											Path:       d.Path,
-											TotalBytes: d.TotalBytes,
-											ReadBytes:  d.ReadBytes,
-											WriteBytes: d.WriteBytes,
-										}
-									}
-								}
-							}
-
-							var disks []store.DiskDelta
-							for _, dd := range diskDeltas {
-								disks = append(disks, *dd)
-							}
-
-							_ = db.AgentIncrementTraffic(ctx, identity.AgentID, identity.UserID, uint64(batchRX), uint64(batchTX), disks)
+						if err := Ingest(ctx, db, tdb, cache, identity, parsed); err != nil {
+							log.Printf("[WS] Ingestion failed for %s: %v", identity.AgentID, err)
+							break
 						}
+						log.Debugf("[WS] Persisted data for %s", identity.AgentID)
 
-						// Write to TSDB
-						if len(parsed.Metrics) > 0 {
-							WriteStatsToTSDB(ctx, tdb, identity, parsed.Metrics)
-						}
-
-						// Update Realtime Cache
-						if cache != nil {
-							cache.Update(identity.UserID, identity.AgentID, parsed)
-						}
-
-						log.Debugf("[WS] Persisted data for %s (Host: %s)", token, parsed.AgentInfo.CpuModel)
 					} else if len(resp.Fingerprint) > 0 {
-						log.Debugf("[WS] Auth confirmed by agent %s", token)
+						log.Debugf("[WS] Auth confirmed by agent %s", identity.AgentID)
 					}
 				}
 
 				if resp.Error != "" {
-					log.Printf("[WS] Error from agent %s: %s", token, resp.Error)
+					log.Printf("[WS] Error from agent %s: %s", identity.AgentID, "remote agent error")
 				}
 			}
 		})

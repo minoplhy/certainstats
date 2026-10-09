@@ -1,7 +1,7 @@
 {{define "agents_grid_view"}}
 <div id="agents-grid-container" class="grid-cards">
   {{range .Agents}}
-  <article class="card agent-card-item{{if not .IsOnline}} is-offline{{end}}" data-agent-id="{{.AgentID}}" data-agent-name="{{.Nickname}}" data-cpu-model="{{.CpuModel}}" onclick="handleAgentItemClick(event, '{{.AgentID}}');">
+  <article class="card agent-card-item{{if not .IsOnline}} is-offline{{end}}" data-agent-id="{{.AgentID}}" data-agent-name="{{.Nickname}}" data-cpu-model="{{.CpuModel}}" data-click-action="handleAgentItemClick" data-expr0="event" data-arg1="{{.AgentID}}">
     <div class="agent-card-header">
       <div class="agent-card-title">
         <a href="{{$.PanelPath}}/{{.AgentID}}" class="agent-name">

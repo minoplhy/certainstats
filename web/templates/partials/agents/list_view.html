@@ -13,7 +13,7 @@
     </thead>
     <tbody>
       {{range .Agents}}
-      <tr class="agent-row-item" data-agent-id="{{.AgentID}}" data-agent-name="{{.Nickname}}" data-cpu-model="{{.CpuModel}}" onclick="handleAgentItemClick(event, '{{.AgentID}}');">
+      <tr class="agent-row-item" data-agent-id="{{.AgentID}}" data-agent-name="{{.Nickname}}" data-cpu-model="{{.CpuModel}}" data-click-action="handleAgentItemClick" data-expr0="event" data-arg1="{{.AgentID}}">
         <td>
           <a href="{{$.PanelPath}}/{{.AgentID}}" class="table-node">
             <span class="status-dot {{if .IsOnline}}online{{else}}offline{{end}}" id="td-dot-{{.AgentID}}"></span>

@@ -3,8 +3,6 @@ package context
 import (
 	"certainstats/internal/compress"
 	"net/http"
-	"strings"
-	"sync"
 	"time"
 )
 
@@ -19,7 +17,10 @@ func NewCacheEntry(payload []byte, ttl time.Duration) *CacheEntry {
 }
 
 // GetCacheEntry checks a sync.Map cache, returns the entry if valid and unexpired, or purges it if expired.
-func GetCacheEntry(m *sync.Map, key any) (*CacheEntry, bool) {
+func GetCacheEntry(m interface {
+	Load(any) (any, bool)
+	Delete(any)
+}, key any) (*CacheEntry, bool) {
 	if m == nil {
 		return nil, false
 	}
@@ -47,21 +48,22 @@ func (e *CacheEntry) Serve(w http.ResponseWriter, r *http.Request, contentType s
 
 	w.Header().Set("Content-Type", contentType)
 	if w.Header().Get("Cache-Control") == "" {
-		w.Header().Set("Cache-Control", "public, max-age=60, must-revalidate")
+		w.Header().Set("Cache-Control", "no-store")
 	}
 
+	w.Header().Add("Vary", "Accept-Encoding")
 	ae := ""
 	if r != nil {
 		ae = r.Header.Get("Accept-Encoding")
 	}
 
-	if strings.Contains(ae, "zstd") && len(e.ZstdPayload) > 0 {
+	if compress.AcceptsEncoding(ae, "zstd") && len(e.ZstdPayload) > 0 {
 		w.Header().Set("Content-Encoding", "zstd")
 		w.WriteHeader(status)
 		_, _ = w.Write(e.ZstdPayload)
 		return
 	}
-	if strings.Contains(ae, "gzip") && len(e.GzipPayload) > 0 {
+	if compress.AcceptsEncoding(ae, "gzip") && len(e.GzipPayload) > 0 {
 		w.Header().Set("Content-Encoding", "gzip")
 		w.WriteHeader(status)
 		_, _ = w.Write(e.GzipPayload)

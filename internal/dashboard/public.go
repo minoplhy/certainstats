@@ -9,21 +9,20 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"github.com/go-chi/chi/v5"
 	"net/http"
 )
 
 // GET /api/public/dashboard
 func PublicDashboardHandler(dashboard store.DashboardStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		slug := r.PathValue("pub_id")
+		slug := chi.URLParam(r, "pub_id")
+		if slug == "" {
+			slug = r.PathValue("pub_id")
+		}
 		if slug == "" {
 			apiresponse.Error(w, http.StatusBadRequest, "Missing slug")
-			return
-		}
-
-		// 1. Unified Cache Check
-		if entry, hit := ctx.GetCacheEntry(&ctx.DashboardCache, slug); hit {
-			entry.Serve(w, r, "application/json", http.StatusOK)
 			return
 		}
 
@@ -42,6 +41,17 @@ func PublicDashboardHandler(dashboard store.DashboardStore) http.HandlerFunc {
 			apiresponse.Error(w, http.StatusForbidden, "No public access rule configured")
 			return
 		}
+
+		cacheKey := fmt.Sprintf("json:%s:%d", dash.DashboardID, dash.Version)
+		if entry, hit := ctx.GetCacheEntry(&ctx.DashboardCache, cacheKey); hit {
+			entry.Serve(w, r, "application/json", http.StatusOK)
+			return
+		}
+		finish, leader := ctx.BeginBuild(w, r, cacheKey, PublicDashboardHandler(dashboard))
+		if !leader {
+			return
+		}
+		defer finish()
 
 		agents, err := dashboard.DashboardGetPublicAgents(r.Context(), slug, rule)
 		if err != nil {
@@ -62,7 +72,12 @@ func PublicDashboardHandler(dashboard store.DashboardStore) http.HandlerFunc {
 		}
 
 		entry := ctx.NewCacheEntry(payload, ctx.DefaultCacheTTL)
-		ctx.DashboardCache.Store(slug, entry)
+		current, err := dashboard.DashboardGetBySlug(r.Context(), slug)
+		if err != nil || current.Version != dash.Version {
+			apiresponse.Error(w, http.StatusConflict, "Dashboard changed; retry")
+			return
+		}
+		ctx.DashboardCache.Store(cacheKey, entry)
 		entry.Serve(w, r, "application/json", http.StatusOK)
 	}
 }

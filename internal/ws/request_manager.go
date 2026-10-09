@@ -60,7 +60,7 @@ type AgentConnectRequest struct{}
 // Upgrade upgrades the HTTP connection to a WebSocket connection.
 // The token and version should be validated by the caller before calling this.
 func (acr *AgentConnectRequest) Upgrade(w http.ResponseWriter, r *http.Request, token, version string, handler func(*websocket.Conn, string, string)) {
-	log.Debugf("[WS] Raw connection details - Method: %s, URL: %s, RemoteAddr: %s", r.Method, r.URL.String(), r.RemoteAddr)
+	log.Debugf("[WS] Raw connection details - Method: %s, URL: %s, RemoteAddr: %s", r.Method, r.URL.Path, r.RemoteAddr)
 
 	// If it's not a websocket upgrade request, it might be an availability check.
 	if r.Header.Get("Upgrade") != "websocket" {
@@ -77,7 +77,8 @@ func (acr *AgentConnectRequest) Upgrade(w http.ResponseWriter, r *http.Request, 
 			return nil // Disable origin check to avoid 403 Forbidden with agents
 		},
 		Handler: func(conn *websocket.Conn) {
-			log.Debugf("[WS] Connection established with agent %s", token)
+			log.Debugf("[WS] Agent connection established")
+			conn.MaxPayloadBytes = 16384
 			handler(conn, token, version)
 		},
 	}

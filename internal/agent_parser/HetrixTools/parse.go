@@ -57,7 +57,11 @@ func (h *HTStats) decode(data []byte) ([]byte, error) {
 	}
 	defer gzReader.Close()
 
-	return io.ReadAll(gzReader)
+	decoded, err := io.ReadAll(io.LimitReader(gzReader, (1<<20)+1))
+	if len(decoded) > 1<<20 {
+		return nil, fmt.Errorf("decoded payload exceeds limit")
+	}
+	return decoded, err
 }
 
 func (h *HTStats) Parse(data []byte) (*agentparser.ParsedData, error) {
@@ -180,9 +184,18 @@ func (h *HTStats) Parse(data []byte) (*agentparser.ParsedData, error) {
 	ramUsed := uint64((float64(ramSize*1024) * ramUsage) / 100.0)
 	swapUsed := uint64((float64(swapSize*1024) * ramSwapUsage) / 100.0)
 
+	sampleTime := time.Now()
+	sourceID := ""
+	if ts, e := strconv.ParseInt(JSONdata.Time, 10, 64); e == nil && ts > 1000000000 {
+		sampleTime = time.Unix(ts, 0)
+		sourceID = "hetrix:" + JSONdata.Time
+	}
+	missing := map[string]bool{"agent_cpu_usage": JSONdata.CPU == "", "agent_cpu_iowait": JSONdata.CPUwa == "", "agent_cpu_steal": JSONdata.CPUst == "", "agent_ram_used": JSONdata.RAM == "" || ramSize == 0, "agent_swap_used": JSONdata.RAMSwap == "" || swapSize == 0}
 	stats := []agentparser.Telemetry{
 		{
-			Timestamp:        time.Now(),
+			Missing:          missing,
+			Timestamp:        sampleTime,
+			SourceID:         sourceID,
 			CPUUsagePercent:  cpuUsage,
 			CPUIOWaitPercent: cpuWa,
 			CPUStealPercent:  cpuSt,

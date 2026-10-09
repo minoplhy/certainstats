@@ -26,12 +26,11 @@ func snapToStandardHours(requested uint64) uint64 {
 	return standards[len(standards)-1]
 }
 
-
 // TimeRange is the resolved query window expressed as Unix millisecond timestamps.
 type TimeRange struct {
-	StartMs      int64
-	EndMs        int64
-	IsCustom     bool // true when start/end were provided explicitly
+	StartMs  int64
+	EndMs    int64
+	IsCustom bool // true when start/end were provided explicitly
 }
 
 // parsePrivateTimeRange resolves the query window for the private (admin) panel.
@@ -39,7 +38,11 @@ type TimeRange struct {
 // The private panel has no upper limit on historical depth; the 2-year guard is
 // only a sanity cap against accidental runaway queries.
 func parsePrivateTimeRange(r *http.Request) (TimeRange, bool) {
-	if tr, ok := parseAbsoluteRange(r); ok {
+	if r.URL.Query().Get("start") != "" || r.URL.Query().Get("end") != "" {
+		tr, ok := parseAbsoluteRange(r)
+		if !ok || tr.EndMs-tr.StartMs > int64(maxRangeHours)*time.Hour.Milliseconds() {
+			return TimeRange{}, false
+		}
 		// Reject clearly invalid or future end timestamps (>10 min from now).
 		now := time.Now().UnixMilli()
 		if tr.EndMs > now+10*60*1000 {
@@ -48,6 +51,12 @@ func parsePrivateTimeRange(r *http.Request) (TimeRange, bool) {
 		return tr, true
 	}
 
+	if raw := r.URL.Query().Get("hours"); raw != "" {
+		h, e := strconv.Atoi(raw)
+		if e != nil || h <= 0 || h > maxRangeHours {
+			return TimeRange{}, false
+		}
+	}
 	hours := parseHoursParam(r, defaultHours, maxRangeHours)
 	now := time.Now()
 	return TimeRange{
@@ -61,15 +70,21 @@ func parsePrivateTimeRange(r *http.Request) (TimeRange, bool) {
 // and keep cache-key cardinality bounded. Enforces the dashboard's MaxDays ACL.
 // Returns (TimeRange, cacheKey, ok).
 func parsePublicTimeRange(r *http.Request, maxHoursAllowed uint) (TimeRange, string, bool) {
-	raw, _ := strconv.ParseUint(r.URL.Query().Get("hours"), 10, 64)
-	if raw == 0 {
-		raw = 24
-	}
-	if raw > uint64(maxHoursAllowed) {
+	if r.URL.Query().Get("start") != "" || r.URL.Query().Get("end") != "" {
 		return TimeRange{}, "", false
 	}
+	raw := uint64(24)
+	if val := r.URL.Query().Get("hours"); val != "" {
+		n, e := strconv.ParseUint(val, 10, 64)
+		if e != nil || n == 0 {
+			return TimeRange{}, "", false
+		}
+		raw = n
+	}
 	snapped := snapToStandardHours(raw)
-
+	if raw > uint64(maxHoursAllowed) || snapped > uint64(maxHoursAllowed) {
+		return TimeRange{}, "", false
+	}
 	now := time.Now()
 	tr := TimeRange{
 		StartMs: now.Add(-time.Duration(snapped) * time.Hour).UnixMilli(),

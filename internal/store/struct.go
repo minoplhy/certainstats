@@ -59,6 +59,7 @@ func (s Session) LastConnected() string {
 }
 
 type Dashboard struct {
+	Version     int64
 	DashboardID string
 	UserID      string
 	Slug        string

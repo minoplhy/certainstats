@@ -10,15 +10,15 @@
     </div>
     <div class="modal-body">
       <div class="driver-list" role="radiogroup" aria-label="Agent software">
-        <button type="button" class="driver-select-card selected" data-type="beszel" role="radio" aria-checked="true" onclick="selectProvisionDriver(this, 'beszel')">
+        <button type="button" class="driver-select-card selected" data-type="beszel" role="radio" aria-checked="true" data-click-action="selectProvisionDriver" data-expr0="this" data-arg1="beszel">
           <span class="driver-select-name">Beszel</span>
           <span class="driver-select-desc">Lightweight monitoring agent written in Go. Connects over WebSocket.</span>
         </button>
-        <button type="button" class="driver-select-card" data-type="ltstats" role="radio" aria-checked="false" onclick="selectProvisionDriver(this, 'ltstats')">
+        <button type="button" class="driver-select-card" data-type="ltstats" role="radio" aria-checked="false" data-click-action="selectProvisionDriver" data-expr0="this" data-arg1="ltstats">
           <span class="driver-select-name">LTstats</span>
           <span class="driver-select-desc">Lightweight resource monitor written in C.</span>
         </button>
-        <button type="button" class="driver-select-card" data-type="hetrixtools" role="radio" aria-checked="false" onclick="selectProvisionDriver(this, 'hetrixtools')">
+        <button type="button" class="driver-select-card" data-type="hetrixtools" role="radio" aria-checked="false" data-click-action="selectProvisionDriver" data-expr0="this" data-arg1="hetrixtools">
           <span class="driver-select-name">HetrixTools</span>
           <span class="driver-select-desc">HetrixTools Linux agent, written in Bash.</span>
         </button>
@@ -31,7 +31,7 @@
     </div>
     <div class="modal-footer">
       <button type="button" class="btn btn-secondary" data-close-modal>Cancel</button>
-      <button type="button" id="btn-provision-submit" class="btn btn-primary" onclick="submitProvisionAgent()">Create agent</button>
+      <button type="button" id="btn-provision-submit" class="btn btn-primary" data-click-action="submitProvisionAgent">Create agent</button>
     </div>
   </div>
 
@@ -41,13 +41,13 @@
         <h2 class="modal-title" id="provision-result-title">Agent created</h2>
         <p class="modal-subtitle">Run these steps on the server you want to monitor.</p>
       </div>
-      <button type="button" class="modal-close" aria-label="Close" onclick="finishProvisioning()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+      <button type="button" class="modal-close" aria-label="Close" data-click-action="finishProvisioning"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
     </div>
     <div class="modal-body">
       <div id="provision-instructions-container"></div>
     </div>
     <div class="modal-footer">
-      <button type="button" class="btn btn-primary" onclick="finishProvisioning()">Done</button>
+      <button type="button" class="btn btn-primary" data-click-action="finishProvisioning">Done</button>
     </div>
   </div>
 </dialog>

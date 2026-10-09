@@ -2,9 +2,9 @@ package auth
 
 import (
 	"bytes"
-	"context"
 	CSContext "certainstats/internal/context"
 	"certainstats/internal/store"
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -16,8 +16,8 @@ import (
 
 type mockUserStore struct {
 	store.UserStore
-	GetUserFunc     func(ctx context.Context, userID string) (*store.User, error)
-	UpdatePassFunc  func(ctx context.Context, userID string, passwordHash string) error
+	GetUserFunc    func(ctx context.Context, userID string) (*store.User, error)
+	UpdatePassFunc func(ctx context.Context, userID string, passwordHash string) error
 }
 
 func (m *mockUserStore) GetByID(ctx context.Context, userID string) (*store.User, error) {
@@ -263,4 +263,8 @@ func TestChangePasswordHandler(t *testing.T) {
 			t.Errorf("expected status 500, got %d", rec.Code)
 		}
 	})
+}
+
+func (m *mockUserStore) ChangePasswordAndRevoke(ctx context.Context, id, oldHash, newHash, token string) error {
+	return m.UpdatePassword(ctx, id, newHash)
 }

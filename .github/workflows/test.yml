@@ -28,50 +28,12 @@ jobs:
       - name: Run Go Tests
         run: go test -v ./...
 
-  test-frontend-admin:
-    name: Test Admin Frontend
+  test-browser:
+    name: Test Active Browser JavaScript
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v6
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: 22
-          cache: 'npm'
-          cache-dependency-path: frontend-admin/package-lock.json
-
-      - name: Install Dependencies
-        run: |
-          cd frontend-admin
-          npm ci
-
-      - name: Run Tests
-        run: |
-          cd frontend-admin
-          npm run test
-
-  test-frontend-public:
-    name: Test Public Frontend
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v6
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: 24
-          cache: 'npm'
-          cache-dependency-path: frontend-public/package-lock.json
-
-      - name: Install Dependencies
-        run: |
-          cd frontend-public
-          npm ci
-
-      - name: Run Tests
-        run: |
-          cd frontend-public
-          npm run test
+      - run: node --test web/tests/*.test.cjs

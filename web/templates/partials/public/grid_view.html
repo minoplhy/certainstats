@@ -1,7 +1,7 @@
 {{define "public_grid_view"}}
 <div id="public-grid-container" class="grid-cards" hidden>
   {{range .Agents}}
-  <article class="card agent-card-item public-monitor-item{{if hasFeature $.AccessRules "is_online"}}{{if not (isOnline .IsOnline)}} is-offline{{end}}{{end}}" data-pub-id="{{.PublicID}}" data-name="{{.Name}}" onclick="handlePubItemClick(event, '{{.PublicID}}');">
+  <article class="card agent-card-item public-monitor-item{{if hasFeature $.AccessRules "is_online"}}{{if not (isOnline .IsOnline)}} is-offline{{end}}{{end}}" data-pub-id="{{.PublicID}}" data-name="{{.Name}}" data-click-action="handlePubItemClick" data-expr0="event" data-arg1="{{.PublicID}}">
     <div class="agent-card-header">
       <div class="agent-card-title">
         <a href="{{$.PublicPath}}/{{$.Dashboard.Slug}}/{{.PublicID}}" class="agent-name">

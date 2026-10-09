@@ -22,31 +22,31 @@ func NewManager() *Manager {
 func (m *Manager) Register(token string, hub *Hub) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	
+
 	// If there's an existing connection for this token, close it
 	if oldHub, exists := m.agents[token]; exists {
-		log.Debugf("[WS] Closing redundant connection for agent %s", token)
+		log.Debugf("[WS] Closing redundant agent connection")
 		oldHub.Close()
 	}
-	
+
 	m.agents[token] = hub
-	log.Debugf("[WS] Agent %s registered. Total active: %d", token, len(m.agents))
+	log.Debugf("[WS] Agent registered. Total active: %d", len(m.agents))
 }
 
 // Unregister removes an agent connection.
 func (m *Manager) Unregister(token string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	
+
 	delete(m.agents, token)
-	log.Debugf("[WS] Agent %s unregistered. Total active: %d", token, len(m.agents))
+	log.Debugf("[WS] Agent unregistered. Total active: %d", len(m.agents))
 }
 
 // GetHub retrieves a hub for a specific agent token.
 func (m *Manager) GetHub(token string) (*Hub, bool) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	
+
 	hub, exists := m.agents[token]
 	return hub, exists
 }
@@ -55,10 +55,10 @@ func (m *Manager) GetHub(token string) (*Hub, bool) {
 func (m *Manager) Broadcast(req any) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	
-	for token, hub := range m.agents {
+
+	for _, hub := range m.agents {
 		if err := hub.Send(req); err != nil {
-			log.Printf("[WS] Failed to send broadcast to %s: %v", token, err)
+			log.Printf("[WS] Failed to send agent broadcast: %v", err)
 		}
 	}
 }
@@ -67,8 +67,16 @@ func (m *Manager) Broadcast(req any) {
 func (m *Manager) Range(fn func(token string, hub *Hub)) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	
+
 	for token, hub := range m.agents {
 		fn(token, hub)
+	}
+}
+
+func (m *Manager) CloseAll() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, h := range m.agents {
+		h.Close()
 	}
 }

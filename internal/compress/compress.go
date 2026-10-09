@@ -145,7 +145,7 @@ func (w *compressionResponseWriter) startCompression() {
 
 	// Negotiate compression
 	ae := w.ae
-	if strings.Contains(ae, "zstd") {
+	if AcceptsEncoding(ae, "zstd") {
 		w.Header().Set("Content-Encoding", "zstd")
 		w.Header().Add("Vary", "Accept-Encoding")
 
@@ -160,7 +160,7 @@ func (w *compressionResponseWriter) startCompression() {
 				return err
 			},
 		}
-	} else if strings.Contains(ae, "gzip") {
+	} else if AcceptsEncoding(ae, "gzip") {
 		w.Header().Set("Content-Encoding", "gzip")
 		w.Header().Add("Vary", "Accept-Encoding")
 
@@ -247,7 +247,7 @@ func CompressionMiddleware(next http.Handler) http.Handler {
 		}
 
 		ae := r.Header.Get("Accept-Encoding")
-		if !strings.Contains(ae, "zstd") && !strings.Contains(ae, "gzip") {
+		if !AcceptsEncoding(ae, "zstd") && !AcceptsEncoding(ae, "gzip") {
 			next.ServeHTTP(w, r)
 			return
 		}

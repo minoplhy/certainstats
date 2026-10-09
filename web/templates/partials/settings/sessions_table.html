@@ -6,7 +6,7 @@
       <p class="form-hint">Browsers that are currently signed in to your account.</p>
     </div>
     {{if gt (len .Sessions) 1}}
-    <form action="{{.PanelPath}}/settings/sessions/eject-other" method="POST" onsubmit="return confirm('Sign out every other device?')">
+    <form action="{{.PanelPath}}/settings/sessions/eject-other" method="POST" data-submit-action="confirm" data-arg0="Sign out every other device?"><input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
       <button type="submit" class="btn btn-danger btn-sm">Sign out other devices</button>
     </form>
     {{end}}
@@ -39,7 +39,7 @@
           <td class="mono">{{if .IPAddress}}{{.IPAddress}}{{else}}–{{end}}</td>
           <td class="nowrap">{{.LastConnected}}</td>
           <td>
-            <form class="table-actions" action="{{$panelPath}}/settings/sessions/eject" method="POST" onsubmit="return confirm('{{if and $curToken (eq .Token $curToken)}}This is the device you are using. You will be signed out right away. Continue?{{else}}Sign out this device?{{end}}')">
+            <form class="table-actions" action="{{$panelPath}}/settings/sessions/eject" method="POST" data-submit-action="confirm" data-arg0="{{if and $curToken (eq .Token $curToken)}}This is the device you are using. You will be signed out right away. Continue?{{else}}Sign out this device?{{end}}"><input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
               <input type="hidden" name="token_prefix" value="{{.TokenPrefix}}">
               <button type="submit" class="btn btn-danger btn-sm">Sign out</button>
             </form>

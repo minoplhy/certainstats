@@ -34,4 +34,3 @@ type Pipeline interface {
 	RegisterAsset(canonicalPath string, fingerprintedPath string, integrity string)
 	RegisterMinifier(mediaType string, minifier ContentMinifier)
 }
-

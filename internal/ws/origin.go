@@ -2,33 +2,49 @@ package ws
 
 import (
 	"errors"
-	"os"
+	"net/http"
+	"net/url"
 	"strings"
+	"sync"
 )
 
-// allowedOrigins is parsed once at startup from the ALLOWED_ORIGINS env var.
-// An empty slice means all origins are permitted (dev mode).
+var originMu sync.RWMutex
 var allowedOrigins []string
 
-func init() {
-	if raw := strings.TrimSpace(os.Getenv("ALLOWED_ORIGINS")); raw != "" {
-		for _, o := range strings.Split(raw, ",") {
-			if trimmed := strings.TrimSpace(o); trimmed != "" {
-				allowedOrigins = append(allowedOrigins, trimmed)
-			}
+// ConfigureOrigins runs after public/panel URL configuration has resolved.
+func ConfigureOrigins(raw string) {
+	originMu.Lock()
+	defer originMu.Unlock()
+	allowedOrigins = nil
+	for _, o := range strings.Split(raw, ",") {
+		u, err := url.Parse(strings.TrimSpace(o))
+		if err == nil && (u.Scheme == "http" || u.Scheme == "https") && u.Host != "" && u.User == nil {
+			allowedOrigins = append(allowedOrigins, u.Scheme+"://"+u.Host)
 		}
 	}
 }
-
-// checkOrigin returns nil if the request origin is permitted, or an error otherwise.
 func checkOrigin(origin string) error {
-	if len(allowedOrigins) == 0 {
-		return nil
-	}
+	originMu.RLock()
+	defer originMu.RUnlock()
 	for _, o := range allowedOrigins {
 		if o == origin {
 			return nil
 		}
 	}
 	return errors.New("unauthorized origin")
+}
+func checkRequestOrigin(r *http.Request) error {
+	origin := r.Header.Get("Origin")
+	u, err := url.Parse(origin)
+	if err != nil || u.Host == "" || u.User != nil || u.Path != "" || u.RawQuery != "" || u.Fragment != "" {
+		return errors.New("invalid origin")
+	}
+	scheme := "http"
+	if r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https" {
+		scheme = "https"
+	}
+	if u.Scheme == scheme && strings.EqualFold(u.Host, r.Host) {
+		return nil
+	}
+	return checkOrigin(origin)
 }

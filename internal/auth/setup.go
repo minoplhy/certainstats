@@ -1,23 +1,23 @@
 package auth
 
 import (
-	"certainstats/internal/store"
 	"certainstats/internal/response"
-	"certainstats/internal/lifecycle"
+	"certainstats/internal/store"
 	"crypto/rand"
 	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
 	"golang.org/x/crypto/bcrypt"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
-	"log"
 )
 
 var (
-	setupToken string
-	tokenMu    sync.RWMutex
+	setupToken          string
+	setupCredentialPath string
+	tokenMu             sync.RWMutex
 )
 
 func SetSetupToken(tok string) {
@@ -36,6 +36,9 @@ func ClearSetupToken() {
 	tokenMu.Lock()
 	defer tokenMu.Unlock()
 	setupToken = ""
+	if setupCredentialPath != "" {
+		_ = os.Remove(setupCredentialPath)
+	}
 }
 
 func ValidateSetupToken(tok string) bool {
@@ -105,7 +108,7 @@ func RegisterFirstUserHandler(users store.UserStore) http.HandlerFunc {
 			return
 		}
 
-		if req.Password != req.PasswordConfirm {
+		if err := ValidatePassword(req.Password, req.PasswordConfirm); err != nil {
 			response.Error(w, http.StatusBadRequest, "Passwords do not match")
 			return
 		}
@@ -125,7 +128,7 @@ func RegisterFirstUserHandler(users store.UserStore) http.HandlerFunc {
 		userID := "usr_" + hex.EncodeToString(uBytes)
 
 		// Create as administrator (true)
-		if err := users.CreateUser(r.Context(), userID, req.Username, string(hash), true); err != nil {
+		if err := CreateInitialUser(r.Context(), users, userID, req.Username, string(hash)); err != nil {
 			if strings.Contains(err.Error(), "username already exists") {
 				response.Error(w, http.StatusConflict, "Username is already taken")
 				return
@@ -143,16 +146,8 @@ func RegisterFirstUserHandler(users store.UserStore) http.HandlerFunc {
 	}
 }
 
-func RestartServerHandler() http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		response.JSON(w, http.StatusOK, map[string]string{
-			"status": "restarting",
-		})
-
-		go func() {
-			log.Println("[Setup] Restarting server as requested by setup administrator...")
-			// Exit code 1 satisfies systemd/Docker on-failure/always restart policies cleanly
-			lifecycle.TriggerRestart(1)
-		}()
-	}
+func SetSetupCredentialPath(path string) {
+	tokenMu.Lock()
+	defer tokenMu.Unlock()
+	setupCredentialPath = path
 }

@@ -4,6 +4,7 @@ import (
 	agentdata "certainstats/internal/agent_data"
 	"certainstats/internal/base"
 	baseresponse "certainstats/internal/base/response"
+	csctx "certainstats/internal/context"
 	"certainstats/internal/dashboard/accessrules"
 	"certainstats/internal/store"
 	"context"
@@ -28,7 +29,7 @@ func (s *Store) DashboardCreate(ctx context.Context, d store.Dashboard) error {
 
 func (s *Store) DashboardList(ctx context.Context, userID string) ([]store.Dashboard, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT dashboard_id, user_id, slug, title, access_rules
+		`SELECT dashboard_id, user_id, slug, title, access_rules, config_version
 		 FROM dashboards WHERE user_id = ? ORDER BY title`,
 		userID,
 	)
@@ -41,7 +42,7 @@ func (s *Store) DashboardList(ctx context.Context, userID string) ([]store.Dashb
 	for rows.Next() {
 		var d store.Dashboard
 		var rulesJSON string
-		if err := rows.Scan(&d.DashboardID, &d.UserID, &d.Slug, &d.Title, &rulesJSON); err != nil {
+		if err := rows.Scan(&d.DashboardID, &d.UserID, &d.Slug, &d.Title, &rulesJSON, &d.Version); err != nil {
 			return nil, err
 		}
 		rules, err := accessrules.ParseRules(rulesJSON)
@@ -62,10 +63,10 @@ func (s *Store) DashboardGetInfo(ctx context.Context, dashboard_id string, userI
 	var d store.Dashboard
 
 	err := s.db.QueryRowContext(ctx,
-		`SELECT dashboard_id, user_id, slug, title, access_rules
+		`SELECT dashboard_id, user_id, slug, title, access_rules, config_version
 		 FROM dashboards WHERE user_id = ? and dashboard_id = ?`,
 		userID, dashboard_id,
-	).Scan(&d.DashboardID, &d.UserID, &d.Slug, &d.Title, &rulesJSON)
+	).Scan(&d.DashboardID, &d.UserID, &d.Slug, &d.Title, &rulesJSON, &d.Version)
 	if err == sql.ErrNoRows {
 		return store.Dashboard{}, sql.ErrNoRows
 	}
@@ -82,8 +83,12 @@ func (s *Store) DashboardGetInfo(ctx context.Context, dashboard_id string, userI
 	return d, nil
 }
 func (s *Store) DashboardAddAgents(ctx context.Context, d store.Dashboard, a []baseresponse.CreateDashboardReqAgent) error {
-	tx, err := s.db.Begin()
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if err := validateDashboardAgents(ctx, tx, d, a); err != nil {
 		return err
 	}
 	for _, agent := range a {
@@ -94,7 +99,7 @@ func (s *Store) DashboardAddAgents(ctx context.Context, d store.Dashboard, a []b
 			sortKey = &agent.SortKey
 		}
 
-		_, err = tx.Exec(`
+		_, err = tx.ExecContext(ctx, `
 			INSERT INTO dashboard_agents (dashboard_id, agent_id, agent_public_id, agent_public_nickname, sort_key) 
 			VALUES (?, ?, ?, ?, ?)
 		`, d.DashboardID, agent.AgentID, publicID, agent.Alias, sortKey)
@@ -107,16 +112,17 @@ func (s *Store) DashboardAddAgents(ctx context.Context, d store.Dashboard, a []b
 	if err := tx.Commit(); err != nil {
 		return err
 	}
+	csctx.InvalidateDashboard(d.DashboardID)
 	return nil
 }
 
 func (s *Store) DashboardDelete(ctx context.Context, dashboard_id string, userID string) error {
-	tx, err := s.db.Begin()
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 
-	_, err = tx.Exec(`
+	res, err := tx.ExecContext(ctx, `
 		DELETE FROM dashboards WHERE dashboard_id = ? and user_id = ?
 	`, dashboard_id, userID)
 
@@ -124,11 +130,14 @@ func (s *Store) DashboardDelete(ctx context.Context, dashboard_id string, userID
 		tx.Rollback()
 		return err
 	}
-	if err == sql.ErrNoRows {
+	if n, e := res.RowsAffected(); e != nil || n == 0 {
 		tx.Rollback()
+		if e != nil {
+			return e
+		}
 		return sql.ErrNoRows
 	}
-	_, err = tx.Exec(`
+	_, err = tx.ExecContext(ctx, `
 		DELETE FROM dashboard_agents WHERE dashboard_id = ?
 	`, dashboard_id)
 
@@ -140,6 +149,7 @@ func (s *Store) DashboardDelete(ctx context.Context, dashboard_id string, userID
 	if err := tx.Commit(); err != nil {
 		return err
 	}
+	csctx.InvalidateDashboard(dashboard_id)
 	return nil
 }
 
@@ -147,9 +157,9 @@ func (s *Store) DashboardGetBySlug(ctx context.Context, slug string) (*store.Das
 	var d store.Dashboard
 	var rulesJSON string
 	err := s.db.QueryRowContext(ctx,
-		`SELECT dashboard_id, user_id, slug, title, access_rules
+		`SELECT dashboard_id, user_id, slug, title, access_rules, config_version
 		 FROM dashboards WHERE slug = ?`, slug,
-	).Scan(&d.DashboardID, &d.UserID, &d.Slug, &d.Title, &rulesJSON)
+	).Scan(&d.DashboardID, &d.UserID, &d.Slug, &d.Title, &rulesJSON, &d.Version)
 	if err != nil {
 		return nil, err
 	}
@@ -165,9 +175,9 @@ func (s *Store) DashboardGetByID(ctx context.Context, dashboard_id string) (*sto
 	var d store.Dashboard
 	var rulesJSON string
 	err := s.db.QueryRowContext(ctx,
-		`SELECT dashboard_id, user_id, slug, title, access_rules
+		`SELECT dashboard_id, user_id, slug, title, access_rules, config_version
 		 FROM dashboards WHERE dashboard_id = ?`, dashboard_id,
-	).Scan(&d.DashboardID, &d.UserID, &d.Slug, &d.Title, &rulesJSON)
+	).Scan(&d.DashboardID, &d.UserID, &d.Slug, &d.Title, &rulesJSON, &d.Version)
 	if err != nil {
 		return nil, err
 	}
@@ -229,7 +239,7 @@ func (s *Store) DashboardGetPublicAgents(
 		FROM agents a 
 		JOIN dashboard_agents da ON a.agent_id = da.agent_id 
 		JOIN dashboards d ON da.dashboard_id = d.dashboard_id 
-		WHERE d.slug = ?
+		WHERE d.slug = ? AND a.user_id = d.user_id
 		ORDER BY COALESCE(da.sort_key, COALESCE(NULLIF(da.agent_public_nickname,''), NULLIF(a.nickname,''), a.agent_id)) COLLATE NOCASE ASC`,
 		strings.Join(colExpr, ", "),
 	)
@@ -248,24 +258,25 @@ func (s *Store) DashboardGetPublicAgents(
 			FROM   agent_disk_odometers ado
 			JOIN   dashboard_agents da ON ado.agent_id = da.agent_id
 			JOIN   dashboards d ON da.dashboard_id = d.dashboard_id
-			WHERE  d.slug = ?`,
+			WHERE d.slug = ? AND EXISTS (SELECT 1 FROM agents a WHERE a.agent_id = ado.agent_id AND a.user_id = d.user_id)`,
 			slug,
 		)
-		if err == nil {
-			for diskRows.Next() {
-				var agentID string
-				var path string
-				var tVal, rVal, wVal uint64
-				if err := diskRows.Scan(&agentID, &path, &tVal, &rVal, &wVal); err == nil {
-					disksMap[agentID] = append(disksMap[agentID], baseresponse.DiskOdometer{
-						Path:       path,
-						TotalBytes: &tVal,
-						ReadBytes:  &rVal,
-						WriteBytes: &wVal,
-					})
-				}
+		if err != nil {
+			return nil, err
+		}
+		for diskRows.Next() {
+			var agentID, path string
+			var tVal, rVal, wVal uint64
+			if err := diskRows.Scan(&agentID, &path, &tVal, &rVal, &wVal); err != nil {
+				diskRows.Close()
+				return nil, err
 			}
-			diskRows.Close() // Release connection back to pool explicitly
+			disksMap[agentID] = append(disksMap[agentID], baseresponse.DiskOdometer{Path: path, TotalBytes: &tVal, ReadBytes: &rVal, WriteBytes: &wVal})
+		}
+		err = diskRows.Err()
+		diskRows.Close()
+		if err != nil {
+			return nil, err
 		}
 	}
 
@@ -388,8 +399,10 @@ func (s *Store) DashboardGetPublicAgents(
 				pa.Disks = make([]baseresponse.DiskOdometer, len(rawDisks))
 				for idx, d := range rawDisks {
 					pa.Disks[idx] = baseresponse.DiskOdometer{
-						Path:       d.Path,
-						TotalBytes: d.TotalBytes,
+						Path: d.Path,
+					}
+					if _, ok := rule.FeatureSet()["disk_size"]; ok {
+						pa.Disks[idx].TotalBytes = d.TotalBytes
 					}
 					if allowRead && d.ReadBytes != nil {
 						val := *d.ReadBytes
@@ -414,18 +427,20 @@ func (s *Store) DashboardGetPublicAgents(
 
 func (s *Store) DashboardFindAgentbyPublicID(ctx context.Context, dashboardID string, publicAgentID string) (base.FindAgentByPublicID, error) {
 	var rulesJSON, ownerID, realAgentID string
-	err := s.db.QueryRow(`
-		SELECT d.access_rules, d.user_id, da.agent_id 
+	var version int64
+	err := s.db.QueryRowContext(ctx, `
+		SELECT d.access_rules, d.user_id, da.agent_id, d.config_version
 		FROM dashboards d
 		JOIN dashboard_agents da ON d.dashboard_id = da.dashboard_id
-		WHERE d.dashboard_id = ? AND da.agent_public_id = ?
-	`, dashboardID, publicAgentID).Scan(&rulesJSON, &ownerID, &realAgentID)
+		WHERE d.dashboard_id = ? AND da.agent_public_id = ? AND EXISTS (SELECT 1 FROM agents a WHERE a.agent_id = da.agent_id AND a.user_id = d.user_id)
+	`, dashboardID, publicAgentID).Scan(&rulesJSON, &ownerID, &realAgentID, &version)
 	if err != nil {
 		return base.FindAgentByPublicID{}, err
 	}
 
 	return base.FindAgentByPublicID{
 		RulesJSON:   rulesJSON,
+		Version:     version,
 		OwnerID:     ownerID,
 		RealAgentID: realAgentID,
 	}, nil
@@ -437,7 +452,7 @@ func (s *Store) DashboardGetAgents(ctx context.Context, dashboardID string, user
 		FROM dashboards d
 		JOIN dashboard_agents da ON d.dashboard_id = da.dashboard_id
 		JOIN agents a ON da.agent_id = a.agent_id
-		WHERE d.dashboard_id = ? AND d.user_id = ?
+		WHERE d.dashboard_id = ? AND d.user_id = ? AND a.user_id = d.user_id
 		ORDER BY COALESCE(da.sort_key, COALESCE(NULLIF(da.agent_public_nickname,''), NULLIF(a.nickname,''), a.agent_id)) COLLATE NOCASE ASC`, dashboardID, userID,
 	)
 	if err != nil {
@@ -473,6 +488,10 @@ func (s *Store) DashboardUpdate(ctx context.Context, d store.Dashboard, newAgent
 		return err
 	}
 	defer tx.Rollback()
+
+	if err := validateDashboardAgents(ctx, tx, d, newAgents); err != nil {
+		return err
+	}
 
 	// 1. Prepare ACLs
 	rules, err := json.Marshal(d.AccessRules)
@@ -611,7 +630,11 @@ func (s *Store) DashboardUpdate(ctx context.Context, d store.Dashboard, newAgent
 	}
 
 	// 6. Commit the transaction!
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	csctx.InvalidateDashboard(d.DashboardID)
+	return nil
 }
 
 func (s *Store) DashboardGetPulseConfig(ctx context.Context, dashboardID string) (*store.Dashboard, []store.PublicAgentIdentity, error) {
@@ -619,10 +642,10 @@ func (s *Store) DashboardGetPulseConfig(ctx context.Context, dashboardID string)
 	var rulesJSON string
 	var d store.Dashboard
 	err := s.db.QueryRowContext(ctx,
-		`SELECT dashboard_id, user_id, slug, title, access_rules
+		`SELECT dashboard_id, user_id, slug, title, access_rules, config_version
          FROM dashboards WHERE dashboard_id = ?`,
 		dashboardID,
-	).Scan(&d.DashboardID, &d.UserID, &d.Slug, &d.Title, &rulesJSON)
+	).Scan(&d.DashboardID, &d.UserID, &d.Slug, &d.Title, &rulesJSON, &d.Version)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -634,9 +657,9 @@ func (s *Store) DashboardGetPulseConfig(ctx context.Context, dashboardID string)
 
 	// 2. Get Agents
 	rows, err := s.db.QueryContext(ctx, `
-        SELECT agent_id, agent_public_id, agent_public_nickname
-        FROM dashboard_agents
-        WHERE dashboard_id = ?`, dashboardID,
+        SELECT da.agent_id, da.agent_public_id, da.agent_public_nickname
+ FROM dashboard_agents da JOIN agents a ON a.agent_id = da.agent_id
+ WHERE da.dashboard_id = ? AND a.user_id = (SELECT user_id FROM dashboards WHERE dashboard_id = da.dashboard_id)`, dashboardID,
 	)
 	if err != nil {
 		return nil, nil, err
@@ -653,4 +676,25 @@ func (s *Store) DashboardGetPulseConfig(ctx context.Context, dashboardID string)
 	}
 
 	return &d, agents, nil
+}
+
+// Ownership is checked inside the same transaction as membership mutations.
+func validateDashboardAgents(ctx context.Context, tx *sql.Tx, d store.Dashboard, agents []baseresponse.CreateDashboardReqAgent) error {
+	var owner string
+	if err := tx.QueryRowContext(ctx, "SELECT user_id FROM dashboards WHERE dashboard_id = ?", d.DashboardID).Scan(&owner); err != nil {
+		return err
+	}
+	if owner != d.UserID {
+		return sql.ErrNoRows
+	}
+	for _, a := range agents {
+		var found string
+		if err := tx.QueryRowContext(ctx, "SELECT user_id FROM agents WHERE agent_id = ?", a.AgentID).Scan(&found); err != nil {
+			return err
+		}
+		if found != owner {
+			return sql.ErrNoRows
+		}
+	}
+	return nil
 }

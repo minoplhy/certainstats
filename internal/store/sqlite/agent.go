@@ -2,6 +2,7 @@ package sqlite
 
 import (
 	b "certainstats/internal/base/agent"
+	csctx "certainstats/internal/context"
 	"certainstats/internal/store"
 	"context"
 	"database/sql"
@@ -69,15 +70,22 @@ func (s *Store) AgentList(ctx context.Context, userID string) ([]store.Agent, er
 		userID,
 	)
 	disksMap := make(map[string][]b.DiskOdometer)
-	if err == nil {
-		for diskRows.Next() {
-			var agentID string
-			var d b.DiskOdometer
-			if err := diskRows.Scan(&agentID, &d.Path, &d.TotalBytes, &d.ReadBytes, &d.WriteBytes); err == nil {
-				disksMap[agentID] = append(disksMap[agentID], d)
-			}
+	if err != nil {
+		return nil, err
+	}
+	for diskRows.Next() {
+		var agentID string
+		var d b.DiskOdometer
+		if err := diskRows.Scan(&agentID, &d.Path, &d.TotalBytes, &d.ReadBytes, &d.WriteBytes); err != nil {
+			diskRows.Close()
+			return nil, err
 		}
-		diskRows.Close() // Release connection back to pool explicitly
+		disksMap[agentID] = append(disksMap[agentID], d)
+	}
+	err = diskRows.Err()
+	diskRows.Close()
+	if err != nil {
+		return nil, err
 	}
 
 	// 2. Query agents next
@@ -154,7 +162,10 @@ func (s *Store) AgentUpdate(ctx context.Context, agentID, userID string, nicknam
 	if err != nil {
 		return err
 	}
-	n, _ := res.RowsAffected()
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
 	if n == 0 {
 		return sql.ErrNoRows
 	}
@@ -169,7 +180,10 @@ func (s *Store) AgentDelete(ctx context.Context, agentID, userID string) error {
 	if err != nil {
 		return err
 	}
-	n, _ := res.RowsAffected()
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
 	if n == 0 {
 		return sql.ErrNoRows
 	}
@@ -182,6 +196,7 @@ func (s *Store) AgentDelete(ctx context.Context, agentID, userID string) error {
 		}
 		return true
 	})
+	csctx.InvalidateDashboard("")
 	return nil
 }
 
@@ -215,14 +230,21 @@ func (s *Store) AgentGetByID(ctx context.Context, agentID, userID string) (*stor
 		WHERE  agent_id = ?`,
 		agentID,
 	)
-	if err == nil {
-		for diskRows.Next() {
-			var d b.DiskOdometer
-			if err := diskRows.Scan(&d.Path, &d.TotalBytes, &d.ReadBytes, &d.WriteBytes); err == nil {
-				a.Disks = append(a.Disks, d)
-			}
+	if err != nil {
+		return nil, err
+	}
+	for diskRows.Next() {
+		var d b.DiskOdometer
+		if err := diskRows.Scan(&d.Path, &d.TotalBytes, &d.ReadBytes, &d.WriteBytes); err != nil {
+			diskRows.Close()
+			return nil, err
 		}
-		diskRows.Close()
+		a.Disks = append(a.Disks, d)
+	}
+	err = diskRows.Err()
+	diskRows.Close()
+	if err != nil {
+		return nil, err
 	}
 
 	return &a, nil
@@ -255,6 +277,10 @@ func (s *Store) AgentMarkOffline(ctx context.Context, olderThan time.Duration) (
 		ids = append(ids, id)
 	}
 
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	rows.Close()
 	// 2. Mark them offline
 	if len(ids) > 0 {
 		_, err = tx.ExecContext(ctx, `
@@ -290,7 +316,10 @@ func (s *Store) AgentResetToken(ctx context.Context, agentID, userID, newToken s
 	if err != nil {
 		return err
 	}
-	n, _ := res.RowsAffected()
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
 	if n == 0 {
 		return sql.ErrNoRows
 	}
@@ -331,8 +360,16 @@ func (s *Store) AgentIncrementTraffic(ctx context.Context, agentID, userID strin
 	}
 	defer txConn.Rollback()
 
+	if err := incrementTraffic(ctx, txConn, agentID, userID, rx, tx, disks); err != nil {
+		return err
+	}
+
+	return txConn.Commit()
+}
+
+func incrementTraffic(ctx context.Context, txConn *sql.Tx, agentID, userID string, rx, tx uint64, disks []store.DiskDelta) error {
 	// Update network stats on the agent
-	_, err = txConn.ExecContext(ctx, `
+	res, err := txConn.ExecContext(ctx, `
 		UPDATE agents SET
 			total_rx_bytes = total_rx_bytes + ?,
 			total_tx_bytes = total_tx_bytes + ?
@@ -343,6 +380,13 @@ func (s *Store) AgentIncrementTraffic(ctx context.Context, agentID, userID strin
 		return err
 	}
 
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n != 1 {
+		return sql.ErrNoRows
+	}
 	// Update disk odometers
 	for _, d := range disks {
 		_, err = txConn.ExecContext(ctx, `
@@ -363,5 +407,5 @@ func (s *Store) AgentIncrementTraffic(ctx context.Context, agentID, userID strin
 		}
 	}
 
-	return txConn.Commit()
+	return nil
 }

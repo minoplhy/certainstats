@@ -1,6 +1,7 @@
 package main
 
 import (
+	"certainstats/internal/ws"
 	"fmt"
 	"net/url"
 	"os"
@@ -95,6 +96,7 @@ func LoadConfig() *Config {
 	}
 
 	updateAllowedOrigins(panelURL, panelHost, publicURL, publicHost)
+	ws.ConfigureOrigins(os.Getenv("ALLOWED_ORIGINS"))
 
 	injectedPublicURL := os.Getenv("PUBLIC_URL")
 	if publicHost != "" {

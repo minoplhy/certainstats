@@ -95,31 +95,34 @@
   ];
 
   let globalSocket = null;
-  const updateListeners = [];
+  let updateListeners = [];
 
   function normalizeSnapshot(snap) {
     if (!snap) return null;
+ const status=snap.is_online ?? snap.IsOnline;const available=snap.available;
+ snap=snap.snapshot || snap;
     return {
-      cpu_usage_percent: snap.cpu_usage_percent ?? snap.CPUUsagePercent ?? snap.cpuUsagePercent ?? 0,
-      cpu_iowait_percent: snap.cpu_iowait_percent ?? snap.CPUIOWaitPercent ?? snap.cpuIOWaitPercent ?? 0,
-      cpu_steal_percent: snap.cpu_steal_percent ?? snap.CPUStealPercent ?? snap.cpuStealPercent ?? 0,
-      ram_used_bytes: snap.ram_used_bytes ?? snap.RAMUsedBytes ?? snap.ramUsedBytes ?? 0,
-      ram_swap_used_bytes: snap.ram_swap_used_bytes ?? snap.RAMSwapUsedBytes ?? snap.ramSwapUsedBytes ?? 0,
-      disk_used_bytes: snap.disk_used_bytes ?? snap.DiskUsedBytes ?? snap.diskUsedBytes ?? 0,
-      disk_total_bytes: snap.disk_total_bytes ?? snap.DiskTotalBytes ?? snap.diskTotalBytes ?? 0,
+ is_online: status, available,
+      cpu_usage_percent: snap.cpu_usage_percent ?? snap.CPUUsagePercent ?? snap.cpuUsagePercent ?? null,
+      cpu_iowait_percent: snap.cpu_iowait_percent ?? snap.CPUIOWaitPercent ?? snap.cpuIOWaitPercent ?? null,
+      cpu_steal_percent: snap.cpu_steal_percent ?? snap.CPUStealPercent ?? snap.cpuStealPercent ?? null,
+      ram_used_bytes: snap.ram_used_bytes ?? snap.RAMUsedBytes ?? snap.ramUsedBytes ?? null,
+      ram_swap_used_bytes: snap.ram_swap_used_bytes ?? snap.RAMSwapUsedBytes ?? snap.ramSwapUsedBytes ?? null,
+      disk_used_bytes: snap.disk_used_bytes ?? snap.DiskUsedBytes ?? snap.diskUsedBytes ?? null,
+      disk_total_bytes: snap.disk_total_bytes ?? snap.DiskTotalBytes ?? snap.diskTotalBytes ?? null,
       disks: (snap.disks || snap.Disks || []).map(d => ({
         path: d.path || d.Path || '',
-        total_bytes: d.total_bytes ?? d.TotalBytes ?? 0,
-        used_bytes: d.used_bytes ?? d.UsedBytes ?? 0,
-        read_bytes: d.read_bytes ?? d.ReadBytes ?? 0,
-        write_bytes: d.write_bytes ?? d.WriteBytes ?? 0
+        total_bytes: d.total_bytes ?? d.TotalBytes ?? null,
+        used_bytes: d.used_bytes ?? d.UsedBytes ?? null,
+        read_bytes: d.read_bytes ?? d.ReadBytes ?? null,
+        write_bytes: d.write_bytes ?? d.WriteBytes ?? null
       })),
-      rx_bytes: snap.rx_bytes ?? snap.RXBytes ?? snap.rxBytes ?? 0,
-      tx_bytes: snap.tx_bytes ?? snap.TXBytes ?? snap.txBytes ?? 0,
-      rx_bps: snap.rx_bps ?? snap.RXBps ?? snap.rxBps ?? 0,
-      tx_bps: snap.tx_bps ?? snap.TXBps ?? snap.txBps ?? 0,
-      disk_read_bps: snap.disk_read_bps ?? snap.DiskReadBps ?? snap.diskReadBps ?? 0,
-      disk_write_bps: snap.disk_write_bps ?? snap.DiskWriteBps ?? snap.diskWriteBps ?? 0,
+      rx_bytes: snap.rx_bytes ?? snap.RXBytes ?? snap.rxBytes ?? null,
+      tx_bytes: snap.tx_bytes ?? snap.TXBytes ?? snap.txBytes ?? null,
+      rx_bps: snap.rx_bps ?? snap.RXBps ?? snap.rxBps ?? null,
+      tx_bps: snap.tx_bps ?? snap.TXBps ?? snap.txBps ?? null,
+      disk_read_bps: snap.disk_read_bps ?? snap.DiskReadBps ?? snap.diskReadBps ?? null,
+      disk_write_bps: snap.disk_write_bps ?? snap.DiskWriteBps ?? snap.diskWriteBps ?? null,
       uptime: snap.uptime ?? snap.Uptime ?? null
     };
   }
@@ -211,19 +214,49 @@
 
     // Cluster Stats Calculation & DOM Rendering (4 Dual-Metric Cards)
     // Storage partition card used by both the admin and public detail views.
+    renderPartitions: function (container, cards, opts) {
+      opts = opts || {};
+      const existing = new Map(Array.from(container.children).map(node => [node.dataset.path, node]));
+      const fmt = window.CertainStatsChart.formatBytes;
+      for (const card of cards) {
+        let node = existing.get(card.path);
+        if (!node) {
+          node = document.createElement('div');node.className='partition-card';node.dataset.path=card.path;
+          const head=document.createElement('div');head.className='partition-head';
+          const path=document.createElement('span');path.className='partition-path mono';path.textContent=card.path;
+          const pct=document.createElement('span');pct.className='partition-pct mono';
+          head.append(path,pct);
+          const value=document.createElement('div');value.className='partition-val mono';
+          const track=document.createElement('div');track.className='hw-card-progress-track';
+          const bar=document.createElement('div');bar.className='hw-card-progress-fill seg-disk';track.append(bar);
+          const io=document.createElement('div');io.className='partition-io mono';
+          io.append(document.createElement('span'),document.createElement('span'));
+          node.append(head,value,track,io);container.append(node);
+        }
+        existing.delete(card.path);
+        const pct=card.total>0 && card.used!=null ? card.used/card.total*100 : null;
+        node.querySelector('.partition-pct').textContent=pct==null ? 'Unavailable' : pct.toFixed(1)+'%';
+        node.querySelector('.partition-val').textContent=fmt(card.used)+(card.total>0 ? ' of '+fmt(card.total) : '');
+        const bar=node.querySelector('.hw-card-progress-fill');bar.style.width=Math.min(pct ?? 0,100)+'%';bar.classList.toggle('is-high',pct>=90);
+        const io=node.querySelector('.partition-io');io.hidden=opts.showIO===false;
+        io.children[0].hidden=opts.showRead===false;io.children[1].hidden=opts.showWrite===false;
+        io.children[0].textContent='Read '+fmt(card.read);io.children[1].textContent='Written '+fmt(card.write);
+      }
+      for (const node of existing.values()) node.remove();
+    },
     partitionCardHtml: function (path, used, total, readBytes, writeBytes, opts) {
       opts = opts || {};
       const fmt = window.CertainStatsChart.formatBytes;
-      const pct = total > 0 ? (used / total) * 100 : 0;
+      const pct = total > 0 && used!=null ? (used / total) * 100 : null;
       const esc = v => String(v).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
       const idAttr = (suffix) => opts.idPrefix ? ' id="' + opts.idPrefix + suffix + '"' : '';
       const showIO = opts.showIO !== false;
       return '<div class="partition-card">' +
         '<div class="partition-head"><span class="partition-path mono">' + esc(path) + '</span>' +
-        '<span class="partition-pct mono"' + idAttr('pct') + '>' + (pct > 0 ? pct.toFixed(1) + '%' : '–') + '</span></div>' +
+        '<span class="partition-pct mono"' + idAttr('pct') + '>' + (pct!=null ? pct.toFixed(1) + '%' : 'Unavailable') + '</span></div>' +
         '<div class="partition-val mono"' + idAttr('val') + '>' + fmt(used) + (total ? ' <span class="muted">of ' + fmt(total) + '</span>' : '') + '</div>' +
-        '<div class="hw-card-progress-track"><div class="hw-card-progress-fill seg-disk' + (pct >= 90 ? ' is-high' : '') + '"' + idAttr('bar') + ' style="width:' + Math.min(pct, 100).toFixed(1) + '%"></div></div>' +
-        (showIO ? '<div class="partition-io mono"><span>Read ' + fmt(readBytes || 0) + '</span><span>Written ' + fmt(writeBytes || 0) + '</span></div>' : '') +
+        '<div class="hw-card-progress-track"><div class="hw-card-progress-fill seg-disk' + (pct >= 90 ? ' is-high' : '') + '"' + idAttr('bar') + ' style="width:' + Math.min(pct ?? 0, 100).toFixed(1) + '%"></div></div>' +
+        (showIO ? '<div class="partition-io mono"><span>Read ' + fmt(readBytes) + '</span><span>Written ' + fmt(writeBytes) + '</span></div>' : '') +
         '</div>';
     },
 
@@ -274,16 +307,17 @@
       const overallText = document.getElementById('public-overall-status-text');
       const total = agents.length;
       const offline = total - onlineCount;
+ const knownStatus=agents.some(a=>a.is_online !== undefined || a.IsOnline !== undefined);
       if (overallDot && overallText) {
-        if (total === 0) {
+        if (!knownStatus) {overallDot.className="status-dot";overallText.textContent="Status unavailable";} else if (total === 0) {
           overallDot.className = 'status-dot';
           overallText.textContent = 'No servers yet';
         } else if (offline === 0) {
           overallDot.className = 'status-dot online';
-          overallText.textContent = 'All systems operational';
+          overallText.textContent = 'Monitored servers reporting';
         } else {
           overallDot.className = 'status-dot offline';
-          overallText.textContent = onlineCount === 0 ? 'Major outage' : 'Partial outage';
+          overallText.textContent = onlineCount + ' of ' + total + ' monitored servers reporting';
         }
       }
 
@@ -335,13 +369,14 @@
       const container = document.getElementById(containerId);
       if (!container) return;
 
-      const maxDays = options.maxDays || null;
+      const maxDays = options.maxDays ?? null;
       const storageKey = options.storageKey || (options.isPublic || (maxDays !== null && maxDays > 0) ? 'certainstats_public_active_hours' : 'certainstats_active_hours');
       let activeHours = parseInt(localStorage.getItem(storageKey) || '6', 10);
       if (isNaN(activeHours) || activeHours <= 0) activeHours = 6;
       let customRange = null; // { start, end }
       const onApply = options.onApply || function () {};
 
+      if (options.isPublic && maxDays <= 0) {container.hidden=true;return;}
       let ranges = TIME_RANGES;
       if (maxDays !== null && maxDays > 0) {
         const maxHours = maxDays * 24;
@@ -405,6 +440,7 @@
           </div>
         `;
 
+        if (options.isPublic || maxDays !== null) container.querySelector('.time-picker')?.remove();
         const trigger = document.getElementById('time-picker-trigger');
         const dropdown = document.getElementById('time-picker-dropdown');
         const startInput = document.getElementById('custom-start-input');
@@ -497,6 +533,13 @@
         }
       }
 
+      container.onkeydown = function(event) {
+        if (!['ArrowLeft','ArrowRight','Home','End'].includes(event.key)) return;
+        const buttons=Array.from(container.querySelectorAll('.quick-range-pill'));
+        const index=buttons.indexOf(document.activeElement);if(index<0) return;event.preventDefault();
+        const next=event.key==='Home'?0:event.key==='End'?buttons.length-1:(index+(event.key==='ArrowRight'?1:-1)+buttons.length)%buttons.length;
+        const value=buttons[next].getAttribute('data-val');buttons[next].click();container.querySelector('.quick-range-pill[data-val="'+value+'"]')?.focus();
+      };
       render();
 
       return {
@@ -565,7 +608,7 @@
 
     // WebSocket Telemetry Connection
     initWebSocket: function (wsPath, onUpdate) {
-      if (onUpdate && typeof onUpdate === 'function') {
+      if (onUpdate && typeof onUpdate === 'function' && !updateListeners.includes(onUpdate)) {
         updateListeners.push(onUpdate);
       }
 
@@ -587,21 +630,27 @@
         ? wsPath
         : protocol + '//' + window.location.host + cleanPath;
 
-      console.log('[CertainStats WS] Connecting to:', fullUrl);
+      let lastPulse = 0, reconnectTimer = null, disposed = false;
+      function status(text) {const node=document.getElementById('feed-status');if (node) {node.hidden=false;node.textContent=text;}}
+      const staleTimer=setInterval(() => {if (lastPulse && Date.now()-lastPulse>45000) status('Live feed stale · Last pulse ' + new Date(lastPulse).toLocaleTimeString());},5000);
+      window.addEventListener('pagehide',()=>{disposed=true;clearInterval(staleTimer);clearTimeout(reconnectTimer);globalSocket?.close();updateListeners=[];},{once:true});
 
       function connect() {
+ if (disposed) return;
+ status("Connecting to live feed…");
         try {
           globalSocket = new WebSocket(fullUrl);
 
           globalSocket.onopen = function () {
-            console.log('[CertainStats WS] Live connected successfully');
+            status('Connected · Waiting for telemetry');
           };
 
           globalSocket.onmessage = function (event) {
             try {
               const msg = JSON.parse(event.data);
               if (msg.type === 'agent_update' || msg.type === 'telemetry_snapshot') {
-                const snaps = msg.data || {};
+                lastPulse=Date.now();status("Live · Last update " + new Date(lastPulse).toLocaleTimeString() + " · " + Intl.DateTimeFormat().resolvedOptions().timeZone);
+ const snaps = msg.data || {};
                 updateListeners.forEach(fn => fn(snaps));
               }
             } catch (e) {
@@ -615,11 +664,11 @@
 
           globalSocket.onclose = function () {
             console.log('[CertainStats WS] Disconnected. Reconnecting in 3s...');
-            setTimeout(connect, 3000);
+            status("Disconnected · Retrying…");reconnectTimer=setTimeout(connect,3000);
           };
         } catch (e) {
           console.error('[CertainStats WS] Connect exception:', e);
-          setTimeout(connect, 5000);
+          reconnectTimer=setTimeout(connect,5000);
         }
       }
 
@@ -643,12 +692,13 @@
       const container = document.getElementById(containerId);
       if (!container) return;
 
-      const maxDays = options.maxDays || null;
+      const maxDays = options.maxDays ?? null;
       const storageKey = options.storageKey || (options.isPublic || (maxDays !== null && maxDays > 0) ? 'certainstats_public_active_hours' : 'certainstats_active_hours');
       let activeHours = parseInt(localStorage.getItem(storageKey) || '6', 10);
       if (isNaN(activeHours) || activeHours <= 0) activeHours = 6;
       const onSelect = options.onSelect || function () {};
 
+      if (options.isPublic && maxDays <= 0) {container.hidden=true;return;}
       let ranges = TIME_RANGES;
       if (maxDays !== null && maxDays > 0) {
         const maxHours = maxDays * 24;

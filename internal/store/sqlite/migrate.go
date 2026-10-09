@@ -2,12 +2,14 @@ package sqlite
 
 import (
 	log "certainstats/internal/logger"
+	"strings"
 )
 
 func (s *Store) migrate() error {
 	// Each statement is executed independently so a single failure cannot
 	// prevent subsequent CREATE TABLE or ALTER TABLE steps from running.
 	schemas := []string{
+		`CREATE TABLE IF NOT EXISTS ingestion_journal (batch_id TEXT PRIMARY KEY, agent_id TEXT NOT NULL REFERENCES agents(agent_id) ON DELETE CASCADE, user_id TEXT NOT NULL, payload BLOB NOT NULL, complete INTEGER NOT NULL DEFAULT 0)`,
 		`CREATE TABLE IF NOT EXISTS users (
 			user_id       TEXT PRIMARY KEY,
 			username      TEXT UNIQUE NOT NULL,
@@ -145,6 +147,7 @@ func (s *Store) migrate() error {
 	// "duplicate column" errors are intentionally swallowed; all other
 	// errors are logged so startup problems are never silent.
 	for _, m := range []string{
+		`ALTER TABLE dashboards ADD COLUMN config_version INTEGER NOT NULL DEFAULT 1`,
 		`ALTER TABLE agents ADD COLUMN cpu_cores INTEGER DEFAULT 0`,
 		`ALTER TABLE agents ADD COLUMN swap_size BIGINT  DEFAULT 0`,
 		`ALTER TABLE agents ADD COLUMN disk_size BIGINT  DEFAULT 0`,
@@ -180,9 +183,22 @@ func (s *Store) migrate() error {
 		if _, err := s.db.Exec(m); err != nil {
 			// Ignore "duplicate column" — expected on every boot after first run.
 			// Log everything else so schema drift is immediately visible.
+			if !strings.Contains(err.Error(), "duplicate column") {
+				return err
+			}
 			log.Debugf("[migrate] %s — %v", m, err)
 		}
 	}
 
+	for _, stmt := range []string{
+		`CREATE TRIGGER IF NOT EXISTS dashboard_config_update AFTER UPDATE OF title, slug, access_rules ON dashboards BEGIN UPDATE dashboards SET config_version = config_version + 1 WHERE dashboard_id = NEW.dashboard_id; END`,
+		`CREATE TRIGGER IF NOT EXISTS dashboard_member_add AFTER INSERT ON dashboard_agents BEGIN UPDATE dashboards SET config_version = config_version + 1 WHERE dashboard_id = NEW.dashboard_id; END`,
+		`CREATE TRIGGER IF NOT EXISTS dashboard_member_edit AFTER UPDATE ON dashboard_agents BEGIN UPDATE dashboards SET config_version = config_version + 1 WHERE dashboard_id = NEW.dashboard_id; END`,
+		`CREATE TRIGGER IF NOT EXISTS dashboard_member_remove AFTER DELETE ON dashboard_agents BEGIN UPDATE dashboards SET config_version = config_version + 1 WHERE dashboard_id = OLD.dashboard_id; END`,
+	} {
+		if _, err := s.db.Exec(stmt); err != nil {
+			return err
+		}
+	}
 	return nil
 }

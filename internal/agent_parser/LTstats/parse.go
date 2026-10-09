@@ -104,8 +104,22 @@ func (l *LTstats) Parse(data []byte) (*agentparser.ParsedData, error) {
 			totalDisk = details.DiskSize
 		}
 
+		sampleTime := time.Time{}
+		sourceID := ""
+		if s.Time > 0 {
+			sampleTime = time.UnixMilli(int64(s.Time) * 1000)
+			sourceID = fmt.Sprintf("ltstats:%d", s.Time)
+		}
+		missing := map[string]bool{}
+		if details == nil {
+			for _, metric := range []string{"agent_ram_used", "agent_swap_used", "agent_disk_used"} {
+				missing[metric] = true
+			}
+		}
 		stats = append(stats, agentparser.Telemetry{
-			Timestamp:        time.UnixMilli(int64(s.Time) * 1000),
+			Missing:          missing,
+			Timestamp:        sampleTime,
+			SourceID:         sourceID,
 			CPUUsagePercent:  MergeDecimal(s.CpuUsageBeforeDec, s.CpuUsageAfterDec),
 			CPUIOWaitPercent: MergeDecimal(s.CpuIoWaitBeforeDec, s.CpuIoWaitAfterDec),
 			CPUStealPercent:  MergeDecimal(s.CpuStealBeforeDec, s.CpuStealAfterDec),

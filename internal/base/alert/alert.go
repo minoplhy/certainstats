@@ -100,4 +100,3 @@ type AlertHistory struct {
 	TargetName     string     `json:"target_name,omitempty"`
 	ErrorMessage   string     `json:"error_message,omitempty"`
 }
-

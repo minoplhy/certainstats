@@ -1,8 +1,8 @@
 package web
 
 import (
-	baseresponse "certainstats/internal/base/response"
 	c "certainstats/internal/base/alert"
+	baseresponse "certainstats/internal/base/response"
 	ctx "certainstats/internal/context"
 	"certainstats/internal/dashboard/accessrules"
 	"certainstats/internal/store"
@@ -29,8 +29,8 @@ type mockWebStore struct {
 	savedPublicKey       string
 	savedPrivateKey      string
 
-	alertCreated store.Alert
-	alertUpdated store.Alert
+	alertCreated  store.Alert
+	alertUpdated  store.Alert
 	targetCreated c.AlertTarget
 	targetUpdated c.AlertTarget
 
@@ -112,7 +112,8 @@ func (m *mockWebStore) DashboardGetBySlug(ctx context.Context, slug string) (*st
 		Title:       "Production Status",
 		AccessRules: accessrules.AccessRules{
 			"public": accessrules.AccessRule{
-				MaxDays: 7,
+				MaxDays:         7,
+				AllowedFeatures: []string{"is_online"},
 			},
 		},
 	}, nil
@@ -245,7 +246,7 @@ func TestPublicDashboardHandler_ContextCache(t *testing.T) {
 	}
 
 	slug := "test-status-cache"
-	ctx.DashboardHTMLCache.Delete("html_dash_" + slug)
+	ctx.DashboardHTMLCache.Delete("html:dash_1:0:" + slug + ":/dashboard:/static")
 
 	// First request: Cache Miss -> calls DB and stores into ctx.DashboardHTMLCache
 	r := chi.NewRouter()
@@ -263,7 +264,7 @@ func TestPublicDashboardHandler_ContextCache(t *testing.T) {
 	}
 
 	// Verify cached entry in ctx.DashboardHTMLCache
-	val, ok := ctx.DashboardHTMLCache.Load("html_dash_" + slug)
+	val, ok := ctx.DashboardHTMLCache.Load("html:dash_1:0:" + slug + ":/dashboard:/static")
 	if !ok {
 		t.Fatalf("expected entry in ctx.DashboardHTMLCache")
 	}
@@ -281,8 +282,8 @@ func TestPublicDashboardHandler_ContextCache(t *testing.T) {
 	if rec2.Code != http.StatusOK {
 		t.Fatalf("expected 200 OK on cached request, got %d", rec2.Code)
 	}
-	if mock.dashboardGetCalled {
-		t.Errorf("expected DB NOT to be queried on second cached request")
+	if !mock.dashboardGetCalled {
+		t.Errorf("expected current permissions to be queried before cached response")
 	}
 
 	// Third request with Accept-Encoding: gzip -> serves pre-compressed gzip payload
@@ -300,7 +301,7 @@ func TestPublicDashboardHandler_ContextCache(t *testing.T) {
 
 	// Invalidation test
 	ctx.InvalidateDashboard(slug)
-	if _, ok := ctx.DashboardHTMLCache.Load("html_dash_" + slug); ok {
+	if _, ok := ctx.DashboardHTMLCache.Load("html:dash_1:0:" + slug + ":/dashboard:/static"); ok {
 		t.Errorf("expected cache entry to be purged after InvalidateDashboard")
 	}
 }
@@ -413,13 +414,13 @@ func TestDashboardUpdateHandler_PreservesAllAgentsWhenNewAdded(t *testing.T) {
 		// Simulate form submission where existing agents are checked (agent-1, agent-2),
 		// new agent is added (agent-3), but agents_order only contains "agent-3"
 		form := url.Values{
-			"id":           {"dash-001"},
-			"title":        {"Production Status"},
-			"slug":         {"prod-status"},
-			"max_days":     {"7"},
-			"agents":       {"agent-1", "agent-2", "agent-3"},
-			"agents_order": {"agent-3"}, // Partial or desynced agents_order
-			"is_dragged":   {"0"},
+			"id":            {"dash-001"},
+			"title":         {"Production Status"},
+			"slug":          {"prod-status"},
+			"max_days":      {"7"},
+			"agents":        {"agent-1", "agent-2", "agent-3"},
+			"agents_order":  {"agent-3"}, // Partial or desynced agents_order
+			"is_dragged":    {"0"},
 			"alias_agent-1": {"Server 1"},
 			"alias_agent-2": {"Server 2"},
 			"alias_agent-3": {"Server 3"},
@@ -675,6 +676,3 @@ func TestAgentRenameHandler(t *testing.T) {
 		}
 	})
 }
-
-
-

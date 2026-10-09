@@ -3,12 +3,12 @@
   <label class="toolbar-search">
     <span class="sr-only">Search servers</span>
     <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-    <input type="search" id="public-search-input" placeholder="Search servers" oninput="filterPublicMonitors()">
+    <input type="search" id="public-search-input" placeholder="Search servers" data-input-action="filterPublicMonitors">
   </label>
   <span class="toolbar-spacer"></span>
   <div class="toolbar-group" role="group" aria-label="View">
-    <button type="button" class="toolbar-btn active" id="btn-pub-list" onclick="setPublicViewMode('list')">Rows</button>
-    <button type="button" class="toolbar-btn" id="btn-pub-grid" onclick="setPublicViewMode('grid')">Cards</button>
+    <button type="button" class="toolbar-btn active" id="btn-pub-list" data-click-action="setPublicViewMode" data-arg0="list">Rows</button>
+    <button type="button" class="toolbar-btn" id="btn-pub-grid" data-click-action="setPublicViewMode" data-arg0="grid">Cards</button>
   </div>
 </div>
 {{end}}

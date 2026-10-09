@@ -240,3 +240,7 @@ func TestPasswordChangeHandler(t *testing.T) {
 		}
 	})
 }
+
+func (m *mockSettingsStore) ChangePasswordAndRevoke(ctx context.Context, id, oldHash, newHash, token string) error {
+	return m.UpdatePassword(ctx, id, newHash)
+}

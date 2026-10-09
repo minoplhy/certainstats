@@ -3,15 +3,16 @@ package metrics
 import (
 	apiresponse "certainstats/internal/response"
 
+	"certainstats/internal/security"
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
-	base "certainstats/internal/base"
 	m "certainstats/internal/base/metrics"
 	ctx "certainstats/internal/context"
 	accessrules "certainstats/internal/dashboard/accessrules"
@@ -27,10 +28,40 @@ import (
 // saturation under heavy load or scraping attacks.
 var globalTSDBQuerySemaphore = make(chan struct{}, 32)
 
-// acquireTSDB blocks until a TSDB slot is available and returns a release func.
-func acquireTSDB() func() {
-	globalTSDBQuerySemaphore <- struct{}{}
-	return func() { <-globalTSDBQuerySemaphore }
+var publicTSDBSlots = make(chan struct{}, 16)
+var publicTSDBWaiters = security.PublicWaitSlots
+
+func acquireTSDB(request context.Context, public bool) (func(), error) {
+	if public {
+		select {
+		case publicTSDBWaiters <- struct{}{}:
+		default:
+			return nil, fmt.Errorf("query queue full")
+		}
+		defer func() { <-publicTSDBWaiters }()
+		var cancel context.CancelFunc
+		request, cancel = context.WithTimeout(request, 2*time.Second)
+		defer cancel()
+		select {
+		case publicTSDBSlots <- struct{}{}:
+		case <-request.Done():
+			return nil, request.Err()
+		}
+	}
+	select {
+	case globalTSDBQuerySemaphore <- struct{}{}:
+	case <-request.Done():
+		if public {
+			<-publicTSDBSlots
+		}
+		return nil, request.Err()
+	}
+	return func() {
+		<-globalTSDBQuerySemaphore
+		if public {
+			<-publicTSDBSlots
+		}
+	}, nil
 }
 
 func hasAnyDataPoints(series []map[string]any) bool {
@@ -56,6 +87,11 @@ func MetricsQueryHandler(db store.AgentStore, tsb *tsdb.DB, cache *RealtimeCache
 		}
 		if !allowedMetrics[metricName] {
 			apiresponse.Error(w, http.StatusBadRequest, "Unknown metric")
+			return
+		}
+
+		if _, ok := parsePrivateTimeRange(r); !ok {
+			apiresponse.Error(w, http.StatusBadRequest, "Invalid time range")
 			return
 		}
 
@@ -116,7 +152,11 @@ func MetricsQueryHandler(db store.AgentStore, tsb *tsdb.DB, cache *RealtimeCache
 			return
 		}
 
-		release := acquireTSDB()
+		release, err := acquireTSDB(r.Context(), false)
+		if err != nil {
+			security.Reject(w, 503, "Query capacity unavailable")
+			return
+		}
 		defer release()
 
 		querier, err := tsb.Querier(tr.StartMs, tr.EndMs)
@@ -134,7 +174,11 @@ func MetricsQueryHandler(db store.AgentStore, tsb *tsdb.DB, cache *RealtimeCache
 			labels.MustNewMatcher(labels.MatchEqual, "agent_id", agentID),
 		}
 
-		allSeries := queryTSDB(querier, matchers, metricName, tr)
+		allSeries, err := queryTSDB(r.Context(), querier, matchers, metricName, tr)
+		if err != nil {
+			apiresponse.Error(w, 500, "Historical query failed")
+			return
+		}
 		if !hasAnyDataPoints(allSeries) {
 			apiresponse.Error(w, http.StatusNotFound, "Not found")
 			return
@@ -166,71 +210,52 @@ func PublicMetricsHandler(tsb *tsdb.DB, dashboard store.DashboardStore, cache *R
 			return
 		}
 
-		// 1. Get agent metadata and access rules (using PublicAgentCache)
-		var agent base.FindAgentByPublicID
-		var rules accessrules.AccessRules
-
-		cacheKeyLookup := dashboardID + "_" + publicAgentID
-		if val, hit := ctx.PublicAgentCache.Load(cacheKeyLookup); hit {
-			entry := val.(*ctx.PublicAgentCacheEntry)
-			if time.Now().Before(entry.ExpiresAt) {
-				agent = entry.Agent
-				rules = entry.ParsedRules
-			}
-		}
-
-		if agent.RealAgentID == "" {
-			var err error
-			agent, err = dashboard.DashboardFindAgentbyPublicID(r.Context(), dashboardID, publicAgentID)
-			if err != nil {
-				apiresponse.Error(w, http.StatusNotFound, "Not found")
-				return
-			}
-
-			rules, err = accessrules.ParseRules(agent.RulesJSON)
-			if err != nil {
-				apiresponse.Error(w, http.StatusInternalServerError, "Internal server error")
-				return
-			}
-
-			ctx.PublicAgentCache.Store(cacheKeyLookup, &ctx.PublicAgentCacheEntry{
-				Agent:       agent,
-				ParsedRules: rules,
-				ExpiresAt:   time.Now().Add(60 * time.Second),
-			})
-		}
-
-		// 2. Resolve the snapped timeframe once for all metrics in the request.
-		rawHours, _ := strconv.ParseUint(r.URL.Query().Get("hours"), 10, 64)
-		if rawHours == 0 {
-			rawHours = 24
-		}
-		maxHoursAllowed := rules[accessrules.PUBLIC].MaxDays * uint(24)
-		if rawHours > uint64(maxHoursAllowed) {
+		// Always resolve current permissions before consulting a response cache.
+		agent, err := dashboard.DashboardFindAgentbyPublicID(r.Context(), dashboardID, publicAgentID)
+		if err != nil {
 			apiresponse.Error(w, http.StatusNotFound, "Not found")
 			return
 		}
-		snapped := snapToStandardHours(rawHours)
-
-		now := time.Now()
-		tr := TimeRange{
-			StartMs: now.Add(-time.Duration(snapped) * time.Hour).UnixMilli(),
-			EndMs:   now.UnixMilli(),
+		rules, err := accessrules.ParseRules(agent.RulesJSON)
+		if err != nil {
+			apiresponse.Error(w, http.StatusForbidden, "Public access disabled")
+			return
 		}
-
+		rule, ok := rules[accessrules.PUBLIC]
+		if !ok || rule.IsEmpty() {
+			apiresponse.Error(w, http.StatusForbidden, "Public access disabled")
+			return
+		}
+		// 2. Resolve the snapped timeframe once for all metrics in the request.
+		tr, _, ok := parsePublicTimeRange(r, rule.MaxDays*24)
+		if !ok {
+			apiresponse.Error(w, http.StatusBadRequest, "Invalid public range")
+			return
+		}
+		snapped := uint64((tr.EndMs - tr.StartMs) / time.Hour.Milliseconds())
 		// Verify access rules for this metric
 		if _, allowed := rules[accessrules.PUBLIC].MetricSet()[metricName]; !allowed {
 			apiresponse.Error(w, http.StatusNotFound, "Not found")
 			return
 		}
 
-		cacheKey := "pub_" + dashboardID + "_" + publicAgentID + "_" + metricName + "_" + strconv.FormatUint(snapped, 10)
+		cacheKey := fmt.Sprintf("pub:%s:%d:%s:%s:%d", dashboardID, agent.Version, publicAgentID, metricName, snapped)
+		valid := func() bool {
+			current, err := dashboard.DashboardFindAgentbyPublicID(r.Context(), dashboardID, publicAgentID)
+			return err == nil && current.Version == agent.Version && current.RulesJSON == agent.RulesJSON && current.RealAgentID == agent.RealAgentID
+		}
 
 		// 3. Check the compiled-payload cache (fastest path).
 		if entry, hit := ctx.GetCacheEntry(&ctx.MetricsCache, cacheKey); hit {
 			entry.Serve(w, r, "application/json", http.StatusOK)
 			return
 		}
+
+		finish, leader := ctx.BeginBuild(w, r, cacheKey, PublicMetricsHandler(tsb, dashboard, cache))
+		if !leader {
+			return
+		}
+		defer finish()
 
 		// 4. Try the sliding-window memory cache.
 		var singleSeries []map[string]any
@@ -247,6 +272,10 @@ func PublicMetricsHandler(tsb *tsdb.DB, dashboard store.DashboardStore, cache *R
 						"series": series,
 					})
 					entry := ctx.NewCacheEntry(payload, ctx.DefaultCacheTTL)
+					if !valid() {
+						apiresponse.Error(w, http.StatusConflict, "Dashboard changed; retry")
+						return
+					}
 					ctx.MetricsCache.Store(cacheKey, entry)
 					entry.Serve(w, r, "application/json", http.StatusOK)
 					return
@@ -261,7 +290,11 @@ func PublicMetricsHandler(tsb *tsdb.DB, dashboard store.DashboardStore, cache *R
 				return
 			}
 
-			release := acquireTSDB()
+			release, err := acquireTSDB(r.Context(), true)
+			if err != nil {
+				security.Reject(w, 503, "Query capacity unavailable")
+				return
+			}
 			querier, err := tsb.Querier(tr.StartMs, tr.EndMs)
 			if err != nil {
 				release()
@@ -275,9 +308,13 @@ func PublicMetricsHandler(tsb *tsdb.DB, dashboard store.DashboardStore, cache *R
 				labels.MustNewMatcher(labels.MatchEqual, "user_id", agent.OwnerID),
 			}
 
-			singleSeries = queryTSDB(querier, matchers, metricName, tr)
+			singleSeries, err = queryTSDB(r.Context(), querier, matchers, metricName, tr)
 			querier.Close()
 			release()
+			if err != nil {
+				apiresponse.Error(w, 500, "Historical query failed")
+				return
+			}
 
 			if !hasAnyDataPoints(singleSeries) {
 				apiresponse.Error(w, http.StatusNotFound, "Not found")
@@ -289,6 +326,10 @@ func PublicMetricsHandler(tsb *tsdb.DB, dashboard store.DashboardStore, cache *R
 				"series": singleSeries,
 			})
 			entry := ctx.NewCacheEntry(payload, ctx.DefaultCacheTTL)
+			if !valid() {
+				apiresponse.Error(w, http.StatusConflict, "Dashboard changed; retry")
+				return
+			}
 			ctx.MetricsCache.Store(cacheKey, entry)
 			entry.Serve(w, r, "application/json", http.StatusOK)
 			return
@@ -329,14 +370,25 @@ func buildFromWindowCache(cache *RealtimeCache, userID, agentID, metricName stri
 			return nil, false
 		}
 		agg := downsamplePoints(pts, step, isDelta)
+		var rates, intervals []m.DataPoint
+		legacy := false
+		if isDelta {
+			durations, _ := cache.GetTimeseries(userID, agentID, "agent_sample_interval_seconds", "", tr.StartMs, tr.EndMs)
+			values := make(map[int64]float64)
+			for _, d := range durations {
+				values[d.Timestamp] = d.Value
+			}
+			rates, intervals, legacy = rateSeries(pts, values, step)
+		}
 
 		labelsMap := map[string]string{}
 		if path != "" {
 			labelsMap["path"] = path
 		}
 		series = append(series, map[string]any{
-			"labels": labelsMap,
-			"data":   agg,
+			"labels":    labelsMap,
+			"data":      agg,
+			"rate_data": rates, "interval_seconds": intervals, "legacy_estimate": legacy,
 		})
 	}
 	return series, true
@@ -364,12 +416,16 @@ func diskPaths(cache *RealtimeCache, agentID, metricName string) []string {
 }
 
 // queryTSDB runs the Prometheus TSDB query and returns the downsampled series.
-func queryTSDB(querier storage.Querier, matchers []*labels.Matcher, metricName string, tr TimeRange) []map[string]any {
-	seriesSet := querier.Select(context.Background(), false, nil, matchers...)
+func queryTSDB(request context.Context, querier storage.Querier, matchers []*labels.Matcher, metricName string, tr TimeRange) ([]map[string]any, error) {
+	seriesSet := querier.Select(request, false, nil, matchers...)
 
 	step := stepForRange(tr.EndMs - tr.StartMs)
 	isDelta := isDeltaMetric(metricName)
 
+	durationValues, err := loadIntervals(request, querier, matchers, tr)
+	if err != nil {
+		return nil, err
+	}
 	var allSeries []map[string]any
 
 	for seriesSet.Next() {
@@ -381,21 +437,31 @@ func queryTSDB(querier storage.Querier, matchers []*labels.Matcher, metricName s
 			labelsMap["path"] = val
 		}
 
-		pts := readTSDBSeries(series.Iterator(nil), tr, step, isDelta)
+		raw, err := readRawSeries(series.Iterator(nil), tr)
+		if err != nil {
+			return nil, err
+		}
+		pts := downsamplePoints(raw, step, isDelta)
+		var rates, intervals []m.DataPoint
+		legacy := false
+		if isDelta {
+			rates, intervals, legacy = rateSeries(raw, durationValues, step)
+		}
 
 		allSeries = append(allSeries, map[string]any{
-			"labels": labelsMap,
-			"data":   pts,
+			"labels":    labelsMap,
+			"data":      pts,
+			"rate_data": rates, "interval_seconds": intervals, "legacy_estimate": legacy,
 		})
 	}
 	if err := seriesSet.Err(); err != nil {
-		log.Printf("TSDB series iteration error for %s: %v", metricName, err)
+		return nil, err
 	}
 
 	if allSeries == nil {
 		allSeries = []map[string]any{}
 	}
-	return allSeries
+	return allSeries, nil
 }
 
 // readTSDBSeries converts a raw TSDB chunk iterator into downsampled DataPoints.
@@ -421,4 +487,35 @@ func writeJSON(w http.ResponseWriter, metricName string, allSeries []map[string]
 	})
 	w.Header().Set("Content-Type", "application/json")
 	w.Write(payload)
+}
+
+func readRawSeries(it chunkenc.Iterator, tr TimeRange) ([]TimeseriesPoint, error) {
+	var result []TimeseriesPoint
+	for it.Next() != chunkenc.ValNone {
+		t, v := it.At()
+		if t >= tr.StartMs && t <= tr.EndMs {
+			result = append(result, TimeseriesPoint{Timestamp: t, Value: v})
+		}
+	}
+	return result, it.Err()
+}
+func loadIntervals(request context.Context, q storage.Querier, matchers []*labels.Matcher, tr TimeRange) (map[int64]float64, error) {
+	filtered := []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "__name__", "agent_sample_interval_seconds")}
+	for _, m := range matchers {
+		if m.Name != "__name__" {
+			filtered = append(filtered, m)
+		}
+	}
+	values := make(map[int64]float64)
+	set := q.Select(request, false, nil, filtered...)
+	for set.Next() {
+		points, err := readRawSeries(set.At().Iterator(nil), tr)
+		if err != nil {
+			return nil, err
+		}
+		for _, p := range points {
+			values[p.Timestamp] = p.Value
+		}
+	}
+	return values, set.Err()
 }

@@ -2,13 +2,13 @@
 <div id="agents-detail-view" hidden>
   <section class="detail-hero">
     <div class="hero-eyebrow">
-      <a href="{{.PanelPath}}/" onclick="event.preventDefault(); closeAgentDetail();">&larr; Agent Hub</a>
+      <a href="{{.PanelPath}}/" data-click-action="closeAgentDetail" data-prevent-default="true">&larr; Agent Hub</a>
       <span aria-hidden="true">·</span>
       <span><span id="detail-active-type">beszel</span> agent</span>
     </div>
 
     <h1 class="detail-title">
-      <span id="detail-name-read-container" class="editable-title" role="button" tabindex="0" title="Rename" onclick="startInpageAgentNameEdit()" onkeydown="if (event.key === 'Enter') startInpageAgentNameEdit()">
+      <span id="detail-name-read-container" class="editable-title" role="button" tabindex="0" title="Rename" data-click-action="startInpageAgentNameEdit" onkeydown="if (event.key === 'Enter') startInpageAgentNameEdit()">
         <span id="detail-active-name">Agent</span>
         <span class="editable-pencil" aria-hidden="true">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
@@ -17,8 +17,8 @@
       <span id="detail-name-edit-container" class="inline-edit" hidden>
         <label class="sr-only" for="detail-name-input">Agent name</label>
         <input type="text" id="detail-name-input" class="form-input inline-edit-title" maxlength="64" placeholder="Agent name" autocomplete="off">
-        <button type="button" id="detail-name-save-btn" class="btn btn-primary btn-sm" onclick="saveInpageAgentName()">Save</button>
-        <button type="button" class="btn btn-secondary btn-sm" onclick="cancelInpageAgentNameEdit()">Cancel</button>
+        <button type="button" id="detail-name-save-btn" class="btn btn-primary btn-sm" data-click-action="saveInpageAgentName">Save</button>
+        <button type="button" class="btn btn-secondary btn-sm" data-click-action="cancelInpageAgentNameEdit">Cancel</button>
       </span>
     </h1>
 
@@ -37,22 +37,22 @@
 
       <div id="inpage-header-inline-notes" class="inline-notes">
         <div id="inpage-header-notes-read" class="inline-notes-read">
-          <button type="button" id="inpage-header-notes-text" class="inline-notes-text" onclick="handleInpageHeaderNoteClick()" title="Edit notes">No notes</button>
+          <button type="button" id="inpage-header-notes-text" class="inline-notes-text" data-click-action="handleInpageHeaderNoteClick" title="Edit notes">No notes</button>
         </div>
         <div id="inpage-header-notes-edit" class="inline-edit" hidden>
           <label class="sr-only" for="inpage-header-notes-input">Notes</label>
           <input type="text" id="inpage-header-notes-input" class="form-input inline-edit-small" placeholder="Add a short note">
-          <button type="button" class="btn btn-primary btn-sm" onclick="saveInpageHeaderInlineNote()">Save</button>
-          <button type="button" class="btn btn-secondary btn-sm" onclick="cancelInpageHeaderNoteEdit()">Cancel</button>
+          <button type="button" class="btn btn-primary btn-sm" data-click-action="saveInpageHeaderInlineNote">Save</button>
+          <button type="button" class="btn btn-secondary btn-sm" data-click-action="cancelInpageHeaderNoteEdit">Cancel</button>
         </div>
       </div>
     </div>
 
     <div class="page-actions">
       <div id="inpage-detail-time-picker-container"></div>
-      <button type="button" class="btn btn-secondary btn-sm" onclick="showInpageReinstallModal()">Reinstall</button>
-      <button type="button" class="btn btn-secondary btn-sm" onclick="showInpageUninstallModal()">Uninstall</button>
-      <form id="inpage-delete-form" action="{{.PanelPath}}/agent/delete" method="POST" onsubmit="return confirm('Delete this agent? Its token is revoked and all of its stored metrics are permanently removed.')">
+      <button type="button" class="btn btn-secondary btn-sm" data-click-action="showInpageReinstallModal">Reinstall</button>
+      <button type="button" class="btn btn-secondary btn-sm" data-click-action="showInpageUninstallModal">Uninstall</button>
+      <form id="inpage-delete-form" action="{{.PanelPath}}/agent/delete" method="POST" data-submit-action="confirm" data-arg0="Delete this agent? Its token is revoked and all of its stored metrics are permanently removed."><input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
         <input type="hidden" name="agent_id" id="inpage-delete-id" value="">
         <input type="hidden" name="redirect_to" value="{{.PanelPath}}">
         <button type="submit" class="btn btn-danger btn-sm">Delete</button>
@@ -88,6 +88,7 @@
       <span class="odometer-label-group">Network traffic, all time</span>
       <span class="odometer-values" id="inpage-odo-net"><span>↓ 0 B</span><span>↑ 0 B</span></span>
     </div>
+<p class="form-hint">Lifetime totals count traffic observed since this server was added. Collection gaps are excluded. Recreating the agent resets these totals.</p>
     <div class="odometer-tile">
       <span class="odometer-label-group">Disk reads and writes, all time</span>
       <span class="odometer-values" id="inpage-odo-disk"><span>R 0 B</span><span>W 0 B</span></span>
@@ -97,17 +98,17 @@
   <section id="inpage-agent-notes-section" class="card notes-card" hidden>
     <div class="section-header">
       <h2 class="section-title">Notes</h2>
-      <button type="button" id="inpage-btn-edit-expanded-notes" class="btn btn-secondary btn-sm" onclick="startInpageExpandedNotesEdit()">Edit</button>
+      <button type="button" id="inpage-btn-edit-expanded-notes" class="btn btn-secondary btn-sm" data-click-action="startInpageExpandedNotesEdit">Edit</button>
     </div>
-    <div id="inpage-expanded-notes-read" class="notes-read" onclick="startInpageExpandedNotesEdit()">
+    <div id="inpage-expanded-notes-read" class="notes-read" data-click-action="startInpageExpandedNotesEdit">
       <p id="inpage-expanded-notes-text" class="notes-text"></p>
     </div>
     <div id="inpage-expanded-notes-edit" class="notes-edit" hidden>
       <label class="sr-only" for="inpage-expanded-notes-textarea">Notes</label>
       <textarea id="inpage-expanded-notes-textarea" class="form-textarea mono" rows="6" placeholder="Write private notes…"></textarea>
       <div class="page-actions notes-actions">
-        <button type="button" class="btn btn-secondary btn-sm" onclick="cancelInpageExpandedNotesEdit()">Cancel</button>
-        <button type="button" class="btn btn-primary btn-sm" id="inpage-btn-save-expanded-notes" onclick="saveInpageExpandedNotes()">Save notes</button>
+        <button type="button" class="btn btn-secondary btn-sm" data-click-action="cancelInpageExpandedNotesEdit">Cancel</button>
+        <button type="button" class="btn btn-primary btn-sm" id="inpage-btn-save-expanded-notes" data-click-action="saveInpageExpandedNotes">Save notes</button>
       </div>
     </div>
   </section>

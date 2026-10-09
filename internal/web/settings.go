@@ -2,7 +2,6 @@ package web
 
 import (
 	"certainstats/internal/auth"
-	"certainstats/internal/store"
 	"net/http"
 
 	"golang.org/x/crypto/bcrypt"
@@ -12,7 +11,8 @@ func (h *WebHandler) SettingsHandler(w http.ResponseWriter, r *http.Request) {
 	userID := getUserID(r)
 	sessions, err := h.Store.SessionListByUser(r.Context(), userID)
 	if err != nil {
-		sessions = []store.Session{}
+		http.Error(w, "Failed to load sessions", 500)
+		return
 	}
 
 	currentToken := ""
@@ -38,8 +38,8 @@ func (h *WebHandler) PasswordChangeHandler(w http.ResponseWriter, r *http.Reques
 	newPassword := r.FormValue("new_password")
 	confirmPassword := r.FormValue("confirm_password")
 
-	if newPassword != confirmPassword {
-		http.Error(w, "New passwords do not match", http.StatusBadRequest)
+	if err := auth.ValidatePassword(newPassword, confirmPassword); err != nil {
+		h.passwordError(w, r, "new_password", err.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -50,7 +50,7 @@ func (h *WebHandler) PasswordChangeHandler(w http.ResponseWriter, r *http.Reques
 	}
 
 	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(oldPassword)); err != nil {
-		http.Error(w, "Current password incorrect", http.StatusUnauthorized)
+		h.passwordError(w, r, "old_password", "Current password incorrect", http.StatusUnauthorized)
 		return
 	}
 
@@ -60,7 +60,10 @@ func (h *WebHandler) PasswordChangeHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	_ = h.Store.UpdatePassword(r.Context(), userID, string(hashed))
+	if err := auth.PersistPassword(r, h.Store, userID, user.PasswordHash, string(hashed)); err != nil {
+		http.Error(w, "Password update failed", 500)
+		return
+	}
 	http.Redirect(w, r, h.PanelPath+"/settings", http.StatusSeeOther)
 }
 
@@ -101,7 +104,10 @@ func (h *WebHandler) SessionEjectHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	_ = h.Store.SessionDelete(r.Context(), targetToken)
+	if err := h.Store.SessionDelete(r.Context(), targetToken); err != nil {
+		http.Error(w, "Failed to persist change", 500)
+		return
+	}
 
 	if targetToken == currentToken {
 		auth.ClearSessionCookie(w)
@@ -116,7 +122,25 @@ func (h *WebHandler) SessionEjectOtherHandler(w http.ResponseWriter, r *http.Req
 	userID := getUserID(r)
 	cookie, err := r.Cookie("session_token")
 	if err == nil && cookie.Value != "" {
-		_ = h.Store.SessionDeleteOther(r.Context(), userID, cookie.Value)
+		if err := h.Store.SessionDeleteOther(r.Context(), userID, cookie.Value); err != nil {
+			http.Error(w, "Failed to persist change", 500)
+			return
+		}
 	}
 	http.Redirect(w, r, h.PanelPath+"/settings", http.StatusSeeOther)
+}
+
+func (h *WebHandler) passwordError(w http.ResponseWriter, r *http.Request, field, message string, status int) {
+	sessions, err := h.Store.SessionListByUser(r.Context(), getUserID(r))
+	if err != nil {
+		http.Error(w, "Failed to load sessions", 500)
+		return
+	}
+	token := ""
+	if cookie, err := r.Cookie("session_token"); err == nil {
+		token = cookie.Value
+	}
+	pd := h.newPageData(r, "Account Settings", "settings", map[string]any{"Sessions": sessions, "CurrentToken": token, "FieldErrors": map[string]string{field: message}})
+	pd.FlashError = message
+	h.Renderer.RenderHTTP(w, status, "settings.html", pd)
 }

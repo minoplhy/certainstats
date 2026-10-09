@@ -10,9 +10,6 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
-	"time"
-
-	"strings"
 
 	"golang.org/x/crypto/bcrypt"
 )
@@ -40,38 +37,11 @@ func LoginHandler(users store.UserStore, sessions store.SessionStore) http.Handl
 			return
 		}
 
-		token := GenerateSessionToken()
-		duration := 24 * time.Hour
-		if req.Remember {
-			duration = 30 * 24 * time.Hour
-		}
-		expiresAt := time.Now().Add(duration)
-
-		// Parse IP Address from headers or RemoteAddr
-		ip := r.Header.Get("X-Forwarded-For")
-		if ip == "" {
-			ip = r.RemoteAddr
-		}
-		if idx := strings.Index(ip, ","); idx != -1 {
-			ip = strings.TrimSpace(ip[:idx])
-		}
-
-		now := time.Now()
-		if err := sessions.SessionCreate(r.Context(), store.Session{
-			Token:           token,
-			UserID:          user.UserID,
-			ExpiresAt:       expiresAt,
-			CreatedAt:       now,
-			LastConnectedAt: now,
-			IPAddress:       ip,
-			UserAgent:       r.UserAgent(),
-		}); err != nil {
-			apiresponse.Error(w, http.StatusInternalServerError, "Failed to create session")
-			log.Debugf("failed to created session: %s", err)
+		if err := CreateBrowserSession(w, r, sessions, user.UserID, req.Remember); err != nil {
+			apiresponse.Error(w, 500, "Failed to create session")
+			log.Printf("session creation: %v", err)
 			return
 		}
-
-		SetSessionCookie(w, r, token, expiresAt)
 
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte(`{"status":"success"}`))

@@ -205,7 +205,10 @@ func (h *WebHandler) AlertDeleteHandler(w http.ResponseWriter, r *http.Request) 
 	userID := getUserID(r)
 	alertID := r.FormValue("id")
 
-	_ = h.Store.AlertDelete(r.Context(), alertID, userID)
+	if err := h.Store.AlertDelete(r.Context(), alertID, userID); err != nil {
+		http.Error(w, "Failed to persist change", 500)
+		return
+	}
 	http.Redirect(w, r, h.PanelPath+"/alerts", http.StatusSeeOther)
 }
 
@@ -280,6 +283,9 @@ func (h *WebHandler) TargetDeleteHandler(w http.ResponseWriter, r *http.Request)
 	userID := getUserID(r)
 	targetID := r.FormValue("id")
 
-	_ = h.Store.TargetDelete(r.Context(), targetID, userID)
+	if err := h.Store.TargetDelete(r.Context(), targetID, userID); err != nil {
+		http.Error(w, "Failed to persist change", 500)
+		return
+	}
 	http.Redirect(w, r, h.PanelPath+"/alerts?tab=targets", http.StatusSeeOther)
 }

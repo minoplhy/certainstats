@@ -22,32 +22,11 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v6
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: 22
-          cache: 'npm'
-          cache-dependency-path: |
-            frontend-admin/package-lock.json
-            frontend-public/package-lock.json
-
       - name: Setup Go
         uses: actions/setup-go@v6
         with:
           go-version: '1.26'
           cache: true
-
-      - name: Build Admin Frontend
-        run: |
-          cd frontend-admin
-          npm ci
-          npm run build
-
-      - name: Build Public Frontend
-        run: |
-          cd frontend-public
-          npm ci
-          npm run build
 
       - name: Compile and Package Binaries
         env:

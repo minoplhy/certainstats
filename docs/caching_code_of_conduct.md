@@ -1,5 +1,8 @@
 # CertainStats — Caching Code of Conduct & Standards
 
+
+> Current security, caching, ingestion and deployment behavior is described in [security and rollout](security-and-rollout.md). Where this older design document differs, that implementation reference takes precedence.
+
 > **Version:** 1.0 · **Date:** 2026-08-25 · **Scope:** Global Repository Architecture
 
 ---

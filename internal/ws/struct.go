@@ -27,7 +27,10 @@ func (h *Hub) Send(v any) error {
 	if err != nil {
 		return err
 	}
-	log.Debugf("[WS] Sending message to agent (size: %d bytes): %+v", len(data), v)
+	log.Debugf("[WS] Sending message to agent (size: %d bytes)", len(data))
+	if err := h.conn.SetWriteDeadline(time.Now().Add(5 * time.Second)); err != nil {
+		return err
+	}
 	return websocket.Message.Send(h.conn, data)
 }
 
@@ -38,6 +41,7 @@ func (h *Hub) SetConn(conn *websocket.Conn) {
 	if h.conn != nil {
 		h.conn.Close()
 	}
+	conn.MaxPayloadBytes = 16384
 	h.conn = conn
 }
 

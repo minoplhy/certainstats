@@ -38,7 +38,7 @@
         <td>
           <div class="table-actions">
             <a href="{{$.PanelPath}}/dashboards/{{.DashboardID}}" class="btn btn-secondary btn-sm">Edit</a>
-            <button type="button" class="btn btn-danger btn-sm" onclick="deleteDashboard('{{.DashboardID}}', '{{.Title}}')">Delete</button>
+            <button type="button" class="btn btn-danger btn-sm" data-click-action="deleteDashboard" data-arg0="{{.DashboardID}}" data-arg1="{{.Title}}">Delete</button>
           </div>
         </td>
       </tr>

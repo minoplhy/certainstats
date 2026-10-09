@@ -7,16 +7,11 @@ import (
 	ctx "certainstats/internal/context"
 	api_response "certainstats/internal/response"
 	"certainstats/internal/store"
-	"crypto/ed25519"
-	crypto_rand "crypto/rand"
 	"encoding/json"
-	"encoding/pem"
 	"math/rand"
 	"net/http"
-	"strings"
 
 	"github.com/go-chi/chi/v5"
-	"golang.org/x/crypto/ssh"
 )
 
 var adjectives = []string{
@@ -111,25 +106,10 @@ func ProvisionAgentHandler(agent store.AgentStore, parserRegistry *registry.Regi
 
 		var publicKey string
 		if req.AgentType == "beszel" {
-			// Pre-generate unique SSH key pair for Beszel compatibility
-			_, priv, err := ed25519.GenerateKey(crypto_rand.Reader)
-			if err == nil {
-				privPEM, err := ssh.MarshalPrivateKey(priv, "")
-				if err == nil {
-					keyBytes := pem.EncodeToMemory(privPEM)
-					signer, _ := ssh.ParsePrivateKey(keyBytes)
-
-					// Persist to beszel_ssh table immediately
-					pubKey := signer.PublicKey()
-					pubBytes := ssh.MarshalAuthorizedKey(pubKey)
-					publicKey = strings.TrimSpace(string(pubBytes))
-
-					_ = agent.BeszelSSHSave(r.Context(), store.BeszelSSH{
-						AgentID:    agentID,
-						PublicKey:  publicKey,
-						PrivateKey: string(keyBytes),
-					}, userID)
-				}
+			publicKey, err = GenerateAndSaveSSH(r.Context(), agent, agentID, userID)
+			if err != nil {
+				api_response.Error(w, 500, "Agent created; SSH key generation failed")
+				return
 			}
 		}
 

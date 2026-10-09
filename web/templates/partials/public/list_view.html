@@ -1,7 +1,7 @@
 {{define "public_list_view"}}
 <div id="public-list-container" class="status-list">
   {{range .Agents}}
-  <a class="public-monitor-row{{if hasFeature $.AccessRules "is_online"}}{{if not (isOnline .IsOnline)}} is-offline{{end}}{{end}}" data-pub-id="{{.PublicID}}" data-name="{{.Name}}" href="{{$.PublicPath}}/{{$.Dashboard.Slug}}/{{.PublicID}}" onclick="handlePubItemClick(event, '{{.PublicID}}');">
+  <a class="public-monitor-row{{if hasFeature $.AccessRules "is_online"}}{{if not (isOnline .IsOnline)}} is-offline{{end}}{{end}}" data-pub-id="{{.PublicID}}" data-name="{{.Name}}" href="{{$.PublicPath}}/{{$.Dashboard.Slug}}/{{.PublicID}}" data-click-action="handlePubItemClick" data-expr0="event" data-arg1="{{.PublicID}}">
     <span class="monitor-name">
       <span class="monitor-title">
         {{if hasFeature $.AccessRules "is_online"}}<span class="status-dot {{if isOnline .IsOnline}}online{{else}}offline{{end}}" id="pub-td-dot-{{.PublicID}}"></span>{{end}}

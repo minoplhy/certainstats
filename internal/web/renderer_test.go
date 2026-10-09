@@ -165,8 +165,8 @@ func TestDashboardEdit_RenderJSValid(t *testing.T) {
 		if strings.Contains(output, "true false") || strings.Contains(output, "truetrue") {
 			t.Errorf("Rendered output contains invalid JS tokens: %s", output)
 		}
-		if !strings.Contains(output, "isDragged: true,") {
-			t.Errorf("Expected output to contain 'isDragged: true,', got: %s", output)
+		if !strings.Contains(output, `"IsDragged":true`) {
+			t.Errorf("Expected true IsDragged JSON, got: %s", output)
 		}
 		if !strings.Contains(output, `<input type="hidden" name="agents_order" value="node-1">`) ||
 			!strings.Contains(output, `<input type="hidden" name="agents_order" value="node-2">`) {
@@ -207,8 +207,8 @@ func TestDashboardEdit_RenderJSValid(t *testing.T) {
 		}
 
 		output := buf.String()
-		if !strings.Contains(output, "isDragged: false,") {
-			t.Errorf("Expected output to contain 'isDragged: false,', got: %s", output)
+		if !strings.Contains(output, `"IsDragged":false`) {
+			t.Errorf("Expected false IsDragged JSON, got: %s", output)
 		}
 	})
 }
@@ -233,5 +233,16 @@ func TestMiddleTrim(t *testing.T) {
 	}
 	if got := middleTrim("short", 8, 5); got != "short" {
 		t.Errorf("got %q", got)
+	}
+}
+
+func TestBootstrapPrivacy(t *testing.T) {
+	config := string(bootstrap(map[string]any{"Dashboard": store.Dashboard{DashboardID: "dash", Slug: "public", UserID: "secret-owner", AccessRules: accessrules.AccessRules{"private": {MaxDays: 730}}}, "AccessRules": accessrules.AccessRule{MaxDays: 7}, "Agents": []store.PublicAgent{}}))
+	if strings.Contains(config, "secret-owner") || strings.Contains(config, "private") {
+		t.Fatalf("private fields in public bootstrap: %s", config)
+	}
+	config = string(bootstrap(map[string]any{"Sessions": []store.Session{{Token: "credential"}}, "CurrentToken": "credential"}))
+	if strings.Contains(config, "credential") {
+		t.Fatal("session credential in JavaScript configuration")
 	}
 }

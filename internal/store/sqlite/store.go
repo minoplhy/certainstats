@@ -2,6 +2,7 @@ package sqlite
 
 import (
 	"database/sql"
+	_ "modernc.org/sqlite"
 )
 
 func New(path string) (*Store, error) {
@@ -13,13 +14,17 @@ func New(path string) (*Store, error) {
 	// SQLite is single-writer; WAL allows concurrent reads while writing.
 	db.SetMaxOpenConns(1)
 	db.SetMaxIdleConns(1)
-	db.Exec("PRAGMA journal_mode=WAL")
-	db.Exec("PRAGMA foreign_keys=ON")
-	db.Exec("PRAGMA synchronous=NORMAL;")
+	for _, pragma := range []string{"PRAGMA journal_mode=WAL", "PRAGMA foreign_keys=ON", "PRAGMA synchronous=FULL"} {
+		if _, err := db.Exec(pragma); err != nil {
+			db.Close()
+			return nil, err
+		}
+	}
 
 	s := &Store{db: db}
 
 	if err := s.migrate(); err != nil {
+		db.Close()
 		return nil, err
 	}
 

@@ -1,23 +1,29 @@
 package main
 
 import (
+	log "certainstats/internal/logger"
 	"certainstats/internal/metrics"
 	"certainstats/internal/store"
 	"context"
-	log "certainstats/internal/logger"
 	"time"
 )
 
-func startHeartbeatSweeper(agents store.AgentStore, cache *metrics.RealtimeCache) {
+func startHeartbeatSweeper(ctx context.Context, agents store.AgentStore, cache *metrics.RealtimeCache) {
 	const (
 		sweepInterval = 1 * time.Minute
 		offlineAfter  = 3 * time.Minute
 	)
 
+	ticker := time.NewTicker(sweepInterval)
+	defer ticker.Stop()
 	for {
-		time.Sleep(sweepInterval)
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
 
-		offlineIDs, err := agents.AgentMarkOffline(context.Background(), offlineAfter)
+		offlineIDs, err := agents.AgentMarkOffline(ctx, offlineAfter)
 		if err != nil {
 			log.Printf("heartbeat sweeper: %v", err)
 			continue
@@ -31,13 +37,19 @@ func startHeartbeatSweeper(agents store.AgentStore, cache *metrics.RealtimeCache
 	}
 }
 
-func startSessionSweeper(sessions store.SessionStore) {
+func startSessionSweeper(ctx context.Context, sessions store.SessionStore) {
 	const sweepInterval = 15 * time.Minute
 
+	ticker := time.NewTicker(sweepInterval)
+	defer ticker.Stop()
 	for {
-		time.Sleep(sweepInterval)
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
 
-		err := sessions.SessionDeleteExpired(context.Background())
+		err := sessions.SessionDeleteExpired(ctx)
 		if err != nil {
 			log.Printf("session sweeper: %v", err)
 			continue

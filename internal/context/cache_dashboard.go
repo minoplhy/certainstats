@@ -1,23 +1,15 @@
 package context
 
-import "strings"
-
-// InvalidateDashboard purges all cached JSON, HTML, and metric entries related to a dashboard slug.
-func InvalidateDashboard(slug string) {
-	if slug != "" {
-		DashboardCache.Delete(slug)
-		DashboardHTMLCache.Delete("html_dash_" + slug)
+// Permission changes purge all dynamic namespaces. Configuration versions also
+// prevent an in-flight build from becoming reachable after invalidation.
+func InvalidateDashboard(id string) {
+	for _, c := range []*ResponseCache{&DashboardCache, &DashboardHTMLCache, &MetricsCache} {
+		c.Range(func(k, v any) bool { c.Delete(k); return true })
 	}
-	DashboardHTMLCache.Range(func(k, v any) bool {
-		if keyStr, ok := k.(string); ok && strings.Contains(keyStr, slug) {
-			DashboardHTMLCache.Delete(k)
-		}
-		return true
-	})
-	MetricsCache.Range(func(k, v any) bool {
-		if keyStr, ok := k.(string); ok && strings.Contains(keyStr, slug) {
-			MetricsCache.Delete(k)
-		}
-		return true
-	})
+	PublicAgentCache.Range(func(k, v any) bool { PublicAgentCache.Delete(k); return true })
+	DashboardRevoked(id)
 }
+
+// Registered by the browser broadcaster at startup; storage mutations invoke it
+// after commit, so revoked sockets close without waiting for the next pulse.
+var DashboardRevoked = func(string) {}

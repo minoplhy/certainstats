@@ -49,8 +49,8 @@ func TestFormatMetricValue(t *testing.T) {
 		{"agent_down", 0.0, "Offline"},
 		{"cpu_usage", 82.35, "82.35%"},
 		{"ram_usage", 45.1, "45.10%"},
-		{"net_rx", 1024.56, "1024.56 KB/s"},
-		{"disk_write", 50.0, "50.00 KB/s"},
+		{"net_rx", 1024.56, "1024.56 KiB/s"},
+		{"disk_write", 50.0, "50.00 KiB/s"},
 		{"other_metric", 9.99, "9.99"},
 	}
 
@@ -113,7 +113,7 @@ func TestApplyTemplate(t *testing.T) {
 	}
 
 	tmpl := "Agent {{NICKNAME}} ({{AGENT_ID}}) is {{STATUS}}. {{TRIGGER_LABEL}} is {{VALUE}} {{OPERATOR}} {{THRESHOLD}}. Down: {{DOWN_DURATION}}."
-	
+
 	// Test without Discord time
 	resNormal := applyTemplate(tmpl, nctx, false)
 	if !strings.Contains(resNormal, "Agent MyServer (agent-1) is FIRING.") {

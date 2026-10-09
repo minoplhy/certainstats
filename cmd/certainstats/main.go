@@ -3,6 +3,7 @@ package main
 import (
 	log "certainstats/internal/logger"
 	apiresponse "certainstats/internal/response"
+	"certainstats/internal/security"
 	"certainstats/internal/web"
 	"context"
 	"crypto/rand"
@@ -13,8 +14,10 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
+	"time"
 
 	"certainstats/internal/agent"
 	"certainstats/internal/agent_parser/registry"
@@ -73,6 +76,20 @@ func main() {
 	os.MkdirAll(tsdbPath, 0o755)
 	opts := tsdb.DefaultOptions()
 	opts.RetentionDuration = 0
+	if raw := os.Getenv("RETENTION_DURATION"); raw != "" {
+		d, e := time.ParseDuration(raw)
+		if e != nil || d < 0 {
+			log.Fatalf("invalid RETENTION_DURATION")
+		}
+		opts.RetentionDuration = d.Milliseconds()
+	}
+	if raw := os.Getenv("STORAGE_MAX_BYTES"); raw != "" {
+		n, e := strconv.ParseInt(raw, 10, 64)
+		if e != nil || n < 0 {
+			log.Fatalf("invalid STORAGE_MAX_BYTES")
+		}
+		opts.MaxBytes = n
+	}
 	tdb, err := tsdb.Open(tsdbPath, nil, nil, opts, nil)
 	if err != nil {
 		log.Fatalf("tsdb: %v", err)
@@ -81,7 +98,20 @@ func main() {
 	wsManager := ws.NewManager()
 	parserRegistry := registry.NewRegistry()
 	metricsCache := metrics.NewRealtimeCache()
+	if err := agent.RecoverIngestion(ctx, db, tdb, metricsCache); err != nil {
+		log.Fatalf("ingestion recovery: %v", err)
+	}
 	uiBroadcaster := ws.NewAgentBroadcaster()
+	b_ctx.SessionRevoked = uiBroadcaster.CloseSession
+	b_ctx.DashboardRevoked = func(id string) {
+		if id == "" {
+			for _, active := range uiBroadcaster.GetActiveDashIDs() {
+				uiBroadcaster.CloseDash(active)
+			}
+		} else {
+			uiBroadcaster.CloseDash(id)
+		}
+	}
 
 	routine := &routine.Routine{
 		Store:       db,
@@ -90,29 +120,9 @@ func main() {
 		Cache:       metricsCache,
 		Broadcaster: uiBroadcaster,
 	}
-	go routine.Start(ctx)
+	routineDone := make(chan struct{})
+	go func() { defer close(routineDone); routine.Start(ctx) }()
 	log.Println("Alert routine started in background...")
-
-	// 3. Graceful shutdown
-	go func() {
-		stop := make(chan os.Signal, 1)
-		signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
-
-		var exitCode int
-		select {
-		case sig := <-stop:
-			log.Printf("Received system signal %v. Shutting down cleanly...", sig)
-			exitCode = 0
-		case code := <-lifecycle.ShutdownChan:
-			log.Printf("Application requested clean graceful restart (exit code %d)...", code)
-			exitCode = code
-		}
-
-		log.Println("Closing TSDB and SQLite database handles gracefully...")
-		tdb.Close()
-		db.Close()
-		os.Exit(exitCode)
-	}()
 
 	cfg := LoadConfig()
 	if err := checkPathCollision(cfg); err != nil {
@@ -138,6 +148,7 @@ func main() {
 		}
 		setupTok := hex.EncodeToString(tokenBytes)
 		auth.SetSetupToken(setupTok)
+		auth.SetSetupCredentialPath(filepath.Join(dataDir, "setup-token"))
 
 		displayHost := cfg.PanelHost
 		if displayHost == "" {
@@ -158,14 +169,16 @@ func main() {
 			pPath = ""
 		}
 
-		setupURL := fmt.Sprintf("%s://%s%s/first-time-setup?token=%s", scheme, displayHost, pPath, setupTok)
+		setupURL := fmt.Sprintf("%s://%s%s/first-time-setup", scheme, displayHost, pPath)
+		tokenPath := filepath.Join(dataDir, "setup-token")
+		if err := os.WriteFile(tokenPath, []byte(setupTok+"\n"), 0600); err != nil {
+			log.Fatalf("write setup credential: %v", err)
+		}
+		if err := os.Chmod(tokenPath, 0600); err != nil {
+			log.Fatalf("secure setup credential: %v", err)
+		}
+		log.Printf("Setup required: visit %s and enter the credential stored in %s", setupURL, tokenPath)
 
-		log.Println("====================================================================")
-		log.Printf("  !!SETUP REQUIRED!!")
-		log.Printf("  Please visit: %s", setupURL)
-		log.Printf("  or enter the secure 32-byte setup token from your logs:")
-		log.Printf("  Token: %s", setupTok)
-		log.Println("====================================================================")
 	}
 
 	// 3.6 Web Static Pipeline & Template Renderer Initialization
@@ -194,8 +207,9 @@ func main() {
 	// 4. Router setups
 	setupRouter := func(rt chi.Router) {
 		rt.Use(middleware.RequestID)
-		rt.Use(middleware.RealIP)
-		rt.Use(middleware.Logger)
+		rt.Use(security.ProxyHeaders)
+		rt.Use(security.BrowserProtection)
+
 		rt.Use(middleware.Recoverer)
 		rt.Use(compress.CompressionMiddleware)
 	}
@@ -276,11 +290,10 @@ func main() {
 				api.Get("/first-time-setup/status", auth.GetSetupStatusHandler(db))
 				api.Get("/first-time-setup/check", auth.CheckSetupHandler())
 				api.Post("/first-time-setup", auth.RegisterFirstUserHandler(db))
-				api.Post("/first-time-setup/restart", auth.RestartServerHandler())
 			}
 
 			api.Group(func(authApi chi.Router) {
-				authApi.Get("/ws", requireAuth(db, ws.UIWebSocketHandler(uiBroadcaster)))
+				authApi.Get("/ws", requireAuth(db, ws.UIWebSocketHandler(uiBroadcaster, db)))
 				authApi.Get("/agents", requireAuth(db, agent.ListAgentsHandler(db, metricsCache)))
 				authApi.Post("/agent", requireAuth(db, agent.ProvisionAgentHandler(db, parserRegistry)))
 				authApi.Get("/agent/install/{id}", requireAuth(db, agent.InstallAgentHandler(db)))
@@ -337,20 +350,24 @@ func main() {
 		})
 	}
 
-	setupPublic := func(rt chi.Router) {
-		web.ServeStatic(rt, "/static")
+	setupPublic := func(parent chi.Router) {
+		parent.Group(func(rt chi.Router) {
+			rt.Use(security.PublicRequests)
 
-		// Register API routes BEFORE wildcard slug routes so they are never intercepted
-		rt.Route("/api/public", func(pubApi chi.Router) {
-			pubApi.Get("/dashboard/{pub_id}", dashboard.PublicDashboardHandler(db))
-			pubApi.Get("/metrics", metrics.PublicMetricsHandler(tdb, db, metricsCache))
-			pubApi.Get("/ws/{id}", ws.PublicWebSocketHandler(db, uiBroadcaster))
+			web.ServeStatic(rt, "/static")
+
+			// Register API routes BEFORE wildcard slug routes so they are never intercepted
+			rt.Route("/api/public", func(pubApi chi.Router) {
+				pubApi.Get("/dashboard/{pub_id}", dashboard.PublicDashboardHandler(db))
+				pubApi.Get("/metrics", metrics.PublicMetricsHandler(tdb, db, metricsCache))
+				pubApi.Get("/ws/{id}", ws.PublicWebSocketHandler(db, uiBroadcaster))
+			})
+
+			rt.Get("/dashboard/{slug}", webHandler.PublicDashboardHandler)
+			rt.Get("/dashboard/{slug}/{pub_id}", webHandler.PublicDashboardHandler)
+			rt.Get("/{slug}", webHandler.PublicDashboardHandler)
+			rt.Get("/{slug}/{pub_id}", webHandler.PublicDashboardHandler)
 		})
-
-		rt.Get("/dashboard/{slug}", webHandler.PublicDashboardHandler)
-		rt.Get("/dashboard/{slug}/{pub_id}", webHandler.PublicDashboardHandler)
-		rt.Get("/{slug}", webHandler.PublicDashboardHandler)
-		rt.Get("/{slug}/{pub_id}", webHandler.PublicDashboardHandler)
 	}
 
 	notFoundHandler := func(w http.ResponseWriter, r *http.Request) {
@@ -413,8 +430,8 @@ func main() {
 		}
 	}
 
-	go startHeartbeatSweeper(db, metricsCache)
-	go startSessionSweeper(db)
+	go startHeartbeatSweeper(ctx, db, metricsCache)
+	go startSessionSweeper(ctx, db)
 
 	log.Printf("CertainStats starting (Web 1.0 Templates Mode)...")
 	displayHost := cfg.Host
@@ -437,7 +454,34 @@ func main() {
 	masterHandler := HostRouter(panelHost, panelPath, publicHost, publicPath, panelRouter, publicRouter, legacyRouter)
 
 	log.Printf("Starting server on %s", displayAddr)
-	if err := http.ListenAndServe(cfg.Host+":"+cfg.Port, masterHandler); err != nil {
-		log.Fatalf("Server: %v", err)
+	server := &http.Server{Addr: cfg.Host + ":" + cfg.Port, Handler: masterHandler, ReadHeaderTimeout: 10 * time.Second, ReadTimeout: 30 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 1 << 20}
+	stopped := make(chan os.Signal, 1)
+	signal.Notify(stopped, os.Interrupt, syscall.SIGTERM)
+	defer signal.Stop(stopped)
+	serverErrors := make(chan error, 1)
+	go func() { serverErrors <- server.ListenAndServe() }()
+	select {
+	case <-stopped:
+	case <-lifecycle.ShutdownChan:
+	case err := <-serverErrors:
+		if err != http.ErrServerClosed {
+			log.Printf("server stopped: %v", err)
+		}
+	}
+	cancel()
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer shutdownCancel()
+	if err := server.Shutdown(shutdownCtx); err != nil {
+		log.Printf("HTTP shutdown: %v", err)
+	}
+	uiBroadcaster.CloseAll()
+	wsManager.CloseAll()
+	select {
+	case <-routineDone:
+	case <-shutdownCtx.Done():
+		log.Println("Background shutdown deadline exceeded")
+	}
+	if err := tdb.Close(); err != nil {
+		log.Printf("TSDB close: %v", err)
 	}
 }

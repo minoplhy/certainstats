@@ -3,11 +3,14 @@
 <html lang="en" data-theme="light">
 <head>
   <meta charset="UTF-8">
+  <meta name="csrf-token" content="{{.CSRFToken}}">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{{if .Title}}{{.Title}} — {{end}}CertainStats</title>
-  {{template "theme_bootstrap"}}
+  {{template "theme_bootstrap" .}}
   <link rel="preload" href="{{.StaticPath}}/fonts/figtree-latin.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="{{.StaticPath}}/{{asset "css/styles.css"}}" integrity="{{integrity "css/styles.css"}}">
+  <script src="{{.StaticPath}}/{{asset "js/disk_dom.js"}}" integrity="{{integrity "js/disk_dom.js"}}"></script>
+  <script src="{{.StaticPath}}/{{asset "js/requests.js"}}" integrity="{{integrity "js/requests.js"}}"></script>
   <script src="{{.StaticPath}}/{{asset "js/chart.js"}}" integrity="{{integrity "js/chart.js"}}"></script>
   <script src="{{.StaticPath}}/{{asset "js/telemetry.js"}}" integrity="{{integrity "js/telemetry.js"}}"></script>
   <script src="{{.StaticPath}}/{{asset "js/provision_renderer.js"}}" integrity="{{integrity "js/provision_renderer.js"}}"></script>
@@ -36,7 +39,7 @@
       <div class="nav-right">
         {{template "theme_toggle"}}
         {{if .Authenticated}}
-        <form action="{{.PanelPath}}/logout" method="POST">
+        <form action="{{.PanelPath}}/logout" method="POST"><input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
           <button type="submit" class="btn btn-secondary btn-sm">Log out</button>
         </form>
         {{end}}
@@ -77,6 +80,7 @@
     </div>
   </footer>
 
+  <div id="feed-status" hidden class="feed-status" role="status">Connecting to live feed…</div>
   <div id="toast-container" aria-live="polite"></div>
 </body>
 </html>{{end}}

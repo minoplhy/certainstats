@@ -9,7 +9,7 @@
       {{template "modal_close"}}
     </div>
 
-    <form action="{{.PanelPath}}/alerts/edit" method="POST">
+    <form action="{{.PanelPath}}/alerts/edit" method="POST"><input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
       <div class="modal-body">
       <input type="hidden" id="edit-alert-id" name="id" value="">
 
@@ -20,7 +20,7 @@
           <input type="text" id="edit-nickname" name="nickname" class="form-input" required placeholder="e.g. Database server offline">
         </div>
         <label class="toggle-pill active" id="edit-enabled-pill">
-          <input type="checkbox" id="edit-enabled" name="enabled" value="true" onchange="this.parentElement.classList.toggle('active', this.checked)">
+          <input type="checkbox" id="edit-enabled" name="enabled" value="true" data-change-action="parent-pill">
           <span>Active</span>
         </label>
       </div>
@@ -31,7 +31,7 @@
 
         <div class="form-group">
           <label class="form-label" for="edit-trigger-type">When</label>
-          <select id="edit-trigger-type" name="trigger_type" class="form-select" onchange="handleTriggerTypeChange(this, 'edit')">
+          <select id="edit-trigger-type" name="trigger_type" class="form-select" data-change-action="handleTriggerTypeChange" data-expr0="this" data-arg1="edit">
             <option value="agent_down">Server goes offline</option>
             <option value="cpu_usage">CPU usage (%)</option>
             <option value="cpu_iowait">CPU IO wait (%)</option>
@@ -39,10 +39,10 @@
             <option value="ram_usage">Memory usage (%)</option>
             <option value="swap_usage">Swap usage (%)</option>
             <option value="disk_usage">Disk usage (%)</option>
-            <option value="net_rx">Download rate (KB/s)</option>
-            <option value="net_tx">Upload rate (KB/s)</option>
-            <option value="disk_read">Disk read rate (KB/s)</option>
-            <option value="disk_write">Disk write rate (KB/s)</option>
+            <option value="net_rx">Download rate (KiB/s)</option>
+            <option value="net_tx">Upload rate (KiB/s)</option>
+            <option value="disk_read">Disk read rate (KiB/s)</option>
+            <option value="disk_write">Disk write rate (KiB/s)</option>
           </select>
         </div>
 
@@ -74,7 +74,7 @@
 
         <div class="form-group">
           <label class="form-label" for="edit-dest-type">Send to</label>
-          <select id="edit-dest-type" name="dest_type" class="form-select" onchange="handleDestTypeChange(this, 'edit')">
+          <select id="edit-dest-type" name="dest_type" class="form-select" data-change-action="handleDestTypeChange" data-expr0="this" data-arg1="edit">
             <option value="preset">A saved target</option>
             <option value="discord">A Discord webhook URL</option>
             <option value="webhook">A custom webhook URL</option>
@@ -109,15 +109,15 @@
         <div class="fieldset-head">
           <h3 class="fieldset-title">Servers</h3>
           <div class="page-actions">
-            <button type="button" class="btn btn-secondary btn-sm" onclick="toggleAllNodes('edit', true)">Select all</button>
-            <button type="button" class="btn btn-secondary btn-sm" onclick="toggleAllNodes('edit', false)">Clear</button>
+            <button type="button" class="btn btn-secondary btn-sm" data-click-action="toggleAllNodes" data-arg0="edit" data-expr1="true">Select all</button>
+            <button type="button" class="btn btn-secondary btn-sm" data-click-action="toggleAllNodes" data-arg0="edit" data-expr1="false">Clear</button>
           </div>
         </div>
 
         <div class="node-grid">
           {{range .Agents}}
           <label class="node-select-pill edit-node-pill" id="edit-node-pill-{{.AgentID}}">
-            <input type="checkbox" name="agents" value="{{.AgentID}}" id="edit-agent-{{.AgentID}}" onchange="this.closest('.node-select-pill').classList.toggle('active', this.checked)">
+            <input type="checkbox" name="agents" value="{{.AgentID}}" id="edit-agent-{{.AgentID}}" data-change-action="node-pill">
             <span class="node-select-text">
               <strong>{{if .Nickname}}{{.Nickname}}{{else}}{{.AgentID}}{{end}}</strong>
               <span class="mono node-select-id">{{.AgentID}}</span>

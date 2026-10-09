@@ -4,19 +4,21 @@
   'use strict';
 
   function formatBytes(bytes) {
-    if (!bytes || bytes === 0) return '0 B';
-    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    if (bytes == null || !Number.isFinite(bytes)) return 'Unavailable';
+    if (bytes === 0) return '0 B';
+    const units = ['B', 'KiB', 'MiB', 'GiB', 'TiB'];
     let v = bytes, i = 0;
     while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
-    return v.toFixed(1) + ' ' + (units[i] || 'TB');
+    return v.toFixed(1) + ' ' + (units[i] || 'TiB');
   }
 
   function formatBps(bps) {
-    if (!bps || bps === 0) return '0 B/s';
-    const units = ['B/s', 'KB/s', 'MB/s', 'GB/s'];
+    if (bps == null || !Number.isFinite(bps)) return 'Unavailable';
+    if (bps === 0) return '0 B/s';
+    const units = ['B/s', 'KiB/s', 'MiB/s', 'GiB/s'];
     let v = bps, i = 0;
     while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
-    return v.toFixed(1) + ' ' + (units[i] || 'GB/s');
+    return v.toFixed(1) + ' ' + (units[i] || 'GiB/s');
   }
 
   function formatTimeAxis(timestamp, spanMs) {
@@ -263,6 +265,9 @@
     },
 
     renderMultiChart: function (canvasId, options) {
+      function listen(target,type,callback,options={}) {target.addEventListener(type,callback,Object.assign({},options,{signal:listenerController.signal}));}
+      const listenerController = new AbortController();
+      let touchZoom = false;
       const canvas = document.getElementById(canvasId);
       if (!canvas) return null;
 
@@ -326,6 +331,9 @@
       }
 
       function draw() {
+        const summaries=seriesList.map(series=>{const values=(series.data||[]).map(getPtVal).filter(value=>typeof value==='number' && Number.isFinite(value));return series.label+': '+(values.length ? values.length+' samples; latest '+formatter(values[values.length-1]) : 'No samples');});
+        canvas.setAttribute('role','img');canvas.setAttribute('aria-label',summaries.join('. ')+' · '+Intl.DateTimeFormat().resolvedOptions().timeZone);
+
         let b = getBounds();
         if (b.width === 0 || b.height === 0) return;
 
@@ -746,61 +754,64 @@
       }
 
       // Mouse Events
-      canvas.addEventListener('mousedown', function (e) {
+      listen(canvas, 'mousedown', function (e) {
         handleDragStart(e.clientX);
       });
 
-      window.addEventListener('mousemove', function (e) {
+      listen(window, 'mousemove', function (e) {
         if (isDragging) {
           handleDragMove(e.clientX);
         }
       });
 
-      canvas.addEventListener('mousemove', function (e) {
+      listen(canvas, 'mousemove', function (e) {
         if (!isDragging) {
           hoverX = getCanvasRelativeX(e.clientX);
           draw();
         }
       });
 
-      canvas.addEventListener('mouseleave', function () {
+      listen(canvas, 'mouseleave', function () {
         if (!isDragging) {
           hoverX = null;
           draw();
         }
       });
 
-      window.addEventListener('mouseup', function () {
+      listen(window, 'mouseup', function () {
         if (isDragging) {
           handleDragEnd();
         }
       });
 
       // Touch Events (Mobile Drag Zoom)
-      canvas.addEventListener('touchstart', function (e) {
-        if (e.touches && e.touches[0]) {
+      listen(canvas, 'touchstart', function (e) {
+        if (touchZoom && e.touches && e.touches[0]) {
           handleDragStart(e.touches[0].clientX);
         }
       }, { passive: true });
 
-      canvas.addEventListener('touchmove', function (e) {
-        if (isDragging && e.touches && e.touches[0]) {
+      listen(canvas, 'touchmove', function (e) {
+        if (touchZoom && isDragging && e.touches && e.touches[0]) {
           handleDragMove(e.touches[0].clientX);
           e.preventDefault();
         }
       }, { passive: false });
 
-      canvas.addEventListener('touchend', function () {
+      listen(canvas, 'touchend', function () {
         if (isDragging) {
           handleDragEnd();
         }
       });
 
+      const zoomButton=document.createElement('button');zoomButton.type='button';zoomButton.className='btn btn-secondary btn-sm touch-zoom-toggle';zoomButton.textContent='Touch zoom';zoomButton.setAttribute('aria-pressed','false');
+      canvas.parentElement.append(zoomButton);
+      listen(zoomButton,'click',()=>{touchZoom=!touchZoom;zoomButton.setAttribute('aria-pressed',String(touchZoom));canvas.style.touchAction=touchZoom ? 'none' : 'pan-y';});
       draw();
 
       const onThemeChange = () => draw();
-      window.addEventListener('resize', draw);
-      window.addEventListener('certainstats_theme_change', onThemeChange);
+      listen(window, 'resize', draw);
+      listen(window, 'certainstats_theme_change', onThemeChange);
 
       return {
         updateSeries: function (newSeriesList, newHours, newYMax, newQueryEndTime, newCustomRange, newMaxAdd) {
@@ -864,7 +875,9 @@
           }
         },
 
+        setTouchZoom: function (enabled) {touchZoom=!!enabled;canvas.style.touchAction=touchZoom ? "none" : "pan-y";},
         destroy: function () {
+ listenerController.abort();zoomButton.remove();
           window.removeEventListener('resize', draw);
           window.removeEventListener('certainstats_theme_change', onThemeChange);
         }

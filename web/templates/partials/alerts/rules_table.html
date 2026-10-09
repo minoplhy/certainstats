@@ -91,7 +91,7 @@
               data-agents="{{range $i, $ag := $a.Agents}}{{if $i}},{{end}}{{$ag.AgentID}}{{end}}">
               Edit
             </button>
-            <form action="{{$.PanelPath}}/alerts/delete" method="POST" onsubmit="return confirm('Delete the rule \'{{$a.Nickname}}\'? Its incident history is deleted too.')">
+            <form action="{{$.PanelPath}}/alerts/delete" method="POST" data-submit-action="confirm" data-arg0="Delete the rule '{{$a.Nickname}}'? Its incident history is deleted too."><input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
               <input type="hidden" name="id" value="{{$a.AlertID}}">
               <button type="submit" class="btn btn-danger btn-sm">Delete</button>
             </form>

@@ -20,12 +20,12 @@ const (
 )
 
 // Global sync.Map caches
-var MetricsCache sync.Map       // Key: slug_agentID_metric_hours, Value: *CacheEntry
-var DeviceCache sync.Map        // Key: device_id, Value: identity
-var DashboardCache sync.Map     // Key: slug, Value: *CacheEntry
-var DashboardHTMLCache sync.Map // Key: html_dash_slug or html_agent_slug_pubID, Value: *CacheEntry
-var PublicAgentCache sync.Map   // Key: dashboardID_publicAgentID, Value: *PublicAgentCacheEntry
-var StaticCache sync.Map        // Key: relative path (e.g. css/styles.css), Value: *CacheEntry
+var MetricsCache ResponseCache       // Key: slug_agentID_metric_hours, Value: *CacheEntry
+var DeviceCache sync.Map             // Key: device_id, Value: identity
+var DashboardCache ResponseCache     // Key: slug, Value: *CacheEntry
+var DashboardHTMLCache ResponseCache // Key: html_dash_slug or html_agent_slug_pubID, Value: *CacheEntry
+var PublicAgentCache sync.Map        // Key: dashboardID_publicAgentID, Value: *PublicAgentCacheEntry
+var StaticCache sync.Map             // Key: relative path (e.g. css/styles.css), Value: *CacheEntry
 
 type CacheEntry struct {
 	Payload     []byte

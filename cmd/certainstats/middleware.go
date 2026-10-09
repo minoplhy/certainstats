@@ -7,42 +7,23 @@ import (
 	apiresponse "certainstats/internal/response"
 	"certainstats/internal/store"
 	"context"
-	"database/sql"
 	"errors"
 	"net/http"
-	"time"
 )
 
 func requireAuth(sessions store.SessionStore, next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		cookie, err := r.Cookie("session_token")
+		w.Header().Set("Cache-Control", "private, no-store")
+		sess, err := auth.Authenticate(r, sessions)
 		if err != nil {
-			apiresponse.Error(w, http.StatusUnauthorized, "Unauthorized")
-			return
-		}
-
-		sess, err := sessions.SessionGet(r.Context(), cookie.Value)
-		if err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
+			if errors.Is(err, auth.ErrUnauthenticated) {
 				auth.ClearSessionCookie(w)
 				apiresponse.Error(w, http.StatusUnauthorized, "Unauthorized")
-				return
+			} else {
+				log.Printf("session: %v", err)
+				apiresponse.Error(w, 500, "Internal error")
 			}
-			log.Printf("session: %s\n", err.Error())
-			apiresponse.Error(w, http.StatusInternalServerError, "Internal Error")
 			return
-		}
-
-		if time.Now().After(sess.ExpiresAt) {
-			sessions.SessionDelete(r.Context(), cookie.Value) //nolint:errcheck
-			auth.ClearSessionCookie(w)
-			apiresponse.Error(w, http.StatusUnauthorized, "Unauthorized")
-			return
-		}
-
-		// Update activity timestamp if older than 5 minutes
-		if time.Since(sess.LastConnectedAt) > 5*time.Minute {
-			sessions.SessionUpdateActivity(r.Context(), sess.Token, time.Now()) //nolint:errcheck
 		}
 
 		ctx := context.WithValue(r.Context(), ctx.UserIDKey, sess.UserID)

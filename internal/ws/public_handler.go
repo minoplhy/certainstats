@@ -27,7 +27,7 @@ func PublicWebSocketHandler(dashboard store.DashboardStore, broadcaster *AgentBr
 		//	  While this might not meant anything, as we utilize announce-only policy on Websocket,
 		//    there is no any meant of 2-Way Communication. But still, leaving TCP open for invalid request
 		//    is also not optimal.
-		_, err := dashboard.DashboardGetByID(r.Context(), dashID)
+		dash, err := dashboard.DashboardGetByID(r.Context(), dashID)
 		if err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
 				apiresponse.Error(w, http.StatusNotFound, "Dashboard not found")
@@ -37,11 +37,23 @@ func PublicWebSocketHandler(dashboard store.DashboardStore, broadcaster *AgentBr
 			return
 		}
 
+		rule, ok := dash.AccessRules["public"]
+		if !ok || rule.IsEmpty() {
+			apiresponse.Error(w, http.StatusForbidden, "Public access disabled")
+			return
+		}
+
+		release, ok := browserSlot(w, "dash:"+dashID, 256)
+		if !ok {
+			return
+		}
+		defer release()
+
 		// 2. Setup WebSocket Server
 		server := websocket.Server{
 			Handshake: func(config *websocket.Config, req *http.Request) error {
 				origin := req.Header.Get("Origin")
-				if err := checkOrigin(origin); err != nil {
+				if err := checkRequestOrigin(req); err != nil {
 					log.Printf("[Public-WS] Rejected connection from unauthorized origin: %s", origin)
 					return err
 				}
@@ -49,6 +61,12 @@ func PublicWebSocketHandler(dashboard store.DashboardStore, broadcaster *AgentBr
 			},
 			Handler: func(conn *websocket.Conn) {
 				defer conn.Close()
+				conn.MaxPayloadBytes = 4096
+				stop := watchBrowser(conn, func() bool {
+					current, e := dashboard.DashboardGetByID(r.Context(), dashID)
+					return e == nil && current.Version == dash.Version
+				})
+				defer stop()
 
 				// Subscribe to dashboard updates
 				broadcaster.SubscribeDash(dashID, conn)
