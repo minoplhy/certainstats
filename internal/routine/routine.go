@@ -9,7 +9,8 @@ import (
 	"certainstats/internal/ws"
 	"certainstats/internal/ws/browserpb"
 	"context"
-	"crypto/rand"
+	"database/sql"
+	"errors"
 	"os"
 	"strconv"
 	"time"
@@ -66,10 +67,6 @@ func (e *Routine) Start(ctx context.Context) {
 			// Task 0: Beszel Heartbeats (Pulls)
 			if e.WS != nil {
 				e.WS.Range(func(token string, hub *ws.Hub) {
-					var b [4]byte
-					_, _ = rand.Read(b[:])
-					reqID := uint32(b[0])<<24 | uint32(b[1])<<16 | uint32(b[2])<<8 | uint32(b[3])
-
 					// Decide if we want full details (IncludeDetails: true)
 					includeDetails := false
 					e.beszelTicks[token]++
@@ -78,14 +75,10 @@ func (e *Routine) Start(ctx context.Context) {
 						e.beszelTicks[token] = 0
 					}
 
-					_ = hub.Send(ws.HubRequest[ws.DataRequestOptions]{
-						Action: ws.GetData,
-						Data: ws.DataRequestOptions{
-							CacheTimeMs:    60000,
-							IncludeDetails: includeDetails,
-						},
-						Id: &reqID,
-					})
+					request := ws.DataRequestOptions{CacheTimeMs: ws.StatsCacheTimeMs, IncludeDetails: includeDetails}
+					if err := hub.SendTracked(ws.GetData, request); err != nil {
+						log.Debugf("[Beszel] Stats request failed: %v", err)
+					}
 				})
 			}
 		case <-uiTicker.C:
@@ -104,6 +97,12 @@ func (e *Routine) Start(ctx context.Context) {
 
 			// Task 2: Alert Evaluation (Every Tick)
 			e.EvaluateAll(ctx)
+
+			if e.Network != nil {
+				if err := e.Network.Evaluate(ctx, ""); err != nil {
+					log.Printf("Network alert evaluation failed: %v", err)
+				}
+			}
 
 			// Task 3: Retry Failed Alerts (Every Tick)
 			e.RetryFailedAlerts(ctx)
@@ -138,7 +137,22 @@ func (e *Routine) runCleanup(ctx context.Context) {
 
 	// 2. Evict expired windows from metrics cache to prevent OOM
 	if e.Cache != nil {
+		// Reconcile deletion paths that bypass the HTTP revoke handler, including
+		// users deleted through the store. Archived history can still warm later.
+		checked := make(map[string]bool)
+		for _, key := range e.Cache.NetworkKeys() {
+			identity := key.Owner + "\t" + key.Agent
+			if checked[identity] {
+				continue
+			}
+			checked[identity] = true
+			if _, err := e.Store.AgentGetByID(ctx, key.Agent, key.Owner); errors.Is(err, sql.ErrNoRows) {
+				e.Cache.Delete(key.Agent)
+				csctx.InvalidateAgent(key.Agent)
+			}
+		}
 		e.Cache.EvictExpiredWindows()
+		log.Printf("[Maintenance] network_samples=%v", e.Cache.NetworkStatistics())
 		log.Debugln("[Timer] Expired metrics cache windows evicted")
 	}
 }
@@ -287,9 +301,14 @@ func (e *Routine) PulseSync(ctx context.Context) {
 			item.Available = proto.Bool(allSnaps[a.AgentID] != nil)
 			ownedSnaps[a.AgentID] = item
 		}
-		e.Broadcaster.BroadcastToUser(userID, &browserpb.TelemetryEnvelope{
-			Pulse: &browserpb.TelemetryPulse{Agents: ownedSnaps},
-		})
+		pulse := &browserpb.TelemetryPulse{Agents: ownedSnaps}
+		// An omitted network pulse tells the browser to fall back to HTTP polling.
+		if monitors, err := e.Store.NetworkLive(ctx, userID, agents); err != nil {
+			log.Printf("[Pulse] Network readings unavailable for %s: %v", userID, err)
+		} else {
+			pulse.Network = ws.BrowserNetwork(monitors)
+		}
+		e.Broadcaster.BroadcastToUser(userID, &browserpb.TelemetryEnvelope{Pulse: pulse})
 	}
 
 	// 3. Pulse Dashboards (Public)

@@ -1,0 +1,56 @@
+const {test} = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const {JSDOM} = require('../../frontend-admin/node_modules/jsdom');
+function harness(blockStorage = false) {
+  const dom = new JSDOM('<div id="one"></div><div id="two"></div>', {url: 'https://example.com', runScripts: 'outside-only'});
+  const {window} = dom;
+  window.matchMedia = () => ({matches: false});
+  if (blockStorage) Object.defineProperty(window, 'localStorage', {get() {throw Error('blocked');}});
+  else window.localStorage.setItem('certainstats_active_hours', '12');
+  const handlers = new Set(), add = window.document.addEventListener.bind(window.document), remove = window.document.removeEventListener.bind(window.document);
+  window.document.addEventListener = (name, fn, ...args) => {if (name === 'click') handlers.add(fn); add(name, fn, ...args);};
+  window.document.removeEventListener = (name, fn, ...args) => {if (name === 'click') handlers.delete(fn); remove(name, fn, ...args);};
+  window.eval(fs.readFileSync('web/static/js/telemetry.js', 'utf8'));
+  const applied = [[], []], pickers = ['one', 'two'].map((id, i) => window.CertainStatsTelemetry.initCustomTimePicker(id, {onApply: state => applied[i].push(state)}));
+  return {dom, window, handlers, applied, pickers, containers: ['one', 'two'].map(id => window.document.getElementById(id))};
+}
+test('two pickers scope controls, remember presets, support custom state and remove listeners', () => {
+  const h = harness(); const [one, two] = h.containers;
+  assert.equal(h.pickers[0].getState().hours, 12);
+  const ids = [...h.window.document.querySelectorAll('[id]')].map(el => el.id);
+  assert.equal(new Set(ids).size, ids.length);
+  one.querySelector('[data-val="24"]').click();
+  assert.equal(h.pickers[0].getState().hours, 24); assert.equal(h.pickers[1].getState().hours, 12);
+  assert.equal(h.window.localStorage.getItem('certainstats_active_hours'), '24');
+  const start = two.querySelector('input[id$="custom-start-input"]'), end = two.querySelector('input[id$="custom-end-input"]');
+  start.value = '2026-01-01T12:00'; end.value = '2026-01-01T18:00';
+  two.querySelector('button[id$="apply-custom-range"]').click();
+  assert.equal(h.pickers[1].getState().customRange.end - h.pickers[1].getState().customRange.start, 21600000);
+  assert.equal(h.pickers[0].getState().customRange, null);
+  h.pickers[1].setState({hours: 6, customRange: {start: 1000, end: 2000}});
+  assert.equal(h.applied[1].length, 1);
+  const state = h.pickers[1].getState(); state.customRange.start = 0;
+  assert.equal(h.pickers[1].getState().customRange.start, 1000);
+  const before = h.handlers.size;
+  for (let i = 0; i < 20; i++) h.pickers[1].setState({hours: 6, customRange: null});
+  assert.equal(h.handlers.size, before);
+  const trigger = two.querySelector('button[id$="time-picker-trigger"]'); trigger.click();
+  assert.equal(trigger.getAttribute('aria-expanded'), 'true');
+  two.dispatchEvent(new h.window.KeyboardEvent('keydown', {key: 'Escape', bubbles: true}));
+  assert.equal(trigger.getAttribute('aria-expanded'), 'false');
+  h.pickers.forEach(p => p.destroy()); assert.equal(h.handlers.size, before - 2);
+  h.dom.window.close();
+});
+test('blocked storage uses six hours and still allows preset changes and keyboard navigation', () => {
+  const h = harness(true), root = h.containers[0];
+  assert.equal(h.pickers[0].getState().hours, 6);
+  const first = root.querySelector('.quick-range-pill'); first.focus();
+  first.dispatchEvent(new h.window.KeyboardEvent('keydown', {key: 'End', bubbles: true}));
+  assert.equal(h.pickers[0].getState().hours, 17520);
+  root.querySelector('[data-val="24"]').click(); assert.equal(h.pickers[0].getState().hours, 24);
+  const count = h.handlers.size;
+  h.window.CertainStatsTelemetry.initCustomTimePicker(root, {});
+  assert.equal(h.handlers.size, count);
+  root._timePicker.destroy();h.pickers[1].destroy();h.dom.window.close();
+});

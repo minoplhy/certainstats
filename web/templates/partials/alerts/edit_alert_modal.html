@@ -32,6 +32,7 @@
         <div class="form-group">
           <label class="form-label" for="edit-trigger-type">When</label>
           <select id="edit-trigger-type" name="trigger_type" class="form-select" data-change-action="handleTriggerTypeChange" data-expr0="this" data-arg1="edit">
+            <option value="network_loss">Network monitor loss (%) over the past hour</option>
             <option value="agent_down">Server goes offline</option>
             <option value="cpu_usage">CPU usage (%)</option>
             <option value="cpu_iowait">CPU IO wait (%)</option>
@@ -64,7 +65,7 @@
         <div class="form-group form-group-flush">
           <label class="form-label" for="edit-duration">For at least</label>
           <input type="text" id="edit-duration" name="duration" class="form-input" value="5m" placeholder="e.g. 5m, 15m, 1h">
-          <p class="form-hint">The condition must hold this long before the alert fires, e.g. 5m or 1h.</p>
+          <p class="form-hint" data-duration-hint="edit">The condition must hold this long before the alert fires, e.g. 5m or 1h.</p>
         </div>
       </div>
 
@@ -101,6 +102,22 @@
             <button type="button" class="btn btn-secondary btn-sm" data-open-modal="template-guide-modal">Template variables</button>
           </div>
           <textarea id="edit-payload" name="payload" class="form-textarea mono" placeholder='Leave empty to use the target default'></textarea>
+        </div>
+      </div>
+
+      <!-- Network monitors (network loss rules only) -->
+      <div class="form-fieldset" data-network-rule="edit" hidden>
+        <h3 class="fieldset-title">Network monitors</h3>
+        <p class="form-hint">Loss above the threshold over the past hour, after three probes.</p>
+        <div class="node-grid">
+          {{range .Monitors}}
+          <label class="node-select-pill">
+            <input type="checkbox" name="monitor_ids" value="{{.ID}}" disabled>
+            <span>{{.AgentName}} · {{.Target}} ({{.Protocol}})</span>
+          </label>
+          {{else}}
+          <p>No monitors yet. <a href="{{.PanelPath}}/network-monitors">Create a monitor</a>.</p>
+          {{end}}
         </div>
       </div>
 

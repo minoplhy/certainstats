@@ -3,6 +3,7 @@ package hetrixtools
 import (
 	"bytes"
 	agentparser "certainstats/internal/agent_parser"
+	"certainstats/internal/agentmeta"
 	"compress/gzip"
 	"encoding/base64"
 	"encoding/json"
@@ -210,6 +211,7 @@ func (h *HTStats) Parse(data []byte) (*agentparser.ParsedData, error) {
 	}
 
 	return &agentparser.ParsedData{
+		Runtime:   &agentmeta.Runtime{AgentVersion: agentmeta.String(JSONdata.Version), VersionSource: "hetrixtools_payload"},
 		AgentInfo: agentInfo,
 		Metrics:   stats,
 	}, nil

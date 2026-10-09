@@ -40,6 +40,11 @@ func CreateAlertHandler(s store.AlertsStore) http.HandlerFunc {
 			return
 		}
 
+		if (req.Trigger.Type == alert.TriggerTypeNetworkLoss && (len(req.Agents) > 0 || len(req.MonitorIDs) == 0)) || (req.Trigger.Type != alert.TriggerTypeNetworkLoss && len(req.MonitorIDs) > 0) {
+			apiresponse.Error(w, 400, "Select monitors for network rules, agents for resource rules")
+			return
+		}
+
 		if err := ParseAction(&req.Action); err != nil {
 			apiresponse.Error(w, http.StatusBadRequest, err.Error())
 			return
@@ -59,12 +64,13 @@ func CreateAlertHandler(s store.AlertsStore) http.HandlerFunc {
 		}
 
 		newAlert := store.Alert{
-			AlertID:  fmt.Sprintf("alert_%d_%s", time.Now().UnixMicro(), agentdata.GenerateRandomString(6)),
-			UserID:   userID,
-			Nickname: req.Nickname,
-			Enabled:  req.Enabled,
-			Trigger:  req.Trigger,
-			Action:   req.Action,
+			AlertID:    fmt.Sprintf("alert_%d_%s", time.Now().UnixMicro(), agentdata.GenerateRandomString(6)),
+			UserID:     userID,
+			Nickname:   req.Nickname,
+			MonitorIDs: req.MonitorIDs,
+			Enabled:    req.Enabled,
+			Trigger:    req.Trigger,
+			Action:     req.Action,
 		}
 
 		for _, agentID := range req.Agents {
@@ -75,6 +81,10 @@ func CreateAlertHandler(s store.AlertsStore) http.HandlerFunc {
 		}
 
 		if err := s.AlertCreate(r.Context(), newAlert); err != nil {
+			if _, ok := err.(interface{ Validation() bool }); ok {
+				apiresponse.Error(w, http.StatusBadRequest, err.Error())
+				return
+			}
 			apiresponse.Error(w, http.StatusInternalServerError, "Database error")
 			return
 		}

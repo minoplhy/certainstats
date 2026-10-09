@@ -1,6 +1,9 @@
 package agent
 
-import "time"
+import (
+	"certainstats/internal/agentmeta"
+	"time"
+)
 
 type Agent struct {
 	AgentID      string
@@ -23,6 +26,14 @@ type Agent struct {
 	TotalDiskWriteBytes uint64
 	Disks               []DiskOdometer
 	Note                string
+
+	// Runtime metadata reported by the agent; nil when never reported.
+	AgentVersion           *string
+	ProtocolVersion        *string
+	AgentVersionSource     string
+	AgentVersionObservedAt *time.Time
+	ReportedCapabilities   *agentmeta.Declaration
+	CapabilitiesReportedAt *time.Time
 }
 
 type DiskOdometer struct {

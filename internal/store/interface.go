@@ -1,6 +1,7 @@
 package store
 
 import (
+	"certainstats/internal/agentmeta"
 	"certainstats/internal/base"
 	c "certainstats/internal/base/alert"
 	baseresponse "certainstats/internal/base/response"
@@ -10,6 +11,7 @@ import (
 )
 
 type FullStore interface {
+	NetworkMonitorStore
 	IngestionJournal
 	AgentStore
 	SessionStore
@@ -62,6 +64,13 @@ type AgentStore interface {
 
 	// BeszelSSHSave persists per-agent SSH keys.
 	BeszelSSHSave(ctx context.Context, ssh BeszelSSH, userID string) error
+
+	// AgentUpdateRuntime records reported software versions and capabilities.
+	// Nil fields keep the previous observation.
+	AgentUpdateRuntime(ctx context.Context, agentID, userID string, r agentmeta.Runtime) error
+
+	// AgentToken returns the agent's current authentication token.
+	AgentToken(ctx context.Context, agentID, userID string) (string, error)
 }
 
 // SessionStore handles web session lifecycle.

@@ -4,6 +4,8 @@ import (
 	beszel "certainstats/internal/agent_parser/Beszel"
 	hetrixtools "certainstats/internal/agent_parser/HetrixTools"
 	ltstats "certainstats/internal/agent_parser/LTstats"
+	"certainstats/internal/agentmeta"
+	nm "certainstats/internal/networkmonitor"
 	"errors"
 
 	agentparser "certainstats/internal/agent_parser"
@@ -67,4 +69,23 @@ func (r *Registry) Detect(rawPayload []byte) (string, string, error) {
 	}
 
 	return "", "", errors.New("could not identify agent type")
+}
+
+// CapabilityResolver is implemented by providers that support network monitors.
+type CapabilityResolver interface {
+	ResolveCapabilities(r agentmeta.Runtime) agentmeta.Capabilities
+}
+
+// Capabilities are resolved by the registered provider, never by global version comparisons.
+func (r *Registry) Capabilities(agentType string, runtime agentmeta.Runtime) agentmeta.Capabilities {
+	if resolver, ok := r.parsers[agentType].(CapabilityResolver); ok {
+		return resolver.ResolveCapabilities(runtime)
+	}
+	return agentmeta.Unsupported("unsupported_provider", "This agent integration does not support network monitors")
+}
+
+// NetworkAdapter returns the provider's monitor configuration adapter, if any.
+func (r *Registry) NetworkAdapter(agentType string) (nm.Adapter, bool) {
+	adapter, ok := r.parsers[agentType].(nm.Adapter)
+	return adapter, ok
 }

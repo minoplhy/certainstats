@@ -84,7 +84,7 @@ function feed(protobuf = true) {
     setTimeout: callback => {const id = ++sequence; timers.set(id, callback); return id;},
     clearTimeout: id => timers.delete(id),
     console: {warn() {}, error() {}, log() {}},
-    WebSocket: Socket, Intl, Date: Clock
+    WebSocket: Socket, Intl, Date: Clock, Event: class {constructor(type) {this.type = type;}}, dispatchEvent(event) {events[event.type]?.();}
   });
   vm.runInNewContext(fs.readFileSync('web/static/js/telemetry.js', 'utf8'), context);
   return {context, sockets, timers, intervals, events, status, reloads: () => reloads,
@@ -159,3 +159,51 @@ for (const protobuf of [false, true]) {
     assert.equal(f.intervals.size, 0);
   });
 }
+
+const networkFixture = require('./fixtures/network_protocol.json');
+test('network wire normalizes identically to owner JSON; omission differs from empty', () => {
+  const envelope = codec.decode(Uint8Array.from(Buffer.from(networkFixture.payload, 'base64')));
+  assert.deepEqual(JSON.parse(JSON.stringify(codec.network(envelope))), networkFixture.expected);
+  assert.equal(codec.network(codec.decode(Uint8Array.from(Buffer.from(fixtures.find(f => f.name === 'empty').payload, 'base64')))), undefined);
+});
+for (const protobuf of [false, true]) test(`shared read-only connection delivers network and agent data (${protobuf})`, () => {
+  const f = feed(protobuf), agents = [], networks = [];
+  const telemetry = f.context.CertainStatsTelemetry;
+  // Calling from two views while CONNECTING must still open exactly one socket.
+  telemetry.initWebSocket('/panel/api/ws', value => agents.push(value));
+  telemetry.initWebSocket('/panel/api/ws');
+  assert.equal(f.sockets.length, 1);
+  const unsubscribe = telemetry.subscribeNetwork(value => networks.push(value));
+  const socket = f.sockets[0];
+  socket.send = () => {throw new Error('read-only feed sent an application message');};
+  socket.open();
+  socket.message(protobuf ? Uint8Array.from(Buffer.from(networkFixture.payload, 'base64')).buffer : JSON.stringify({type:'agent_update',data:{node:{available:true}},network:networkFixture.expected}));
+  assert.equal(agents.length, 1);
+  assert.equal(networks.length, 1);
+  assert.deepEqual(JSON.parse(JSON.stringify(networks[0])), networkFixture.expected);
+  const replay = [];
+  const disposeReplay = telemetry.subscribeNetwork(value => replay.push(value));
+  assert.equal(replay.length, 1);
+  assert.equal(telemetry.getNetworkFeedState().connected, true);
+  unsubscribe(); disposeReplay();
+  socket.close();
+  assert.equal(telemetry.getNetworkFeedState().connected, false);
+  f.retry();
+  assert.equal(f.sockets.length, 2);
+  telemetry.initWebSocket('/panel/api/ws');
+  assert.equal(f.sockets.length, 2);
+  f.sockets[1].open();
+  assert.equal(telemetry.getNetworkFeedState().generation, 2);
+  f.events.pagehide();
+});
+test('network JSON omission preserves the last pulse; empty replaces it', () => {
+  const f = feed(false), telemetry = f.context.CertainStatsTelemetry, received=[];
+  telemetry.initWebSocket('/api/ws');telemetry.subscribeNetwork(value=>received.push(value));
+  const socket=f.sockets[0];socket.open();
+  socket.message(JSON.stringify({type:'agent_update',data:{},network:{}}));
+  const at=telemetry.getNetworkFeedState().lastPulse;
+  f.advance(10000);
+  socket.message(JSON.stringify({type:'agent_update',data:{}}));
+  assert.equal(received.length,1);assert.equal(telemetry.getNetworkFeedState().lastPulse,at);
+  f.events.pagehide();
+});

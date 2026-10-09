@@ -63,7 +63,7 @@
         </td>
         <td>
           <span class="badge">
-            {{if not $a.Agents}}All servers{{else}}{{len $a.Agents}} server{{if ne (len $a.Agents) 1}}s{{end}}{{end}}
+            {{if $a.MonitorIDs}}{{len $a.MonitorIDs}} monitor{{if ne (len $a.MonitorIDs) 1}}s{{end}}{{else if not $a.Agents}}All servers{{else}}{{len $a.Agents}} server{{if ne (len $a.Agents) 1}}s{{end}}{{end}}
           </span>
         </td>
         <td>
@@ -88,6 +88,7 @@
               data-target-id="{{$a.Action.TargetID}}"
               data-destination="{{$a.Action.Destination}}"
               data-payload="{{$a.Action.Payload}}"
+              data-monitors="{{range $i, $m := $a.MonitorIDs}}{{if $i}},{{end}}{{$m}}{{end}}"
               data-agents="{{range $i, $ag := $a.Agents}}{{if $i}},{{end}}{{$ag.AgentID}}{{end}}">
               Edit
             </button>

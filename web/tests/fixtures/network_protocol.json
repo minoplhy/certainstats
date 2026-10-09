@@ -1,0 +1,73 @@
+{
+  "expected": {
+    "failed": {
+      "agent_id": "node",
+      "enabled": false,
+      "latest": {
+        "attempt_count": 1,
+        "certificate_received_at": 0,
+        "last_probe_at": 0,
+        "loss_1h_pct": 100,
+        "loss_pct": 100,
+        "received_at": 0,
+        "response_avg_1h_ms": null,
+        "response_avg_ms": null,
+        "response_max_1h_ms": null,
+        "response_max_ms": null,
+        "response_min_1h_ms": null,
+        "response_min_ms": null,
+        "sample_count": 0,
+        "success_count": 0
+      },
+      "state": "paused",
+      "sync": {
+        "acknowledged_generation": 0,
+        "desired_generation": 0,
+        "error": ""
+      }
+    },
+    "waiting": {
+      "agent_id": "node",
+      "enabled": false,
+      "latest": null,
+      "state": "waiting",
+      "sync": {
+        "acknowledged_generation": 0,
+        "desired_generation": 0,
+        "error": ""
+      }
+    },
+    "zero": {
+      "agent_id": "node",
+      "enabled": true,
+      "latest": {
+        "attempt_count": 1,
+        "certificate": {
+          "expires": 1700000010000,
+          "issuer": "issuer"
+        },
+        "certificate_received_at": 0,
+        "last_probe_at": 1700000000000,
+        "loss_1h_pct": 0,
+        "loss_pct": 0,
+        "received_at": 0,
+        "response_avg_1h_ms": 0,
+        "response_avg_ms": 0,
+        "response_max_1h_ms": 0,
+        "response_max_ms": 0,
+        "response_min_1h_ms": 0,
+        "response_min_ms": 0,
+        "sample_count": 1,
+        "success_count": 1
+      },
+      "state": "active",
+      "sync": {
+        "acknowledged_generation": 1,
+        "desired_generation": 2,
+        "error": "",
+        "last_attempt": "2023-11-14T22:13:20Z"
+      }
+    }
+  },
+  "payload": "CusBCgoKBG5vZGUSAhABEtwBCjAKBmZhaWxlZBImCgRub2RlGgZwYXVzZWQiACoUOQAAAAAAAFlAQQAAAAAAAFlAWAEKHAoHd2FpdGluZxIRCgRub2RlGgd3YWl0aW5nIgAKiQEKBHplcm8SgAEKBG5vZGUQARoGYWN0aXZlIgwIAhABIgYIgOLPqgYqYAoJCQAAAAAAAAAAEgkJAAAAAAAAAAAaCQkAAAAAAAAAACIJCQAAAAAAAAAAKgkJAAAAAAAAAAAyCQkAAAAAAAAAAEiA0JX/vDFQAVgBYAFyDwiQnpb/vDESBmlzc3Vlcg=="
+}

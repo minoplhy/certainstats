@@ -6,12 +6,13 @@ import (
 	"certainstats/internal/metrics"
 	apiresponse "certainstats/internal/response"
 
+	"certainstats/internal/agent_parser/registry"
 	"certainstats/internal/store"
 	"net/http"
 	"time"
 )
 
-func ListAgentsHandler(agents store.AgentStore, cache *metrics.RealtimeCache) http.HandlerFunc {
+func ListAgentsHandler(agents store.AgentStore, cache *metrics.RealtimeCache, providers *registry.Registry) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		userID := r.Context().Value(ctx.UserIDKey).(string)
 
@@ -26,9 +27,14 @@ func ListAgentsHandler(agents store.AgentStore, cache *metrics.RealtimeCache) ht
 		for i, a := range list {
 			out[i] = resp.Agent{
 				AgentID: a.AgentID, AgentType: a.AgentType, Nickname: a.Nickname,
+				Extensions: resp.AgentExtensions{Runtime: resp.AgentRuntime{
+					AgentVersion: a.AgentVersion, ProtocolVersion: a.ProtocolVersion,
+					AgentVersionSource: a.AgentVersionSource, AgentVersionObservedAt: a.AgentVersionObservedAt,
+					Capabilities: providers.Capabilities(a.AgentType, a.Runtime()),
+				}},
 				IsOnline: a.IsOnline, Uptime: a.Uptime,
 				LinuxVersion: a.LinuxVersion, CpuModel: a.CpuModel,
-				Note: a.Note,
+				Note:     a.Note,
 				CpuCores: a.CpuCores, RamSize: a.RamSize,
 				SwapSize: a.SwapSize, DiskSize: a.DiskSize,
 				Net: resp.NetOdometer{

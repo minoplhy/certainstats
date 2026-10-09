@@ -64,4 +64,27 @@ function snapshots(envelope) {
   for (const [id, value] of Object.entries(envelope.pulse.agents)) out[id] = snapshot(value);
   return out;
 }
-module.exports = {protocol, decode, snapshots};
+function network(envelope) {
+  const pulse = envelope.pulse.network;
+  if (!pulse) return undefined;
+  const out = Object.create(null);
+  const num = value => typeof value === 'number' ? value : value.toNumber();
+  for (const [id, m] of Object.entries(pulse.monitors)) {
+    const item = {agent_id: m.agent_id, enabled: m.enabled, state: m.state};
+    const sync = m.sync;
+    item.sync = {desired_generation: num(sync.desired_generation), acknowledged_generation: num(sync.acknowledged_generation), error: sync.error};
+    for (const key of ['last_attempt', 'last_ack']) if (sync[key]) item.sync[key] = timestamp(sync[key]);
+    item.latest = null;
+    if (m.latest) {
+      const l = m.latest, latest = {};
+      for (const key of ['response_avg_ms', 'response_min_ms', 'response_max_ms', 'response_avg_1h_ms', 'response_min_1h_ms', 'response_max_1h_ms']) latest[key] = l[key] ? numeric(l[key]) : null;
+      for (const key of ['loss_pct', 'loss_1h_pct']) latest[key] = l[key];
+      for (const key of ['last_probe_at', 'sample_count', 'attempt_count', 'success_count', 'received_at', 'certificate_received_at']) latest[key] = num(l[key]);
+      if (l.certificate) latest.certificate = {expires: num(l.certificate.expires), issuer: l.certificate.issuer};
+      item.latest = latest;
+    }
+    out[id] = item;
+  }
+  return out;
+}
+module.exports = {protocol, decode, snapshots, network};

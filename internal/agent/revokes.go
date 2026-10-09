@@ -43,12 +43,13 @@ func RevokeAgentHandler(agent store.AgentStore, tdb *tsdb.DB, cache *metrics.Rea
 		// 1. Evict from in-memory caches (DeviceCache, PublicAgentCache, MetricsCache)
 		ctx.InvalidateAgent(agentID)
 
-		// 4. PURGE ALL METRICS from TSDB
+		// Purge regular metrics; archived network monitors retain their history.
 		if tdb != nil {
 			matchers := []*labels.Matcher{
 				labels.MustNewMatcher(labels.MatchEqual, "agent_id", agentID),
+				labels.MustNewMatcher(labels.MatchNotRegexp, "__name__", "network_monitor_.*"),
 			}
-			// Delete all data for this agent across all metrics
+			// Delete regular telemetry for this agent.
 			if err := tdb.Delete(r.Context(), math.MinInt64, math.MaxInt64, matchers...); err != nil {
 				api_response.Error(w, 500, "Agent revoked; metrics purge failed")
 				return

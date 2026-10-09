@@ -85,8 +85,9 @@ type Alert c.Alert
 type AlertHistory c.AlertHistory
 
 type AgentIdentity struct {
-	UserID  string
-	AgentID string
+	AgentType string
+	UserID    string
+	AgentID   string
 }
 
 type PublicAgentIdentity struct {

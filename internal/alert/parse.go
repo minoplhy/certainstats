@@ -4,11 +4,20 @@ import (
 	"certainstats/internal/base/alert"
 	"certainstats/internal/notifications"
 	"fmt"
+	"math"
 	"strings"
 )
 
 // ParseTrigger validates and normalizes a Trigger.
 func ParseTrigger(t *alert.Trigger) error {
+	if t.Type == alert.TriggerTypeNetworkLoss {
+		if math.IsNaN(t.Threshold) || math.IsInf(t.Threshold, 0) || t.Threshold < 0 || t.Threshold > 100 {
+			return fmt.Errorf("loss threshold must be between 0 and 100")
+		}
+		t.Operator = alert.OpGreaterThan
+		t.Duration = "1h"
+		return nil
+	}
 	switch t.Type {
 	case alert.TriggerTypeDown, alert.TriggerTypeCPU, alert.TriggerTypeCPUIOWait, alert.TriggerTypeCPUSteal,
 		alert.TriggerTypeRAM, alert.TriggerTypeSwap, alert.TriggerTypeDisk, alert.TriggerTypeNetRx,

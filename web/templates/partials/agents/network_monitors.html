@@ -1,0 +1,205 @@
+{{define "network_monitors_hero"}}
+<section class="hero" aria-labelledby="network-headline" data-network-hero>
+  <div class="hero-eyebrow">
+    <span>Network</span><span aria-hidden="true">·</span><span data-network-hero-count>Monitors</span>
+  </div>
+  <h1 class="hero-title" id="network-headline" data-network-hero-headline>Checking monitors…</h1>
+  <div class="hero-stats">
+    <div class="hero-stat">
+      <span class="hero-stat-label">Enabled</span>
+      <span class="hero-stat-value"><span data-network-hero-enabled>–</span><span class="unit" data-network-hero-paused></span></span>
+    </div>
+    <div class="hero-stat">
+      <span class="hero-stat-label">Median response now</span>
+      <span class="hero-stat-value"><span data-network-hero-response>–</span></span>
+    </div>
+    <div class="hero-stat">
+      <span class="hero-stat-label">Worst hourly loss</span>
+      <span class="hero-stat-value"><span data-network-hero-loss>–</span><span class="unit" data-network-hero-loss-target></span></span>
+    </div>
+    <div class="hero-stat">
+      <span class="hero-stat-label">Pending sync</span>
+      <span class="hero-stat-value"><span data-network-hero-sync>–</span></span>
+    </div>
+  </div>
+</section>
+{{end}}
+
+{{define "network_monitors_component"}}
+<section class="page-section network-monitors" data-network-monitors>
+  <div class="toolbar-bar network-toolbar">
+    <label class="toolbar-search">
+      <span class="sr-only">Search targets or nodes</span>
+      <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      <input type="search" placeholder="Search by hostname or target" data-network-search>
+    </label>
+    <div class="toolbar-group" role="group" aria-label="Protocol">
+      <button type="button" class="toolbar-btn active" aria-pressed="true" data-network-protocol-option="">All</button>
+      <button type="button" class="toolbar-btn" aria-pressed="false" data-network-protocol-option="icmp">ICMP</button>
+      <button type="button" class="toolbar-btn" aria-pressed="false" data-network-protocol-option="tcp">TCP</button>
+      <button type="button" class="toolbar-btn" aria-pressed="false" data-network-protocol-option="http">HTTP</button>
+      <button type="button" class="toolbar-btn" aria-pressed="false" data-network-protocol-option="dns">DNS</button>
+    </div>
+    <label data-network-node-filter>
+      <span class="sr-only">Node</span>
+      <select class="form-select network-toolbar-select" data-network-node>
+        <option value="">All nodes</option>
+      </select>
+    </label>
+    <label>
+      <span class="sr-only">Show</span>
+      <select class="form-select network-toolbar-select" data-network-state>
+        <option value="">Current monitors</option>
+        <option value="active">Enabled</option>
+        <option value="paused">Paused</option>
+        <option value="archived">Archive</option>
+        <option value="all">All</option>
+      </select>
+    </label>
+    <span class="toolbar-spacer"></span>
+    <button type="button" class="btn btn-secondary" data-network-refresh>Refresh</button>
+    <button type="button" class="btn btn-primary" data-network-add>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+      Add monitor
+    </button>
+  </div>
+
+  <div class="network-history">
+    <div class="section-header">
+      <div>
+        <h2 class="section-title">Response history</h2>
+        <p class="form-hint" data-network-chart-count></p>
+      </div>
+      <div data-network-time-picker></div>
+    </div>
+    <p class="network-status" role="status" aria-live="polite" data-network-chart-message></p>
+    <div class="chart-grid network-chart-grid">
+      <article class="chart-card">
+        <div class="chart-header-row">
+          <h3 class="chart-header-title">Response time</h3>
+          <span class="muted">ms</span>
+        </div>
+        <div class="chart-container">
+          <canvas class="chart-canvas" role="img" aria-label="Network response time history" data-network-latency></canvas>
+        </div>
+      </article>
+      <article class="chart-card">
+        <div class="chart-header-row">
+          <h3 class="chart-header-title">Failed checks</h3>
+          <span class="muted">%</span>
+        </div>
+        <div class="chart-container">
+          <canvas class="chart-canvas" role="img" aria-label="Network failed check history" data-network-loss></canvas>
+        </div>
+      </article>
+    </div>
+    <div class="network-legend" aria-label="Graph series" data-network-legend></div>
+    <p class="form-hint network-chart-note">Historical values summarize reported probe windows. Missing observations appear as gaps.</p>
+  </div>
+
+  <div class="section-header">
+    <h2 class="section-title">Monitors</h2>
+    <span class="muted mono" data-network-count></span>
+  </div>
+  <p class="network-status" role="status" aria-live="polite" data-network-message></p>
+  <div class="network-list" data-network-list></div>
+  <div class="network-pagination">
+    <button type="button" class="btn btn-secondary btn-sm" data-network-prev>Previous</button>
+    <button type="button" class="btn btn-secondary btn-sm" data-network-next>Next</button>
+    <label class="network-page-size">
+      <span class="muted">Rows</span>
+      <select class="form-select" data-network-limit>
+        <option>25</option>
+        <option>50</option>
+        <option>100</option>
+      </select>
+    </label>
+  </div>
+
+  <dialog class="modal modal-lg network-dialog" data-network-dialog>
+    <div class="modal-header">
+      <div>
+        <h2 class="modal-title" data-network-form-title>Add network monitor</h2>
+        <p class="modal-subtitle" data-network-form-subtitle>Each selected agent probes the target from its own network.</p>
+      </div>
+      {{template "modal_close"}}
+    </div>
+    <form data-network-form novalidate>
+      <div class="modal-body">
+        <p class="inline-alert" role="alert" data-network-form-message hidden></p>
+
+        <!-- 1. What to probe -->
+        <div class="form-fieldset">
+          <h3 class="fieldset-title">What to probe</h3>
+          <input type="hidden" name="protocol" value="icmp">
+          <div class="toolbar-group network-protocol-picker" role="group" aria-label="Protocol">
+            <button type="button" class="toolbar-btn active" aria-pressed="true" data-network-form-protocol="icmp">ICMP</button>
+            <button type="button" class="toolbar-btn" aria-pressed="false" data-network-form-protocol="tcp">TCP</button>
+            <button type="button" class="toolbar-btn" aria-pressed="false" data-network-form-protocol="http">HTTP</button>
+            <button type="button" class="toolbar-btn" aria-pressed="false" data-network-form-protocol="dns">DNS</button>
+          </div>
+          <p class="form-hint network-protocol-hint" data-network-protocol-hint></p>
+          <div class="network-target-row">
+            <label class="form-group form-group-flush">
+              <span class="form-label">Target</span>
+              <input name="target" class="form-input mono" required maxlength="2048" autocomplete="off" spellcheck="false">
+            </label>
+            <label class="form-group form-group-flush network-port-field" data-network-port>
+              <span class="form-label">Port</span>
+              <input name="port" type="number" class="form-input mono" min="1" max="65535" value="443">
+            </label>
+            <label class="form-group form-group-flush" data-network-server>
+              <span class="form-label">DNS server <span class="muted">(optional)</span></span>
+              <input name="dns_server" class="form-input mono" placeholder="System resolver" autocomplete="off" spellcheck="false">
+            </label>
+          </div>
+        </div>
+
+        <!-- 2. Schedule -->
+        <div class="form-fieldset">
+          <h3 class="fieldset-title">Schedule</h3>
+          <div class="name-row">
+            <div class="form-group form-group-flush">
+              <span class="form-label">Probe every</span>
+              <div class="network-interval">
+                <div class="toolbar-group" role="group" aria-label="Interval presets">
+                  <button type="button" class="toolbar-btn" data-network-interval-preset="60">1m</button>
+                  <button type="button" class="toolbar-btn" data-network-interval-preset="300">5m</button>
+                  <button type="button" class="toolbar-btn" data-network-interval-preset="900">15m</button>
+                  <button type="button" class="toolbar-btn" data-network-interval-preset="3600">1h</button>
+                </div>
+                <label class="network-interval-custom">
+                  <input name="interval_seconds" type="number" class="form-input mono" required min="60" max="3600" value="60" aria-label="Interval in seconds">
+                  <span class="muted">seconds</span>
+                </label>
+              </div>
+            </div>
+            <label class="toggle-pill active" data-network-enabled-pill>
+              <input name="enabled" type="checkbox" checked>
+              <span>Active</span>
+            </label>
+          </div>
+          <p class="form-hint">Between 60 and 3600 seconds. Loss alerts need three probes before they evaluate.</p>
+        </div>
+
+        <!-- 3. Agents -->
+        <div class="form-fieldset" data-network-agent-group>
+          <div class="fieldset-head">
+            <h3 class="fieldset-title">Agents<span class="muted network-agent-count" data-network-agent-count></span></h3>
+            <div class="page-actions" data-network-agent-actions>
+              <button type="button" class="btn btn-secondary btn-sm" data-network-agents-all>Select all</button>
+              <button type="button" class="btn btn-secondary btn-sm" data-network-agents-none>Clear</button>
+            </div>
+          </div>
+          <div class="node-grid" data-network-agent-options></div>
+          <p class="form-hint" data-network-agent-hint>Agents that can't run this probe are greyed out with the reason.</p>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-close-modal>Cancel</button>
+        <button type="submit" class="btn btn-primary" data-network-submit>Add monitor</button>
+      </div>
+    </form>
+  </dialog>
+</section>
+{{end}}

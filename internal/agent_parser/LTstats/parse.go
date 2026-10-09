@@ -3,6 +3,7 @@ package ltstats
 import (
 	"bytes"
 	agentparser "certainstats/internal/agent_parser"
+	"certainstats/internal/agentmeta"
 	"errors"
 	"fmt"
 	"time"
@@ -141,6 +142,7 @@ func (l *LTstats) Parse(data []byte) (*agentparser.ParsedData, error) {
 	}
 
 	return &agentparser.ParsedData{
+		Runtime:   &agentmeta.Runtime{ProtocolVersion: agentmeta.String(fmt.Sprint(header.Version())), VersionSource: "ltstats_header"},
 		AgentInfo: agentInfo,
 		Metrics:   stats,
 	}, nil

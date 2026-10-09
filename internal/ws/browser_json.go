@@ -13,10 +13,16 @@ func marshalLegacyJSON(envelope *browserpb.TelemetryEnvelope, public bool) ([]by
 	for id, s := range envelope.GetPulse().GetAgents() {
 		data[id] = legacySnapshot(s, public)
 	}
+	var network *map[string]any
+	if !public && envelope.GetPulse().GetNetwork() != nil {
+		n := legacyNetwork(envelope.GetPulse().GetNetwork())
+		network = &n
+	}
 	return json.Marshal(struct {
-		Type string         `json:"type"`
-		Data map[string]any `json:"data"`
-	}{"agent_update", data})
+		Type    string          `json:"type"`
+		Data    map[string]any  `json:"data"`
+		Network *map[string]any `json:"network,omitempty"`
+	}{"agent_update", data, network})
 }
 
 func legacySnapshot(s *browserpb.Snapshot, public bool) map[string]any {
@@ -120,4 +126,33 @@ func finite(v float64) any {
 		return nil
 	}
 	return v
+}
+
+func legacyNetwork(p *browserpb.NetworkPulse) map[string]any {
+	out := make(map[string]any, len(p.Monitors))
+	for id, m := range p.Monitors {
+		sync := map[string]any{"desired_generation": m.Sync.DesiredGeneration, "acknowledged_generation": m.Sync.AcknowledgedGeneration, "error": m.Sync.Error}
+		if m.Sync.LastAttempt != nil {
+			sync["last_attempt"] = m.Sync.LastAttempt.AsTime()
+		}
+		if m.Sync.LastAck != nil {
+			sync["last_ack"] = m.Sync.LastAck.AsTime()
+		}
+		item := map[string]any{"agent_id": m.AgentId, "enabled": m.Enabled, "state": m.State, "sync": sync, "latest": nil}
+		if l := m.Latest; l != nil {
+			latest := map[string]any{"loss_pct": l.LossPct, "loss_1h_pct": l.Loss_1HPct, "last_probe_at": l.LastProbeAt, "sample_count": l.SampleCount, "attempt_count": l.AttemptCount, "success_count": l.SuccessCount, "received_at": l.ReceivedAt, "certificate_received_at": l.CertificateReceivedAt}
+			for key, v := range map[string]*browserpb.FloatValue{"response_avg_ms": l.ResponseAvgMs, "response_min_ms": l.ResponseMinMs, "response_max_ms": l.ResponseMaxMs, "response_avg_1h_ms": l.ResponseAvg_1HMs, "response_min_1h_ms": l.ResponseMin_1HMs, "response_max_1h_ms": l.ResponseMax_1HMs} {
+				latest[key] = nil
+				if v != nil && v.Value != nil {
+					latest[key] = finite(*v.Value)
+				}
+			}
+			if l.Certificate != nil {
+				latest["certificate"] = map[string]any{"expires": l.Certificate.Expires, "issuer": l.Certificate.Issuer}
+			}
+			item["latest"] = latest
+		}
+		out[id] = item
+	}
+	return out
 }

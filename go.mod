@@ -5,6 +5,7 @@ go 1.26.2
 require (
 	github.com/fxamacker/cbor/v2 v2.9.4
 	github.com/prometheus/prometheus v0.315.0
+	golang.org/x/mod v0.41.0
 )
 
 require (

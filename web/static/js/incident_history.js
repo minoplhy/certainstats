@@ -1,6 +1,6 @@
 (function () {
   'use strict';
-  const LABELS = { agent_down: 'Node offline', cpu_usage: 'CPU usage', cpu_iowait: 'CPU I/O wait', cpu_steal: 'CPU steal', ram_usage: 'RAM usage', swap_usage: 'Swap usage', disk_usage: 'Disk usage', net_rx: 'Network in', net_tx: 'Network out', disk_read: 'Disk read', disk_write: 'Disk write' };
+  const LABELS = { network_loss: 'Network monitor loss', agent_down: 'Node offline', cpu_usage: 'CPU usage', cpu_iowait: 'CPU I/O wait', cpu_steal: 'CPU steal', ram_usage: 'RAM usage', swap_usage: 'Swap usage', disk_usage: 'Disk usage', net_rx: 'Network in', net_tx: 'Network out', disk_read: 'Disk read', disk_write: 'Disk write' };
   const STATUS = { queued: 'Queued', pending: 'Sending', success: 'Delivered', failed: 'Failed', unknown: 'Outcome unknown', skipped: 'Skipped' };
   function el(tag, cls, text) { const node = document.createElement(tag); if (cls) node.className = cls; if (text != null) node.textContent = text; return node; }
   function date(value) { const t = new Date(value); return Number.isFinite(t.getTime()) ? t.toLocaleString() : 'Unknown time'; }
@@ -42,7 +42,8 @@
     const eventStates = new Map();
     const retrying = new Set();
     if (nodeMode) root.querySelector('[data-history-node-label]').hidden = true;
-    function visible() { return !destroyed && !document.hidden && (!nodeMode || (node && parent.open && !root.closest('[hidden]'))); }
+    let active = true;
+    function visible() { return active && !destroyed && !document.hidden && (!nodeMode || (node && parent.open && !root.closest('[hidden]'))); }
     function feedback(text, retry) {
       message.replaceChildren(el('span', '', text));
       if (retry) { const button = el('button', 'btn btn-secondary btn-sm', 'Retry'); button.type = 'button'; button.addEventListener('click', () => load()); message.append(button); }
@@ -111,6 +112,11 @@
         const facts = el('dl', 'incident-facts');
         function fact(label, value) { const pair = el('div'); const detail = el('dd', '', value); pair.append(el('dt', 'muted', label), detail); facts.append(pair); return detail; }
         const trigger = h.trigger || {};
+        if (h.monitor_id) {
+          fact('Monitor target', h.monitor.target);
+          fact('Protocol', h.monitor.protocol);
+          if (h.monitor.dns_server) fact('DNS server', h.monitor.dns_server);
+        }
         fact(h.legacy ? 'Available condition at migration' : 'Condition at start', trigger.type === 'agent_down' ? 'Node offline' : (LABELS[trigger.type] || trigger.type || 'Unknown condition') + (trigger.type ? ' ' + (trigger.operator || '') + ' ' + metric(trigger.type, trigger.threshold) : ''));
         fact('Breach value', metric(trigger.type, h.trigger_value));
         const liveDuration = fact(trigger.type === 'agent_down' ? 'Downtime' : 'Duration', duration(h.triggered_at, h.closed_at || h.resolved_at)); liveDuration.dataset.durationStart = h.triggered_at; liveDuration.dataset.durationEnd = h.closed_at || h.resolved_at || '';
@@ -193,7 +199,17 @@
     function destroy() { destroyed = true; clearInterval(timer); clearTimeout(searchTimer); if (controller) controller.abort(); document.removeEventListener('visibilitychange', onVisibility); }
     window.addEventListener('pagehide', destroy, { once: true });
     if (!nodeMode) load();
-    return { refresh: load, destroy, setNode(id) {
+    // The SPA hides this view instead of unloading it; inactive views make no requests.
+    function deactivate() {
+      active = false;
+      if (controller) controller.abort();
+      loading = false;
+    }
+    function activate() {
+      active = true;
+      if (visible()) load();
+    }
+    return { refresh: load, destroy, activate, deactivate, setNode(id) {
       if (controller) controller.abort(); clearTimeout(searchTimer); loading = false; node = id || ''; rows = []; hasLoaded = false; pendingDelivery = false; totalPages = 0; reset(); query = ''; status = 'all'; search.value = ''; root.dataset.total = '0'; list.replaceChildren(); feedback(''); updateControls(0); if (parent) parent.open = false;
     } };
   }

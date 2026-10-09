@@ -60,6 +60,7 @@ type TimeseriesWindow struct {
 //  1. agents — the latest single-point snapshot for each agent (for live UI).
 //  2. windows — 24-hour sliding-window timeseries per (agent × metric × path).
 type RealtimeCache struct {
+	network networkCache
 	mu      sync.RWMutex
 	agents  map[string]*AgentSnapshot
 	windows sync.Map // key → *TimeseriesWindow
@@ -75,6 +76,7 @@ func NewRealtimeCache() *RealtimeCache {
 // This prevents unbounded cardinality memory leaks if an attacker (or dynamic workload)
 // creates millions of unique paths over time.
 func (c *RealtimeCache) EvictExpiredWindows() {
+	c.evictNetwork("", true)
 	nowMs := time.Now().UnixMilli()
 	cutoff := nowMs - windowTTL.Milliseconds()
 
@@ -306,6 +308,7 @@ func (c *RealtimeCache) Get(agentID string) (*AgentSnapshot, bool) {
 
 // Delete evicts the latest snapshot for an agent from memory.
 func (c *RealtimeCache) Delete(agentID string) {
+	c.evictNetwork(agentID, false)
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	delete(c.agents, agentID)

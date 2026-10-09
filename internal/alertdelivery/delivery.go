@@ -35,6 +35,7 @@ func Dispatch(ctx context.Context, db store.AlertsStore, eventID string) error {
 			value = 0
 		}
 		err = notifications.DispatchNotification(action, notifications.NotificationContext{
+			MonitorID: h.MonitorID, MonitorTarget: h.Monitor.Target, MonitorProtocol: h.Monitor.Protocol, DNSServer: h.Monitor.Server,
 			AgentID: h.AgentID, Nickname: h.AgentNickname, TriggerType: string(h.Trigger.Type), Status: phase, Value: value,
 			Operator: string(h.Trigger.Operator), Threshold: h.Trigger.Threshold, WentOfflineAt: &h.TriggeredAt, ResolvedAt: h.ResolvedAt,
 		})

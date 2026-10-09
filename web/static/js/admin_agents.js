@@ -4,7 +4,15 @@
   let panelPath = '';
   let agentsData = [];
   let currentActiveAgentId = null;
+  // Network and incident views mounted in node details, and the Network page view.
+  let nodeNetwork = null;
   let nodeHistory = null;
+  let networkPage = null;
+  // SPA route: 'overview', 'network' or an agent ID; scroll is remembered per route.
+  let activeRoute = null;
+  let detailAgentId = null;
+  const routeScroll = new Map();
+  let sparklineListenersReady = false;
   let inpageTimePicker = null;
   let inpageCustomRange = null;
   let inpageCpuChart = null, inpageRamChart = null, inpageNetChart = null;
@@ -408,6 +416,7 @@
   }
 
   function loadDetailMetrics(agentId, hours, customRange) {
+    if (activeRoute === 'network' || document.hidden) return;
     const requestGroup = window.CertainStatsRequests.begin('agents-detail-view', () => loadDetailMetrics(agentId, hours, customRange));
     const agent = agentsData.find(a => a.agent_id === agentId);
     const queryStr = customRange 
@@ -427,6 +436,10 @@
       }
 
       const elName = document.getElementById('detail-active-name'); if (elName) elName.textContent = agent.nickname || agent.agent_id;
+      const version = document.getElementById('detail-agent-version');
+      if (version) version.textContent = agent.extensions?.runtime?.agent_version || 'Unknown';
+      const protocolVersion = document.getElementById('detail-protocol-version');
+      if (protocolVersion) protocolVersion.textContent = agent.extensions?.runtime?.protocol_version || 'Unknown';
       const elType = document.getElementById('detail-active-type'); if (elType) elType.textContent = agent.agent_type || 'beszel';
       const elCpu = document.getElementById('inpage-hw-cpu'); if (elCpu) elCpu.textContent = agent.cpu_cores || '-';
       const elRam = document.getElementById('inpage-hw-ram'); if (elRam) elRam.textContent = window.CertainStatsChart.formatBytes(agent.ram_size);
@@ -1023,23 +1036,61 @@
   // 24h CPU sparkline per card, fetched once at low resolution.
   function loadSparklines() {
     const canvases = document.querySelectorAll('canvas.agent-spark');
+    const group = window.CertainStatsRequests.begin('agents-overview-view', loadSparklines, { silent: true });
     canvases.forEach((canvas, i) => {
+      if (canvas._sparkPoints) return;
       const agentId = canvas.getAttribute('data-agent-id');
-      setTimeout(() => {
-        fetch(panelPath + '/api/metrics?agent_id=' + encodeURIComponent(agentId) + '&metric=agent_cpu_usage&hours=24')
+      const timer = setTimeout(() => {
+        if (activeRoute !== 'overview' || document.hidden || group.signal.aborted) return;
+        fetch(panelPath + '/api/metrics?agent_id=' + encodeURIComponent(agentId) + '&metric=agent_cpu_usage&hours=24', {signal: group.signal})
           .then(r => r.ok ? r.json() : null)
           .then(res => {
+            if (group.signal.aborted) return;
             const points = res && res.series && res.series[0] ? res.series[0].data : [];
             canvas._sparkPoints = points;
             window.CertainStatsChart.drawSparkline(canvas, points, { color: '--s1', max: 100 });
           })
           .catch(() => {});
       }, i * 60);
+      group.signal.addEventListener('abort', () => clearTimeout(timer), { once: true });
     });
+    if (sparklineListenersReady) return;
+    sparklineListenersReady = true;
     const redraw = () => canvases.forEach(c => { if (c._sparkPoints) window.CertainStatsChart.drawSparkline(c, c._sparkPoints, { color: '--s1', max: 100 }); });
     window.addEventListener('certainstats_theme_change', redraw);
     let t;
     window.addEventListener('resize', () => { clearTimeout(t); t = setTimeout(redraw, 150); });
+  }
+
+  // Moves focus to a view's heading after an SPA route change, for screen readers.
+  function focusHeading(container, selector) {
+    const heading = container?.querySelector(selector);
+    if (!heading) return;
+    heading.setAttribute('tabindex', '-1');
+    heading.focus({ preventScroll: true });
+  }
+
+  function markCurrentNavLink(pathname) {
+    document.querySelectorAll('.nav-link, .subnav-link').forEach(link => {
+      const target = new URL(link.href, window.location.href).pathname.replace(/\/+$/, '');
+      if (target === pathname) link.setAttribute('aria-current', 'page');
+      else link.removeAttribute('aria-current');
+    });
+  }
+
+  // Same-origin links to the hub, an agent or the Network view switch views in place.
+  function handleSpaLinkClick(event) {
+    if (event.defaultPrevented || event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+    const link = event.target.closest('a[href]');
+    if (!link || link.target || link.hasAttribute('download')) return;
+    const url = new URL(link.href, window.location.href);
+    if (url.origin !== window.location.origin || url.search || url.hash) return;
+    if (panelPath && !(url.pathname === panelPath || url.pathname.startsWith(panelPath + '/'))) return;
+    const relative = url.pathname.slice(panelPath.length).replace(/^\/+|\/+$/g, '');
+    if (relative !== '' && relative !== 'network-monitors' && !agentsData.some(a => a.agent_id === relative)) return;
+    event.preventDefault();
+    if (url.pathname !== window.location.pathname) history.pushState({}, '', url.pathname);
+    window.dispatchEvent(new PopStateEvent('popstate'));
   }
 
   function init(options) {
@@ -1060,10 +1111,29 @@
         viewMode = localStorage.getItem('certainstats_view_mode') || 'grid';
       } catch (e) {}
       setAgentViewMode(viewMode);
-      loadSparklines();
 
+      const networkRoot = document.querySelector('#agents-detail-view [data-network-monitors]');
+      if (networkRoot) nodeNetwork = window.CertainStatsNetworkMonitors.mount(networkRoot, { panelPath, nodeMode: true });
       const historyRoot = document.querySelector('[data-incident-history]');
       if (historyRoot) nodeHistory = window.CertainStatsIncidentHistory.mount(historyRoot, { panelPath, nodeMode: true });
+
+      const networkView = document.getElementById('network-spa-view');
+      const agentsView = document.getElementById('agents-spa-view');
+      const networkPageRoot = networkView?.querySelector('[data-network-monitors]');
+      if (networkPageRoot) networkPage = window.CertainStatsNetworkMonitors.mount(networkPageRoot, { panelPath, active: false, hero: networkView.querySelector('[data-network-hero]') });
+      document.addEventListener('click', handleSpaLinkClick);
+
+      document.addEventListener('visibilitychange', () => {
+        if (document.hidden) {
+          window.CertainStatsRequests.cancel('agents-detail-view');
+          window.CertainStatsRequests.cancel('agents-overview-view');
+        } else if (activeRoute === 'overview') {
+          loadSparklines();
+        } else if (activeRoute !== 'network' && currentActiveAgentId && inpageTimePicker) {
+          const state = inpageTimePicker.getState();
+          loadDetailMetrics(currentActiveAgentId, state.hours, state.customRange);
+        }
+      });
 
       // In-Place SPA Router (BASE_PATH/{AGENT_ID})
       window.CertainStatsTelemetry.initRouter({
@@ -1072,39 +1142,70 @@
           const overviewView = document.getElementById('agents-overview-view');
           const detailView = document.getElementById('agents-detail-view');
 
-          resetInpageEditStates();
+          const route = agentId === 'network-monitors' ? 'network' : agentId && agentsData.some(a => a.agent_id === agentId) ? agentId : 'overview';
+          const previous = activeRoute;
+          if (previous) routeScroll.set(previous, window.scrollY);
+          activeRoute = route;
+          const isNetwork = route === 'network';
+          if (agentsView) agentsView.hidden = isNetwork;
+          if (networkView) networkView.hidden = !isNetwork;
+          document.title = (isNetwork ? 'Network Monitors' : route === 'overview' ? 'Agent Hub' : 'Agent Details') + ' — CertainStats';
+          markCurrentNavLink(isNetwork ? panelPath + '/network-monitors' : panelPath);
+          if (previous !== route) {
+            resetInpageEditStates();
+            window.CertainStatsRequests.cancel('agents-detail-view');
+            window.CertainStatsRequests.cancel('agents-overview-view');
+            nodeNetwork?.deactivate();
+            nodeHistory?.deactivate();
+            agentsView?.querySelectorAll('dialog[open]').forEach(dialog => dialog.close());
+          }
+          if (isNetwork) {
+            networkPage?.activate();
+            focusHeading(networkView, 'h1');
+            window.scrollTo({ top: routeScroll.get(route) || 0, behavior: 'instant' });
+            return;
+          }
+          networkPage?.deactivate();
 
           if (!agentId || !agentsData.some(agent => agent.agent_id === agentId)) {
             if (detailView) detailView.hidden = true;
             if (overviewView) overviewView.hidden = false;
+            loadSparklines();
+            focusHeading(overviewView, 'h1');
             currentActiveAgentId = null;
-            if (nodeHistory) nodeHistory.setNode(null);
-            window.scrollTo({ top: savedScrollY, behavior: 'instant' });
+            window.scrollTo({ top: routeScroll.get('overview') ?? savedScrollY, behavior: 'instant' });
             return;
           }
 
           savedScrollY = window.scrollY;
+          const changedAgent = detailAgentId !== agentId;
+          detailAgentId = agentId;
           currentActiveAgentId = agentId;
-          if (nodeHistory) nodeHistory.setNode(agentId);
+          if (changedAgent && nodeNetwork) nodeNetwork.setNode(agentId);
+          if (changedAgent && nodeHistory) nodeHistory.setNode(agentId);
           if (overviewView) overviewView.hidden = true;
           if (detailView) {
             detailView.hidden = false;
- const heading=detailView.querySelector("h1,h2");if (heading) {heading.setAttribute("tabindex","-1");heading.focus({preventScroll:true});}
-            window.scrollTo({ top: 0, behavior: 'instant' });
+            focusHeading(detailView, 'h1,h2');
+            window.scrollTo({ top: routeScroll.get(route) || 0, behavior: 'instant' });
 
             renderInpageLiveState(agentId);
             
             let activeHours = 6;
             try { activeHours = parseInt(localStorage.getItem('certainstats_active_hours') || '6', 10); } catch (e) {}
-            inpageTimePicker = window.CertainStatsTelemetry.initCustomTimePicker('inpage-detail-time-picker-container', {
-              activeHours: activeHours,
-              onApply: function(opts) {
-                inpageCustomRange = opts.customRange;
-                loadDetailMetrics(agentId, opts.hours, opts.customRange);
-              }
-            });
-
-            loadDetailMetrics(agentId, activeHours, inpageCustomRange);
+            if (!inpageTimePicker) {
+              inpageTimePicker = window.CertainStatsTelemetry.initCustomTimePicker('inpage-detail-time-picker-container', {
+                activeHours,
+                onApply: function(opts) {
+                  inpageCustomRange = opts.customRange;
+                  if (currentActiveAgentId) loadDetailMetrics(currentActiveAgentId, opts.hours, opts.customRange);
+                }
+              });
+            }
+            const selected = inpageTimePicker.getState();
+            loadDetailMetrics(agentId, selected.hours, selected.customRange);
+            nodeNetwork?.activate();
+            nodeHistory?.activate();
           }
         }
       });
@@ -1128,7 +1229,18 @@
       }
     });
 
-    const metadataTimer=setInterval(syncAdminAgentsMetadata, ADMIN_METADATA_SYNC_INTERVAL_MS);window.addEventListener("pagehide",()=>clearInterval(metadataTimer),{once:true});
+    const metadataTimer = setInterval(() => {
+      if (activeRoute !== 'network' && !document.hidden) syncAdminAgentsMetadata();
+    }, ADMIN_METADATA_SYNC_INTERVAL_MS);
+    window.addEventListener('pagehide', () => {
+      clearInterval(metadataTimer);
+      inpageTimePicker?.destroy();
+      [inpageCpuChart, inpageRamChart, inpageNetChart].forEach(chart => chart?.destroy());
+      Object.values(inpageDiskCharts).forEach(charts => {
+        charts.usageChart?.destroy();
+        charts.ioChart?.destroy();
+      });
+    }, { once: true });
   }
 
   // Export module namespace

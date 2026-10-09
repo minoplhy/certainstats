@@ -1,6 +1,8 @@
 package agentparser
 
 import (
+	"certainstats/internal/agentmeta"
+	nm "certainstats/internal/networkmonitor"
 	"time"
 )
 
@@ -66,8 +68,10 @@ type ParsedMetadata struct {
 
 // ParsedData is the final output of the parsers
 type ParsedData struct {
-	AgentInfo *ParsedMetadata
-	Metrics   []Telemetry
+	NetworkResults map[string]nm.Result
+	Runtime        *agentmeta.Runtime
+	AgentInfo      *ParsedMetadata
+	Metrics        []Telemetry
 }
 
 type AgentParser interface {

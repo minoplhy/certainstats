@@ -2,6 +2,7 @@ package beszel
 
 import (
 	agentparser "certainstats/internal/agent_parser"
+	"certainstats/internal/agentmeta"
 	"errors"
 	"fmt"
 	"net/http"
@@ -146,7 +147,9 @@ func (b *BeszelStats) Parse(data []byte) (*agentparser.ParsedData, error) {
 	}
 
 	return &agentparser.ParsedData{
-		AgentInfo: agentInfo,
-		Metrics:   []agentparser.Telemetry{telemetry},
+		NetworkResults: combined.Monitors,
+		Runtime:        &agentmeta.Runtime{AgentVersion: agentmeta.String(combined.Info.AgentVersion), VersionSource: "beszel_info"},
+		AgentInfo:      agentInfo,
+		Metrics:        []agentparser.Telemetry{telemetry},
 	}, nil
 }

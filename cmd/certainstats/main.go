@@ -28,6 +28,7 @@ import (
 	"certainstats/internal/dashboard"
 	"certainstats/internal/lifecycle"
 	"certainstats/internal/metrics"
+	"certainstats/internal/networkservice"
 	"certainstats/internal/routine"
 	"certainstats/internal/store/sqlite"
 	"certainstats/internal/ws"
@@ -97,7 +98,18 @@ func main() {
 
 	wsManager := ws.NewManager()
 	parserRegistry := registry.NewRegistry()
+	db.Providers = parserRegistry
 	metricsCache := metrics.NewRealtimeCache()
+	networkService := &networkservice.Service{
+		Store:    db,
+		Registry: parserRegistry,
+		TSDB:     tdb,
+		Cache:    metricsCache,
+		WS:       wsManager,
+	}
+	if err := networkService.Recover(ctx); err != nil {
+		log.Fatalf("network ingestion recovery: %v", err)
+	}
 	if err := agent.RecoverIngestion(ctx, db, tdb, metricsCache); err != nil {
 		log.Fatalf("ingestion recovery: %v", err)
 	}
@@ -116,6 +128,7 @@ func main() {
 
 	routine := &routine.Routine{
 		Store:       db,
+		Network:     networkService,
 		TSDB:        tdb,
 		WS:          wsManager,
 		Cache:       metricsCache,
@@ -241,7 +254,7 @@ func main() {
 
 		// Agent Submission Endpoints
 		rt.Post("/submit", agent.SubmitHandler(db, tdb, parserRegistry, metricsCache))
-		rt.Get("/api/beszel/agent-connect", agent.BeszelWSHandler(db, tdb, wsManager, metricsCache))
+		rt.Get("/api/beszel/agent-connect", agent.BeszelWSHandler(db, tdb, wsManager, metricsCache, networkService))
 
 		// Web 1.0 HTML Routes
 		rt.Get("/first-time-setup", webHandler.SetupHandler)
@@ -265,6 +278,8 @@ func main() {
 		rt.Get("/dashboards/{id}", webHandler.RequireAuthWeb(webHandler.DashboardEditHandler))
 		rt.Post("/dashboards/{id}", webHandler.RequireAuthWeb(webHandler.DashboardUpdateHandler))
 		rt.Delete("/dashboards/{id}", webHandler.RequireAuthWeb(webHandler.DashboardDeleteHandler))
+
+		rt.Get("/network-monitors", webHandler.RequireAuthWeb(webHandler.NetworkMonitorsHandler))
 
 		rt.Get("/alerts", webHandler.RequireAuthWeb(webHandler.AlertsListHandler))
 		rt.Post("/alerts/create", webHandler.RequireAuthWeb(webHandler.AlertCreateHandler))
@@ -295,7 +310,7 @@ func main() {
 
 			api.Group(func(authApi chi.Router) {
 				authApi.Get("/ws", requireAuth(db, ws.UIWebSocketHandler(uiBroadcaster, db)))
-				authApi.Get("/agents", requireAuth(db, agent.ListAgentsHandler(db, metricsCache)))
+				authApi.Get("/agents", requireAuth(db, agent.ListAgentsHandler(db, metricsCache, parserRegistry)))
 				authApi.Post("/agent", requireAuth(db, agent.ProvisionAgentHandler(db, parserRegistry)))
 				authApi.Get("/agent/install/{id}", requireAuth(db, agent.InstallAgentHandler(db)))
 				authApi.Get("/agent/uninstall/{id}", requireAuth(db, agent.UninstallAgentHandler(db)))
@@ -307,6 +322,14 @@ func main() {
 				authApi.Get("/agents/management", requireAuth(db, agent.ListAgentsManagementHandler(db)))
 			})
 
+			api.Route("/network-monitors", func(mon chi.Router) {
+				mon.Get("/", requireAuth(db, networkService.List))
+				mon.Post("/", requireAuth(db, networkService.Create))
+				mon.Get("/{id}/history", requireAuth(db, networkService.History))
+				mon.Get("/{id}", requireAuth(db, networkService.Get))
+				mon.Patch("/{id}", requireAuth(db, networkService.Update))
+				mon.Delete("/{id}", requireAuth(db, networkService.Archive))
+			})
 			api.Get("/metrics", requireAuth(db, metrics.MetricsQueryHandler(db, tdb, metricsCache)))
 
 			api.Get("/dashboards", requireAuth(db, dashboard.ListDashboardsHandler(db)))

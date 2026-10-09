@@ -9,7 +9,7 @@
       {{template "modal_close"}}
     </div>
     <div class="modal-body">
-    <p class="modal-lead">Payloads are Go templates. These variables are available:</p>
+    <p class="modal-lead">Use these placeholders inside JSON strings:</p>
 
     <div class="table-responsive">
       <table class="table table-compact">
@@ -21,12 +21,17 @@
           </tr>
         </thead>
         <tbody>
-          <tr><td class="mono">&#123;&#123;.Alert.Nickname&#125;&#125;</td><td>string</td><td>Name of the firing alert rule</td></tr>
-          <tr><td class="mono">&#123;&#123;.Agent.Nickname&#125;&#125;</td><td>string</td><td>Target server node nickname</td></tr>
-          <tr><td class="mono">&#123;&#123;.Agent.AgentID&#125;&#125;</td><td>string</td><td>Target server unique agent ID</td></tr>
-          <tr><td class="mono">&#123;&#123;.Incident.Value&#125;&#125;</td><td>float64</td><td>Measured metric value that caused the breach</td></tr>
-          <tr><td class="mono">&#123;&#123;.Incident.Status&#125;&#125;</td><td>string</td><td>Incident status ("firing" or "resolved")</td></tr>
-          <tr><td class="mono">&#123;&#123;.Incident.TriggeredAt&#125;&#125;</td><td>time.Time</td><td>UTC timestamp of breach start</td></tr>
+          <tr><td class="mono">&#123;&#123;NICKNAME&#125;&#125;</td><td>string</td><td>Target node nickname</td></tr>
+          <tr><td class="mono">&#123;&#123;AGENT_ID&#125;&#125;</td><td>string</td><td>Target node ID</td></tr>
+          <tr><td class="mono">&#123;&#123;TRIGGER_LABEL&#125;&#125;</td><td>string</td><td>Alert metric name</td></tr>
+          <tr><td class="mono">&#123;&#123;VALUE&#125;&#125;</td><td>string</td><td>Formatted metric value</td></tr>
+          <tr><td class="mono">&#123;&#123;STATUS&#125;&#125;</td><td>string</td><td>FIRING or RESOLVED</td></tr>
+          <tr><td class="mono">&#123;&#123;TIME_TRIGGER&#125;&#125;</td><td>string</td><td>Incident start time</td></tr>
+          <tr><td class="mono">&#123;&#123;TIME_RESOLVED&#125;&#125;</td><td>string</td><td>Incident recovery time</td></tr>
+          <tr><td class="mono">&#123;&#123;MONITOR_ID&#125;&#125;</td><td>string</td><td>Network monitor ID</td></tr>
+          <tr><td class="mono">&#123;&#123;MONITOR_TARGET&#125;&#125;</td><td>string</td><td>Network monitor target</td></tr>
+          <tr><td class="mono">&#123;&#123;MONITOR_PROTOCOL&#125;&#125;</td><td>string</td><td>ICMP, TCP, HTTP or DNS protocol</td></tr>
+          <tr><td class="mono">&#123;&#123;DNS_SERVER&#125;&#125;</td><td>string</td><td>Custom DNS server, when configured</td></tr>
         </tbody>
       </table>
     </div>

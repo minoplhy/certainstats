@@ -63,7 +63,7 @@ func UIWebSocketHandler(broadcaster *AgentBroadcaster, sessions store.SessionSto
 				log.Debugf("[UI-WS] Browser connected for User: %s", userID)
 
 				// Keep connection alive/open until client disconnects
-				// We don't expect messages FROM the UI for now, but we must read to detect disconnects
+				// This is a read-only feed: drain and discard application messages to detect disconnects.
 				for {
 					var msg []byte
 					if err := websocket.Message.Receive(conn, &msg); err != nil {

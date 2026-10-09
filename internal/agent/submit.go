@@ -47,6 +47,11 @@ func SubmitHandler(agents store.AgentStore, tdb *tsdb.DB, parserRegistry *regist
 			return
 		}
 
+		if identity.AgentType != "" && identity.AgentType != agentType {
+			apiresponse.Error(w, 400, "Agent type does not match provisioned integration")
+			return
+		}
+
 		// 4. Disk size is the total across all partitions (matches the summed usage in the live snapshot)
 		if parsedData.AgentInfo != nil && len(parsedData.Metrics) > 0 {
 			var totalDiskSize uint64

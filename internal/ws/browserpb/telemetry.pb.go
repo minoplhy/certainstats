@@ -71,6 +71,7 @@ func (x *TelemetryEnvelope) GetPulse() *TelemetryPulse {
 type TelemetryPulse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Agents        map[string]*Snapshot   `protobuf:"bytes,1,rep,name=agents,proto3" json:"agents,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	Network       *NetworkPulse          `protobuf:"bytes,2,opt,name=network,proto3" json:"network,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -108,6 +109,13 @@ func (*TelemetryPulse) Descriptor() ([]byte, []int) {
 func (x *TelemetryPulse) GetAgents() map[string]*Snapshot {
 	if x != nil {
 		return x.Agents
+	}
+	return nil
+}
+
+func (x *TelemetryPulse) GetNetwork() *NetworkPulse {
+	if x != nil {
+		return x.Network
 	}
 	return nil
 }
@@ -766,15 +774,421 @@ func (x *Metadata) GetDiskSize() uint64 {
 	return 0
 }
 
+// Present network pulse is a complete owner-scoped set of non-archived monitors.
+type NetworkPulse struct {
+	state         protoimpl.MessageState      `protogen:"open.v1"`
+	Monitors      map[string]*NetworkSnapshot `protobuf:"bytes,1,rep,name=monitors,proto3" json:"monitors,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NetworkPulse) Reset() {
+	*x = NetworkPulse{}
+	mi := &file_protocol_browser_v1_telemetry_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NetworkPulse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NetworkPulse) ProtoMessage() {}
+
+func (x *NetworkPulse) ProtoReflect() protoreflect.Message {
+	mi := &file_protocol_browser_v1_telemetry_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NetworkPulse.ProtoReflect.Descriptor instead.
+func (*NetworkPulse) Descriptor() ([]byte, []int) {
+	return file_protocol_browser_v1_telemetry_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *NetworkPulse) GetMonitors() map[string]*NetworkSnapshot {
+	if x != nil {
+		return x.Monitors
+	}
+	return nil
+}
+
+type NetworkSnapshot struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	AgentId       string                 `protobuf:"bytes,1,opt,name=agent_id,json=agentId,proto3" json:"agent_id,omitempty"`
+	Enabled       bool                   `protobuf:"varint,2,opt,name=enabled,proto3" json:"enabled,omitempty"`
+	State         string                 `protobuf:"bytes,3,opt,name=state,proto3" json:"state,omitempty"`
+	Sync          *NetworkSync           `protobuf:"bytes,4,opt,name=sync,proto3" json:"sync,omitempty"`
+	Latest        *NetworkLatest         `protobuf:"bytes,5,opt,name=latest,proto3" json:"latest,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NetworkSnapshot) Reset() {
+	*x = NetworkSnapshot{}
+	mi := &file_protocol_browser_v1_telemetry_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NetworkSnapshot) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NetworkSnapshot) ProtoMessage() {}
+
+func (x *NetworkSnapshot) ProtoReflect() protoreflect.Message {
+	mi := &file_protocol_browser_v1_telemetry_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NetworkSnapshot.ProtoReflect.Descriptor instead.
+func (*NetworkSnapshot) Descriptor() ([]byte, []int) {
+	return file_protocol_browser_v1_telemetry_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *NetworkSnapshot) GetAgentId() string {
+	if x != nil {
+		return x.AgentId
+	}
+	return ""
+}
+
+func (x *NetworkSnapshot) GetEnabled() bool {
+	if x != nil {
+		return x.Enabled
+	}
+	return false
+}
+
+func (x *NetworkSnapshot) GetState() string {
+	if x != nil {
+		return x.State
+	}
+	return ""
+}
+
+func (x *NetworkSnapshot) GetSync() *NetworkSync {
+	if x != nil {
+		return x.Sync
+	}
+	return nil
+}
+
+func (x *NetworkSnapshot) GetLatest() *NetworkLatest {
+	if x != nil {
+		return x.Latest
+	}
+	return nil
+}
+
+type NetworkSync struct {
+	state                  protoimpl.MessageState `protogen:"open.v1"`
+	DesiredGeneration      int64                  `protobuf:"varint,1,opt,name=desired_generation,json=desiredGeneration,proto3" json:"desired_generation,omitempty"`
+	AcknowledgedGeneration int64                  `protobuf:"varint,2,opt,name=acknowledged_generation,json=acknowledgedGeneration,proto3" json:"acknowledged_generation,omitempty"`
+	Error                  string                 `protobuf:"bytes,3,opt,name=error,proto3" json:"error,omitempty"`
+	LastAttempt            *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=last_attempt,json=lastAttempt,proto3" json:"last_attempt,omitempty"`
+	LastAck                *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=last_ack,json=lastAck,proto3" json:"last_ack,omitempty"`
+	unknownFields          protoimpl.UnknownFields
+	sizeCache              protoimpl.SizeCache
+}
+
+func (x *NetworkSync) Reset() {
+	*x = NetworkSync{}
+	mi := &file_protocol_browser_v1_telemetry_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NetworkSync) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NetworkSync) ProtoMessage() {}
+
+func (x *NetworkSync) ProtoReflect() protoreflect.Message {
+	mi := &file_protocol_browser_v1_telemetry_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NetworkSync.ProtoReflect.Descriptor instead.
+func (*NetworkSync) Descriptor() ([]byte, []int) {
+	return file_protocol_browser_v1_telemetry_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *NetworkSync) GetDesiredGeneration() int64 {
+	if x != nil {
+		return x.DesiredGeneration
+	}
+	return 0
+}
+
+func (x *NetworkSync) GetAcknowledgedGeneration() int64 {
+	if x != nil {
+		return x.AcknowledgedGeneration
+	}
+	return 0
+}
+
+func (x *NetworkSync) GetError() string {
+	if x != nil {
+		return x.Error
+	}
+	return ""
+}
+
+func (x *NetworkSync) GetLastAttempt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.LastAttempt
+	}
+	return nil
+}
+
+func (x *NetworkSync) GetLastAck() *timestamppb.Timestamp {
+	if x != nil {
+		return x.LastAck
+	}
+	return nil
+}
+
+type NetworkLatest struct {
+	state                 protoimpl.MessageState `protogen:"open.v1"`
+	ResponseAvgMs         *FloatValue            `protobuf:"bytes,1,opt,name=response_avg_ms,json=responseAvgMs,proto3" json:"response_avg_ms,omitempty"`
+	ResponseMinMs         *FloatValue            `protobuf:"bytes,2,opt,name=response_min_ms,json=responseMinMs,proto3" json:"response_min_ms,omitempty"`
+	ResponseMaxMs         *FloatValue            `protobuf:"bytes,3,opt,name=response_max_ms,json=responseMaxMs,proto3" json:"response_max_ms,omitempty"`
+	ResponseAvg_1HMs      *FloatValue            `protobuf:"bytes,4,opt,name=response_avg_1h_ms,json=responseAvg1hMs,proto3" json:"response_avg_1h_ms,omitempty"`
+	ResponseMin_1HMs      *FloatValue            `protobuf:"bytes,5,opt,name=response_min_1h_ms,json=responseMin1hMs,proto3" json:"response_min_1h_ms,omitempty"`
+	ResponseMax_1HMs      *FloatValue            `protobuf:"bytes,6,opt,name=response_max_1h_ms,json=responseMax1hMs,proto3" json:"response_max_1h_ms,omitempty"`
+	LossPct               float64                `protobuf:"fixed64,7,opt,name=loss_pct,json=lossPct,proto3" json:"loss_pct,omitempty"`
+	Loss_1HPct            float64                `protobuf:"fixed64,8,opt,name=loss_1h_pct,json=loss1hPct,proto3" json:"loss_1h_pct,omitempty"`
+	LastProbeAt           int64                  `protobuf:"varint,9,opt,name=last_probe_at,json=lastProbeAt,proto3" json:"last_probe_at,omitempty"`
+	SampleCount           int64                  `protobuf:"varint,10,opt,name=sample_count,json=sampleCount,proto3" json:"sample_count,omitempty"`
+	AttemptCount          int64                  `protobuf:"varint,11,opt,name=attempt_count,json=attemptCount,proto3" json:"attempt_count,omitempty"`
+	SuccessCount          int64                  `protobuf:"varint,12,opt,name=success_count,json=successCount,proto3" json:"success_count,omitempty"`
+	ReceivedAt            int64                  `protobuf:"varint,13,opt,name=received_at,json=receivedAt,proto3" json:"received_at,omitempty"`
+	Certificate           *NetworkCertificate    `protobuf:"bytes,14,opt,name=certificate,proto3" json:"certificate,omitempty"`
+	CertificateReceivedAt int64                  `protobuf:"varint,15,opt,name=certificate_received_at,json=certificateReceivedAt,proto3" json:"certificate_received_at,omitempty"`
+	unknownFields         protoimpl.UnknownFields
+	sizeCache             protoimpl.SizeCache
+}
+
+func (x *NetworkLatest) Reset() {
+	*x = NetworkLatest{}
+	mi := &file_protocol_browser_v1_telemetry_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NetworkLatest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NetworkLatest) ProtoMessage() {}
+
+func (x *NetworkLatest) ProtoReflect() protoreflect.Message {
+	mi := &file_protocol_browser_v1_telemetry_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NetworkLatest.ProtoReflect.Descriptor instead.
+func (*NetworkLatest) Descriptor() ([]byte, []int) {
+	return file_protocol_browser_v1_telemetry_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *NetworkLatest) GetResponseAvgMs() *FloatValue {
+	if x != nil {
+		return x.ResponseAvgMs
+	}
+	return nil
+}
+
+func (x *NetworkLatest) GetResponseMinMs() *FloatValue {
+	if x != nil {
+		return x.ResponseMinMs
+	}
+	return nil
+}
+
+func (x *NetworkLatest) GetResponseMaxMs() *FloatValue {
+	if x != nil {
+		return x.ResponseMaxMs
+	}
+	return nil
+}
+
+func (x *NetworkLatest) GetResponseAvg_1HMs() *FloatValue {
+	if x != nil {
+		return x.ResponseAvg_1HMs
+	}
+	return nil
+}
+
+func (x *NetworkLatest) GetResponseMin_1HMs() *FloatValue {
+	if x != nil {
+		return x.ResponseMin_1HMs
+	}
+	return nil
+}
+
+func (x *NetworkLatest) GetResponseMax_1HMs() *FloatValue {
+	if x != nil {
+		return x.ResponseMax_1HMs
+	}
+	return nil
+}
+
+func (x *NetworkLatest) GetLossPct() float64 {
+	if x != nil {
+		return x.LossPct
+	}
+	return 0
+}
+
+func (x *NetworkLatest) GetLoss_1HPct() float64 {
+	if x != nil {
+		return x.Loss_1HPct
+	}
+	return 0
+}
+
+func (x *NetworkLatest) GetLastProbeAt() int64 {
+	if x != nil {
+		return x.LastProbeAt
+	}
+	return 0
+}
+
+func (x *NetworkLatest) GetSampleCount() int64 {
+	if x != nil {
+		return x.SampleCount
+	}
+	return 0
+}
+
+func (x *NetworkLatest) GetAttemptCount() int64 {
+	if x != nil {
+		return x.AttemptCount
+	}
+	return 0
+}
+
+func (x *NetworkLatest) GetSuccessCount() int64 {
+	if x != nil {
+		return x.SuccessCount
+	}
+	return 0
+}
+
+func (x *NetworkLatest) GetReceivedAt() int64 {
+	if x != nil {
+		return x.ReceivedAt
+	}
+	return 0
+}
+
+func (x *NetworkLatest) GetCertificate() *NetworkCertificate {
+	if x != nil {
+		return x.Certificate
+	}
+	return nil
+}
+
+func (x *NetworkLatest) GetCertificateReceivedAt() int64 {
+	if x != nil {
+		return x.CertificateReceivedAt
+	}
+	return 0
+}
+
+type NetworkCertificate struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Expires       int64                  `protobuf:"varint,1,opt,name=expires,proto3" json:"expires,omitempty"`
+	Issuer        string                 `protobuf:"bytes,2,opt,name=issuer,proto3" json:"issuer,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NetworkCertificate) Reset() {
+	*x = NetworkCertificate{}
+	mi := &file_protocol_browser_v1_telemetry_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NetworkCertificate) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NetworkCertificate) ProtoMessage() {}
+
+func (x *NetworkCertificate) ProtoReflect() protoreflect.Message {
+	mi := &file_protocol_browser_v1_telemetry_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NetworkCertificate.ProtoReflect.Descriptor instead.
+func (*NetworkCertificate) Descriptor() ([]byte, []int) {
+	return file_protocol_browser_v1_telemetry_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *NetworkCertificate) GetExpires() int64 {
+	if x != nil {
+		return x.Expires
+	}
+	return 0
+}
+
+func (x *NetworkCertificate) GetIssuer() string {
+	if x != nil {
+		return x.Issuer
+	}
+	return ""
+}
+
 var File_protocol_browser_v1_telemetry_proto protoreflect.FileDescriptor
 
 const file_protocol_browser_v1_telemetry_proto_rawDesc = "" +
 	"\n" +
 	"#protocol/browser/v1/telemetry.proto\x12\x17certainstats.browser.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"R\n" +
 	"\x11TelemetryEnvelope\x12=\n" +
-	"\x05pulse\x18\x01 \x01(\v2'.certainstats.browser.v1.TelemetryPulseR\x05pulse\"\xbb\x01\n" +
+	"\x05pulse\x18\x01 \x01(\v2'.certainstats.browser.v1.TelemetryPulseR\x05pulse\"\xfc\x01\n" +
 	"\x0eTelemetryPulse\x12K\n" +
-	"\x06agents\x18\x01 \x03(\v23.certainstats.browser.v1.TelemetryPulse.AgentsEntryR\x06agents\x1a\\\n" +
+	"\x06agents\x18\x01 \x03(\v23.certainstats.browser.v1.TelemetryPulse.AgentsEntryR\x06agents\x12?\n" +
+	"\anetwork\x18\x02 \x01(\v2%.certainstats.browser.v1.NetworkPulseR\anetwork\x1a\\\n" +
 	"\vAgentsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x127\n" +
 	"\x05value\x18\x02 \x01(\v2!.certainstats.browser.v1.SnapshotR\x05value:\x028\x01\"1\n" +
@@ -847,7 +1261,45 @@ const file_protocol_browser_v1_telemetry_proto_rawDesc = "" +
 	"\tcpu_cores\x18\x04 \x01(\rR\bcpuCores\x12\x19\n" +
 	"\bram_size\x18\x05 \x01(\x04R\aramSize\x12\x1b\n" +
 	"\tswap_size\x18\x06 \x01(\x04R\bswapSize\x12\x1b\n" +
-	"\tdisk_size\x18\a \x01(\x04R\bdiskSizeB$Z\"certainstats/internal/ws/browserpbb\x06proto3"
+	"\tdisk_size\x18\a \x01(\x04R\bdiskSize\"\xc6\x01\n" +
+	"\fNetworkPulse\x12O\n" +
+	"\bmonitors\x18\x01 \x03(\v23.certainstats.browser.v1.NetworkPulse.MonitorsEntryR\bmonitors\x1ae\n" +
+	"\rMonitorsEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12>\n" +
+	"\x05value\x18\x02 \x01(\v2(.certainstats.browser.v1.NetworkSnapshotR\x05value:\x028\x01\"\xd6\x01\n" +
+	"\x0fNetworkSnapshot\x12\x19\n" +
+	"\bagent_id\x18\x01 \x01(\tR\aagentId\x12\x18\n" +
+	"\aenabled\x18\x02 \x01(\bR\aenabled\x12\x14\n" +
+	"\x05state\x18\x03 \x01(\tR\x05state\x128\n" +
+	"\x04sync\x18\x04 \x01(\v2$.certainstats.browser.v1.NetworkSyncR\x04sync\x12>\n" +
+	"\x06latest\x18\x05 \x01(\v2&.certainstats.browser.v1.NetworkLatestR\x06latest\"\x81\x02\n" +
+	"\vNetworkSync\x12-\n" +
+	"\x12desired_generation\x18\x01 \x01(\x03R\x11desiredGeneration\x127\n" +
+	"\x17acknowledged_generation\x18\x02 \x01(\x03R\x16acknowledgedGeneration\x12\x14\n" +
+	"\x05error\x18\x03 \x01(\tR\x05error\x12=\n" +
+	"\flast_attempt\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\vlastAttempt\x125\n" +
+	"\blast_ack\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\alastAck\"\xe0\x06\n" +
+	"\rNetworkLatest\x12K\n" +
+	"\x0fresponse_avg_ms\x18\x01 \x01(\v2#.certainstats.browser.v1.FloatValueR\rresponseAvgMs\x12K\n" +
+	"\x0fresponse_min_ms\x18\x02 \x01(\v2#.certainstats.browser.v1.FloatValueR\rresponseMinMs\x12K\n" +
+	"\x0fresponse_max_ms\x18\x03 \x01(\v2#.certainstats.browser.v1.FloatValueR\rresponseMaxMs\x12P\n" +
+	"\x12response_avg_1h_ms\x18\x04 \x01(\v2#.certainstats.browser.v1.FloatValueR\x0fresponseAvg1hMs\x12P\n" +
+	"\x12response_min_1h_ms\x18\x05 \x01(\v2#.certainstats.browser.v1.FloatValueR\x0fresponseMin1hMs\x12P\n" +
+	"\x12response_max_1h_ms\x18\x06 \x01(\v2#.certainstats.browser.v1.FloatValueR\x0fresponseMax1hMs\x12\x19\n" +
+	"\bloss_pct\x18\a \x01(\x01R\alossPct\x12\x1e\n" +
+	"\vloss_1h_pct\x18\b \x01(\x01R\tloss1hPct\x12\"\n" +
+	"\rlast_probe_at\x18\t \x01(\x03R\vlastProbeAt\x12!\n" +
+	"\fsample_count\x18\n" +
+	" \x01(\x03R\vsampleCount\x12#\n" +
+	"\rattempt_count\x18\v \x01(\x03R\fattemptCount\x12#\n" +
+	"\rsuccess_count\x18\f \x01(\x03R\fsuccessCount\x12\x1f\n" +
+	"\vreceived_at\x18\r \x01(\x03R\n" +
+	"receivedAt\x12M\n" +
+	"\vcertificate\x18\x0e \x01(\v2+.certainstats.browser.v1.NetworkCertificateR\vcertificate\x126\n" +
+	"\x17certificate_received_at\x18\x0f \x01(\x03R\x15certificateReceivedAt\"F\n" +
+	"\x12NetworkCertificate\x12\x18\n" +
+	"\aexpires\x18\x01 \x01(\x03R\aexpires\x12\x16\n" +
+	"\x06issuer\x18\x02 \x01(\tR\x06issuerB$Z\"certainstats/internal/ws/browserpbb\x06proto3"
 
 var (
 	file_protocol_browser_v1_telemetry_proto_rawDescOnce sync.Once
@@ -861,7 +1313,7 @@ func file_protocol_browser_v1_telemetry_proto_rawDescGZIP() []byte {
 	return file_protocol_browser_v1_telemetry_proto_rawDescData
 }
 
-var file_protocol_browser_v1_telemetry_proto_msgTypes = make([]protoimpl.MessageInfo, 14)
+var file_protocol_browser_v1_telemetry_proto_msgTypes = make([]protoimpl.MessageInfo, 20)
 var file_protocol_browser_v1_telemetry_proto_goTypes = []any{
 	(*TelemetryEnvelope)(nil),     // 0: certainstats.browser.v1.TelemetryEnvelope
 	(*TelemetryPulse)(nil),        // 1: certainstats.browser.v1.TelemetryPulse
@@ -874,46 +1326,66 @@ var file_protocol_browser_v1_telemetry_proto_goTypes = []any{
 	(*Snapshot)(nil),              // 8: certainstats.browser.v1.Snapshot
 	(*Disk)(nil),                  // 9: certainstats.browser.v1.Disk
 	(*Metadata)(nil),              // 10: certainstats.browser.v1.Metadata
-	nil,                           // 11: certainstats.browser.v1.TelemetryPulse.AgentsEntry
-	nil,                           // 12: certainstats.browser.v1.Temperatures.ValuesEntry
-	nil,                           // 13: certainstats.browser.v1.MissingMetrics.ValuesEntry
-	(*timestamppb.Timestamp)(nil), // 14: google.protobuf.Timestamp
+	(*NetworkPulse)(nil),          // 11: certainstats.browser.v1.NetworkPulse
+	(*NetworkSnapshot)(nil),       // 12: certainstats.browser.v1.NetworkSnapshot
+	(*NetworkSync)(nil),           // 13: certainstats.browser.v1.NetworkSync
+	(*NetworkLatest)(nil),         // 14: certainstats.browser.v1.NetworkLatest
+	(*NetworkCertificate)(nil),    // 15: certainstats.browser.v1.NetworkCertificate
+	nil,                           // 16: certainstats.browser.v1.TelemetryPulse.AgentsEntry
+	nil,                           // 17: certainstats.browser.v1.Temperatures.ValuesEntry
+	nil,                           // 18: certainstats.browser.v1.MissingMetrics.ValuesEntry
+	nil,                           // 19: certainstats.browser.v1.NetworkPulse.MonitorsEntry
+	(*timestamppb.Timestamp)(nil), // 20: google.protobuf.Timestamp
 }
 var file_protocol_browser_v1_telemetry_proto_depIdxs = []int32{
 	1,  // 0: certainstats.browser.v1.TelemetryEnvelope.pulse:type_name -> certainstats.browser.v1.TelemetryPulse
-	11, // 1: certainstats.browser.v1.TelemetryPulse.agents:type_name -> certainstats.browser.v1.TelemetryPulse.AgentsEntry
-	9,  // 2: certainstats.browser.v1.DiskList.items:type_name -> certainstats.browser.v1.Disk
-	12, // 3: certainstats.browser.v1.Temperatures.values:type_name -> certainstats.browser.v1.Temperatures.ValuesEntry
-	13, // 4: certainstats.browser.v1.MissingMetrics.values:type_name -> certainstats.browser.v1.MissingMetrics.ValuesEntry
-	14, // 5: certainstats.browser.v1.Snapshot.timestamp:type_name -> google.protobuf.Timestamp
-	2,  // 6: certainstats.browser.v1.Snapshot.cpu_usage_percent:type_name -> certainstats.browser.v1.FloatValue
-	2,  // 7: certainstats.browser.v1.Snapshot.cpu_iowait_percent:type_name -> certainstats.browser.v1.FloatValue
-	2,  // 8: certainstats.browser.v1.Snapshot.cpu_steal_percent:type_name -> certainstats.browser.v1.FloatValue
-	3,  // 9: certainstats.browser.v1.Snapshot.ram_used_bytes:type_name -> certainstats.browser.v1.UintValue
-	3,  // 10: certainstats.browser.v1.Snapshot.ram_swap_used_bytes:type_name -> certainstats.browser.v1.UintValue
-	3,  // 11: certainstats.browser.v1.Snapshot.disk_used_bytes:type_name -> certainstats.browser.v1.UintValue
-	3,  // 12: certainstats.browser.v1.Snapshot.disk_total_bytes:type_name -> certainstats.browser.v1.UintValue
-	4,  // 13: certainstats.browser.v1.Snapshot.disks:type_name -> certainstats.browser.v1.DiskList
-	5,  // 14: certainstats.browser.v1.Snapshot.load_avg:type_name -> certainstats.browser.v1.LoadAverage
-	6,  // 15: certainstats.browser.v1.Snapshot.temperatures:type_name -> certainstats.browser.v1.Temperatures
-	2,  // 16: certainstats.browser.v1.Snapshot.rx_bytes:type_name -> certainstats.browser.v1.FloatValue
-	2,  // 17: certainstats.browser.v1.Snapshot.tx_bytes:type_name -> certainstats.browser.v1.FloatValue
-	2,  // 18: certainstats.browser.v1.Snapshot.rx_bps:type_name -> certainstats.browser.v1.FloatValue
-	2,  // 19: certainstats.browser.v1.Snapshot.tx_bps:type_name -> certainstats.browser.v1.FloatValue
-	2,  // 20: certainstats.browser.v1.Snapshot.disk_read_bps:type_name -> certainstats.browser.v1.FloatValue
-	2,  // 21: certainstats.browser.v1.Snapshot.disk_write_bps:type_name -> certainstats.browser.v1.FloatValue
-	10, // 22: certainstats.browser.v1.Snapshot.metadata:type_name -> certainstats.browser.v1.Metadata
-	7,  // 23: certainstats.browser.v1.Snapshot.missing:type_name -> certainstats.browser.v1.MissingMetrics
-	3,  // 24: certainstats.browser.v1.Disk.used_bytes:type_name -> certainstats.browser.v1.UintValue
-	3,  // 25: certainstats.browser.v1.Disk.total_bytes:type_name -> certainstats.browser.v1.UintValue
-	3,  // 26: certainstats.browser.v1.Disk.read_bytes:type_name -> certainstats.browser.v1.UintValue
-	3,  // 27: certainstats.browser.v1.Disk.write_bytes:type_name -> certainstats.browser.v1.UintValue
-	8,  // 28: certainstats.browser.v1.TelemetryPulse.AgentsEntry.value:type_name -> certainstats.browser.v1.Snapshot
-	29, // [29:29] is the sub-list for method output_type
-	29, // [29:29] is the sub-list for method input_type
-	29, // [29:29] is the sub-list for extension type_name
-	29, // [29:29] is the sub-list for extension extendee
-	0,  // [0:29] is the sub-list for field type_name
+	16, // 1: certainstats.browser.v1.TelemetryPulse.agents:type_name -> certainstats.browser.v1.TelemetryPulse.AgentsEntry
+	11, // 2: certainstats.browser.v1.TelemetryPulse.network:type_name -> certainstats.browser.v1.NetworkPulse
+	9,  // 3: certainstats.browser.v1.DiskList.items:type_name -> certainstats.browser.v1.Disk
+	17, // 4: certainstats.browser.v1.Temperatures.values:type_name -> certainstats.browser.v1.Temperatures.ValuesEntry
+	18, // 5: certainstats.browser.v1.MissingMetrics.values:type_name -> certainstats.browser.v1.MissingMetrics.ValuesEntry
+	20, // 6: certainstats.browser.v1.Snapshot.timestamp:type_name -> google.protobuf.Timestamp
+	2,  // 7: certainstats.browser.v1.Snapshot.cpu_usage_percent:type_name -> certainstats.browser.v1.FloatValue
+	2,  // 8: certainstats.browser.v1.Snapshot.cpu_iowait_percent:type_name -> certainstats.browser.v1.FloatValue
+	2,  // 9: certainstats.browser.v1.Snapshot.cpu_steal_percent:type_name -> certainstats.browser.v1.FloatValue
+	3,  // 10: certainstats.browser.v1.Snapshot.ram_used_bytes:type_name -> certainstats.browser.v1.UintValue
+	3,  // 11: certainstats.browser.v1.Snapshot.ram_swap_used_bytes:type_name -> certainstats.browser.v1.UintValue
+	3,  // 12: certainstats.browser.v1.Snapshot.disk_used_bytes:type_name -> certainstats.browser.v1.UintValue
+	3,  // 13: certainstats.browser.v1.Snapshot.disk_total_bytes:type_name -> certainstats.browser.v1.UintValue
+	4,  // 14: certainstats.browser.v1.Snapshot.disks:type_name -> certainstats.browser.v1.DiskList
+	5,  // 15: certainstats.browser.v1.Snapshot.load_avg:type_name -> certainstats.browser.v1.LoadAverage
+	6,  // 16: certainstats.browser.v1.Snapshot.temperatures:type_name -> certainstats.browser.v1.Temperatures
+	2,  // 17: certainstats.browser.v1.Snapshot.rx_bytes:type_name -> certainstats.browser.v1.FloatValue
+	2,  // 18: certainstats.browser.v1.Snapshot.tx_bytes:type_name -> certainstats.browser.v1.FloatValue
+	2,  // 19: certainstats.browser.v1.Snapshot.rx_bps:type_name -> certainstats.browser.v1.FloatValue
+	2,  // 20: certainstats.browser.v1.Snapshot.tx_bps:type_name -> certainstats.browser.v1.FloatValue
+	2,  // 21: certainstats.browser.v1.Snapshot.disk_read_bps:type_name -> certainstats.browser.v1.FloatValue
+	2,  // 22: certainstats.browser.v1.Snapshot.disk_write_bps:type_name -> certainstats.browser.v1.FloatValue
+	10, // 23: certainstats.browser.v1.Snapshot.metadata:type_name -> certainstats.browser.v1.Metadata
+	7,  // 24: certainstats.browser.v1.Snapshot.missing:type_name -> certainstats.browser.v1.MissingMetrics
+	3,  // 25: certainstats.browser.v1.Disk.used_bytes:type_name -> certainstats.browser.v1.UintValue
+	3,  // 26: certainstats.browser.v1.Disk.total_bytes:type_name -> certainstats.browser.v1.UintValue
+	3,  // 27: certainstats.browser.v1.Disk.read_bytes:type_name -> certainstats.browser.v1.UintValue
+	3,  // 28: certainstats.browser.v1.Disk.write_bytes:type_name -> certainstats.browser.v1.UintValue
+	19, // 29: certainstats.browser.v1.NetworkPulse.monitors:type_name -> certainstats.browser.v1.NetworkPulse.MonitorsEntry
+	13, // 30: certainstats.browser.v1.NetworkSnapshot.sync:type_name -> certainstats.browser.v1.NetworkSync
+	14, // 31: certainstats.browser.v1.NetworkSnapshot.latest:type_name -> certainstats.browser.v1.NetworkLatest
+	20, // 32: certainstats.browser.v1.NetworkSync.last_attempt:type_name -> google.protobuf.Timestamp
+	20, // 33: certainstats.browser.v1.NetworkSync.last_ack:type_name -> google.protobuf.Timestamp
+	2,  // 34: certainstats.browser.v1.NetworkLatest.response_avg_ms:type_name -> certainstats.browser.v1.FloatValue
+	2,  // 35: certainstats.browser.v1.NetworkLatest.response_min_ms:type_name -> certainstats.browser.v1.FloatValue
+	2,  // 36: certainstats.browser.v1.NetworkLatest.response_max_ms:type_name -> certainstats.browser.v1.FloatValue
+	2,  // 37: certainstats.browser.v1.NetworkLatest.response_avg_1h_ms:type_name -> certainstats.browser.v1.FloatValue
+	2,  // 38: certainstats.browser.v1.NetworkLatest.response_min_1h_ms:type_name -> certainstats.browser.v1.FloatValue
+	2,  // 39: certainstats.browser.v1.NetworkLatest.response_max_1h_ms:type_name -> certainstats.browser.v1.FloatValue
+	15, // 40: certainstats.browser.v1.NetworkLatest.certificate:type_name -> certainstats.browser.v1.NetworkCertificate
+	8,  // 41: certainstats.browser.v1.TelemetryPulse.AgentsEntry.value:type_name -> certainstats.browser.v1.Snapshot
+	12, // 42: certainstats.browser.v1.NetworkPulse.MonitorsEntry.value:type_name -> certainstats.browser.v1.NetworkSnapshot
+	43, // [43:43] is the sub-list for method output_type
+	43, // [43:43] is the sub-list for method input_type
+	43, // [43:43] is the sub-list for extension type_name
+	43, // [43:43] is the sub-list for extension extendee
+	0,  // [0:43] is the sub-list for field type_name
 }
 
 func init() { file_protocol_browser_v1_telemetry_proto_init() }
@@ -930,7 +1402,7 @@ func file_protocol_browser_v1_telemetry_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_protocol_browser_v1_telemetry_proto_rawDesc), len(file_protocol_browser_v1_telemetry_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   14,
+			NumMessages:   20,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

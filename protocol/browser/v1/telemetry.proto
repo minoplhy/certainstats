@@ -12,6 +12,7 @@ message TelemetryEnvelope {
 }
 message TelemetryPulse {
   map<string, Snapshot> agents = 1;
+  NetworkPulse network = 2;
 }
 
 // Absent wrapper = not provided/allowed. Present empty wrapper = unavailable.
@@ -64,3 +65,38 @@ message Metadata {
   uint64 swap_size = 6;
   uint64 disk_size = 7;
 }
+
+// Present network pulse is a complete owner-scoped set of non-archived monitors.
+message NetworkPulse { map<string, NetworkSnapshot> monitors = 1; }
+message NetworkSnapshot {
+  string agent_id = 1;
+  bool enabled = 2;
+  string state = 3;
+  NetworkSync sync = 4;
+  NetworkLatest latest = 5;
+}
+message NetworkSync {
+  int64 desired_generation = 1;
+  int64 acknowledged_generation = 2;
+  string error = 3;
+  google.protobuf.Timestamp last_attempt = 4;
+  google.protobuf.Timestamp last_ack = 5;
+}
+message NetworkLatest {
+  FloatValue response_avg_ms = 1;
+  FloatValue response_min_ms = 2;
+  FloatValue response_max_ms = 3;
+  FloatValue response_avg_1h_ms = 4;
+  FloatValue response_min_1h_ms = 5;
+  FloatValue response_max_1h_ms = 6;
+  double loss_pct = 7;
+  double loss_1h_pct = 8;
+  int64 last_probe_at = 9;
+  int64 sample_count = 10;
+  int64 attempt_count = 11;
+  int64 success_count = 12;
+  int64 received_at = 13;
+  NetworkCertificate certificate = 14;
+  int64 certificate_received_at = 15;
+}
+message NetworkCertificate { int64 expires = 1; string issuer = 2; }

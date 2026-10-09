@@ -3,6 +3,7 @@
 (function () {
   'use strict';
 
+  let timePickerInstance = 0;
   const Modal = {
     open: function (target) {
       const el = typeof target === 'string' ? document.getElementById(target) : target;
@@ -95,6 +96,14 @@
   ];
 
   let globalSocket = null;
+  let socketStarted = false;
+  // Network pulses ride the shared agent feed; undefined until the first one arrives.
+  let latestNetwork;
+  let lastNetworkPulse = 0;
+  let networkConnected = false;
+  // Counts socket connections so views can reconcile after a reconnect.
+  let connectionGeneration = 0;
+  const networkListeners = new Set();
   let updateListeners = [];
 
   function normalizeSnapshot(snap) {
@@ -365,14 +374,24 @@
     },
 
     // Initialize Dropdown & Custom Range Date-Time Picker
-    initCustomTimePicker: function (containerId, options) {
-      const container = document.getElementById(containerId);
+    initCustomTimePicker: function (containerId, options = {}) {
+      const container = typeof containerId === 'string' ? document.getElementById(containerId) : containerId;
       if (!container) return;
 
+      container._timePicker?.destroy();
+      const prefix = 'time-picker-' + (++timePickerInstance) + '-';
+      const control = id => container.querySelector('#' + prefix + id);
+      const remember = hours => {
+        try {
+          localStorage.setItem(storageKey, String(hours));
+        } catch (e) {}
+      };
       const maxDays = options.maxDays ?? null;
       const storageKey = options.storageKey || (options.isPublic || (maxDays !== null && maxDays > 0) ? 'certainstats_public_active_hours' : 'certainstats_active_hours');
-      let activeHours = parseInt(localStorage.getItem(storageKey) || '6', 10);
-      if (isNaN(activeHours) || activeHours <= 0) activeHours = 6;
+      let remembered = '6';
+      try {remembered = localStorage.getItem(storageKey) || '6';} catch (e) {}
+      let activeHours = parseInt(options.activeHours ?? remembered, 10);
+      if (!TIME_RANGES.some(r => r.value === activeHours)) activeHours = 6;
       let customRange = null; // { start, end }
       const onApply = options.onApply || function () {};
 
@@ -383,13 +402,13 @@
         ranges = TIME_RANGES.filter(r => r.value <= maxHours);
         if (activeHours > maxHours || !ranges.some(r => r.value === activeHours)) {
           activeHours = ranges.length > 0 ? (ranges.find(r => r.value === 6)?.value || ranges[0].value) : 6;
-          localStorage.setItem(storageKey, activeHours.toString());
+          remember(activeHours);
         }
       }
 
       function hidePickerDropdown(dropdown) {
         dropdown.style.display = 'none';
-        const trigger = document.getElementById('time-picker-trigger');
+        const trigger = control('time-picker-trigger');
         if (trigger) trigger.setAttribute('aria-expanded', 'false');
       }
 
@@ -409,11 +428,11 @@
               `).join('')}
             </div>
             <div class="time-picker">
-              <button type="button" id="time-picker-trigger" class="btn btn-secondary btn-sm${customRange ? ' is-active' : ''}" aria-haspopup="true" aria-expanded="false">
-                <span id="time-picker-label">${customRange ? 'Custom range' : 'Custom'}</span>
+              <button type="button" id="${prefix}time-picker-trigger" class="btn btn-secondary btn-sm${customRange ? ' is-active' : ''}" aria-haspopup="true" aria-expanded="false" aria-controls="${prefix}time-picker-dropdown">
+                <span id="${prefix}time-picker-label">${customRange ? 'Custom range' : 'Custom'}</span>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
               </button>
-              <div id="time-picker-dropdown" class="time-picker-dropdown-panel" style="display: none;">
+              <div id="${prefix}time-picker-dropdown" class="time-picker-dropdown-panel" style="display: none;">
                 <div class="picker-label">Quick ranges</div>
                 <div class="picker-grid">
                   ${ranges.map(r => `
@@ -424,16 +443,16 @@
                 <div class="picker-fields">
                   <label class="picker-field">
                     <span>Start</span>
-                    <input type="datetime-local" id="custom-start-input" class="form-input form-input-sm">
+                    <input type="datetime-local" id="${prefix}custom-start-input" class="form-input form-input-sm">
                   </label>
                   <label class="picker-field">
                     <span>End</span>
-                    <input type="datetime-local" id="custom-end-input" class="form-input form-input-sm">
+                    <input type="datetime-local" id="${prefix}custom-end-input" class="form-input form-input-sm">
                   </label>
                 </div>
                 <div class="picker-actions">
-                  ${customRange ? `<button type="button" id="clear-custom-range" class="btn btn-secondary btn-sm">Reset</button>` : ''}
-                  <button type="button" id="apply-custom-range" class="btn btn-primary btn-sm">Apply</button>
+                  ${customRange ? `<button type="button" id="${prefix}clear-custom-range" class="btn btn-secondary btn-sm">Reset</button>` : ''}
+                  <button type="button" id="${prefix}apply-custom-range" class="btn btn-primary btn-sm">Apply</button>
                 </div>
               </div>
             </div>
@@ -441,10 +460,10 @@
         `;
 
         if (options.isPublic || maxDays !== null) container.querySelector('.time-picker')?.remove();
-        const trigger = document.getElementById('time-picker-trigger');
-        const dropdown = document.getElementById('time-picker-dropdown');
-        const startInput = document.getElementById('custom-start-input');
-        const endInput = document.getElementById('custom-end-input');
+        const trigger = control('time-picker-trigger');
+        const dropdown = control('time-picker-dropdown');
+        const startInput = control('custom-start-input');
+        const endInput = control('custom-end-input');
 
         const now = new Date();
         const start = new Date(now.getTime() - activeHours * 3600 * 1000);
@@ -487,9 +506,6 @@
           dropdown.onclick = function (e) { e.stopPropagation(); };
         }
 
-        document.addEventListener('click', function () {
-          if (dropdown) hidePickerDropdown(dropdown);
-        });
 
         container.querySelectorAll('.quick-range-pill, .dropdown-range-btn').forEach(btn => {
           btn.onclick = function (e) {
@@ -498,14 +514,14 @@
             const val = parseInt(this.getAttribute('data-val'), 10);
             activeHours = val;
             customRange = null;
-            localStorage.setItem(storageKey, val.toString());
+            remember(val);
             if (dropdown) hidePickerDropdown(dropdown);
             render();
             onApply({ hours: val, customRange: null });
           };
         });
 
-        const applyBtn = document.getElementById('apply-custom-range');
+        const applyBtn = control('apply-custom-range');
         if (applyBtn) {
           applyBtn.onclick = function () {
             if (!startInput.value || !endInput.value) return;
@@ -522,7 +538,7 @@
           };
         }
 
-        const clearBtn = document.getElementById('clear-custom-range');
+        const clearBtn = control('clear-custom-range');
         if (clearBtn) {
           clearBtn.onclick = function () {
             customRange = null;
@@ -533,22 +549,52 @@
         }
       }
 
-      container.onkeydown = function(event) {
+      const hideDropdown = () => {
+        const dropdown = control('time-picker-dropdown');
+        if (dropdown) hidePickerDropdown(dropdown);
+      };
+      const outsideClick = event => {
+        if (!container.contains(event.target)) hideDropdown();
+      };
+      document.addEventListener('click', outsideClick);
+      const keydown = function(event) {
+        if (event.key === 'Escape') {
+          hideDropdown();
+          control('time-picker-trigger')?.focus();
+          return;
+        }
         if (!['ArrowLeft','ArrowRight','Home','End'].includes(event.key)) return;
         const buttons=Array.from(container.querySelectorAll('.quick-range-pill'));
         const index=buttons.indexOf(document.activeElement);if(index<0) return;event.preventDefault();
         const next=event.key==='Home'?0:event.key==='End'?buttons.length-1:(index+(event.key==='ArrowRight'?1:-1)+buttons.length)%buttons.length;
         const value=buttons[next].getAttribute('data-val');buttons[next].click();container.querySelector('.quick-range-pill[data-val="'+value+'"]')?.focus();
       };
+      container.addEventListener('keydown', keydown);
       render();
 
-      return {
-        setCustomRange: function (startMs, endMs) {
+      const getState = () => ({hours: activeHours, customRange: customRange ? {...customRange} : null});
+      const picker = {
+        getState,
+        setState: function (state, silent = true) {
+          if (ranges.some(r => r.value === state.hours)) activeHours = state.hours;
+          customRange = state.customRange ? {...state.customRange} : null;
+          render();
+          if (!silent) onApply(getState());
+        },
+        destroy: function () {
+          document.removeEventListener('click', outsideClick);
+          container.removeEventListener('keydown', keydown);
+          container.replaceChildren();
+          if (container._timePicker === picker) delete container._timePicker;
+        },
+        setCustomRange: function (startMs, endMs, silent = false) {
           customRange = { start: startMs, end: endMs };
           render();
-          onApply({ hours: activeHours, customRange: customRange });
+          if (!silent) onApply(getState());
         }
       };
+      container._timePicker = picker;
+      return picker;
     },
 
     // Drag-and-Drop Reordering Helper
@@ -612,7 +658,7 @@
         updateListeners.push(onUpdate);
       }
 
-      if (globalSocket && globalSocket.readyState === WebSocket.OPEN) {
+      if (socketStarted) {
         return;
       }
 
@@ -621,6 +667,7 @@
         wsPath = (panelPath ? panelPath : '') + '/api/ws';
       }
 
+      socketStarted = true;
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       let cleanPath = wsPath.replace(/\/+/g, '/');
       if (!cleanPath.startsWith('/')) {
@@ -656,6 +703,8 @@
         clearInterval(staleTimer);
         clearTimeout(reconnectTimer);
         globalSocket?.close();
+        networkConnected = false;
+        networkListeners.clear();
         updateListeners = [];
       }, {once: true});
 
@@ -672,19 +721,26 @@
             if (disposed) { socket.close(); return; }
             opened = true;
             failures = 0;
+            networkConnected = true;
+            connectionGeneration++;
+            window.dispatchEvent(new Event('certainstats_feed_connected'));
             status('Connected · Waiting for telemetry');
           };
           socket.onmessage = function (event) {
             if (disposed || socket !== globalSocket) return;
-            let snaps;
+            let snaps, network;
             try {
               if (protobuf) {
-                snaps = codec.snapshots(codec.decode(event.data));
+                const envelope = codec.decode(event.data);
+                snaps = codec.snapshots(envelope);
+                network = codec.network(envelope);
               } else {
                 if (typeof event.data !== 'string') throw new Error('Expected JSON text frame');
                 const message = JSON.parse(event.data);
                 if (message.type !== 'agent_update' || !message.data || typeof message.data !== 'object' || Array.isArray(message.data)) throw new Error('Invalid telemetry pulse');
                 snaps = message.data;
+                network = message.network;
+                if (network !== undefined && (!network || typeof network !== 'object' || Array.isArray(network))) throw new Error('Invalid network pulse');
               }
             } catch (e) {
               console.error('[CertainStats WS] Invalid telemetry frame:', e);
@@ -694,12 +750,18 @@
             lastPulse = Date.now();
             status('Live · Last update ' + new Date(lastPulse).toLocaleTimeString() + ' · ' + Intl.DateTimeFormat().resolvedOptions().timeZone);
             updateListeners.forEach(fn => fn(snaps));
+            if (network !== undefined) {
+              latestNetwork = network;
+              lastNetworkPulse = Date.now();
+              networkListeners.forEach(fn => fn(network));
+            }
           };
           socket.onerror = function (err) {
             if (!disposed) console.warn('[CertainStats WS] Error:', err);
           };
           socket.onclose = function () {
             if (disposed || socket !== globalSocket) return;
+            networkConnected = false;
             if (!opened) failures++;
             status('Disconnected · Retrying…');
             reconnectTimer = setTimeout(connect, 3000);
@@ -713,6 +775,15 @@
       }
 
       connect();
+    },
+
+    subscribeNetwork: function (listener) {
+      networkListeners.add(listener);
+      if (latestNetwork !== undefined) listener(latestNetwork);
+      return () => networkListeners.delete(listener);
+    },
+    getNetworkFeedState: function () {
+      return {connected: networkConnected, lastPulse: lastNetworkPulse, generation: connectionGeneration};
     },
 
     // Scroll Position Restoration

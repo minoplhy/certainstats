@@ -3,6 +3,7 @@ package web
 import (
 	agentdata "certainstats/internal/agent_data"
 	c "certainstats/internal/base/alert"
+	"certainstats/internal/networkmonitor"
 	"certainstats/internal/store"
 	"fmt"
 	"net/http"
@@ -32,10 +33,23 @@ func (h *WebHandler) AlertsListHandler(w http.ResponseWriter, r *http.Request) {
 		agents = []store.Agent{}
 	}
 
+	monitors := []networkmonitor.Monitor{}
+	for page := 1; ; page++ {
+		items, total, e := h.Store.NetworkList(r.Context(), userID, store.NetworkListFilter{}, page, 100)
+		if e != nil {
+			http.Error(w, "Failed to load monitors", 500)
+			return
+		}
+		monitors = append(monitors, items...)
+		if len(monitors) >= total || len(items) == 0 {
+			break
+		}
+	}
 	pd := h.newPageData(r, "Alert System", "alerts", map[string]any{
-		"Alerts":  alerts,
-		"Targets": targets,
-		"Agents":  agents,
+		"Alerts":   alerts,
+		"Monitors": monitors,
+		"Targets":  targets,
+		"Agents":   agents,
 	})
 	h.Renderer.RenderHTTP(w, http.StatusOK, "alerts_list.html", pd)
 }
@@ -66,7 +80,7 @@ func (h *WebHandler) AlertCreateHandler(w http.ResponseWriter, r *http.Request) 
 		operator = c.OpGreaterThan
 	}
 
-	threshold, _ := strconv.ParseFloat(r.FormValue("threshold"), 64)
+	threshold, thresholdErr := strconv.ParseFloat(r.FormValue("threshold"), 64)
 	duration := strings.TrimSpace(r.FormValue("duration"))
 	if duration == "" {
 		duration = "5m"
@@ -81,13 +95,26 @@ func (h *WebHandler) AlertCreateHandler(w http.ResponseWriter, r *http.Request) 
 	payload := strings.TrimSpace(r.FormValue("payload"))
 
 	agents := r.Form["agents"]
+	monitors := r.Form["monitor_ids"]
+	if triggerType == c.TriggerTypeNetworkLoss {
+		if thresholdErr != nil {
+			http.Error(w, "Invalid loss threshold", http.StatusBadRequest)
+			return
+		}
+		operator = c.OpGreaterThan
+		duration = "1h"
+		agents = nil
+	} else {
+		monitors = nil
+	}
 
 	alertID := fmt.Sprintf("alert_%d_%s", time.Now().UnixMicro(), agentdata.GenerateRandomString(6))
 	newAlert := store.Alert{
-		AlertID:  alertID,
-		UserID:   userID,
-		Nickname: nickname,
-		Enabled:  enabled,
+		AlertID:    alertID,
+		UserID:     userID,
+		MonitorIDs: monitors,
+		Nickname:   nickname,
+		Enabled:    enabled,
 		Trigger: c.Trigger{
 			Type:      triggerType,
 			Operator:  operator,
@@ -113,7 +140,11 @@ func (h *WebHandler) AlertCreateHandler(w http.ResponseWriter, r *http.Request) 
 
 	err := h.Store.AlertCreate(r.Context(), newAlert)
 	if err != nil {
-		http.Error(w, "Failed to create alert rule: "+err.Error(), http.StatusInternalServerError)
+		code := http.StatusInternalServerError
+		if _, ok := err.(interface{ Validation() bool }); ok {
+			code = http.StatusBadRequest
+		}
+		http.Error(w, "Failed to create alert rule: "+err.Error(), code)
 		return
 	}
 
@@ -152,7 +183,7 @@ func (h *WebHandler) AlertUpdateHandler(w http.ResponseWriter, r *http.Request) 
 		operator = c.OpGreaterThan
 	}
 
-	threshold, _ := strconv.ParseFloat(r.FormValue("threshold"), 64)
+	threshold, thresholdErr := strconv.ParseFloat(r.FormValue("threshold"), 64)
 	duration := strings.TrimSpace(r.FormValue("duration"))
 	if duration == "" {
 		duration = "5m"
@@ -167,12 +198,25 @@ func (h *WebHandler) AlertUpdateHandler(w http.ResponseWriter, r *http.Request) 
 	payload := strings.TrimSpace(r.FormValue("payload"))
 
 	agents := r.Form["agents"]
+	monitors := r.Form["monitor_ids"]
+	if triggerType == c.TriggerTypeNetworkLoss {
+		if thresholdErr != nil {
+			http.Error(w, "Invalid loss threshold", http.StatusBadRequest)
+			return
+		}
+		operator = c.OpGreaterThan
+		duration = "1h"
+		agents = nil
+	} else {
+		monitors = nil
+	}
 
 	updatedAlert := store.Alert{
-		AlertID:  alertID,
-		UserID:   userID,
-		Nickname: nickname,
-		Enabled:  enabled,
+		AlertID:    alertID,
+		UserID:     userID,
+		MonitorIDs: monitors,
+		Nickname:   nickname,
+		Enabled:    enabled,
 		Trigger: c.Trigger{
 			Type:      triggerType,
 			Operator:  operator,
@@ -189,7 +233,11 @@ func (h *WebHandler) AlertUpdateHandler(w http.ResponseWriter, r *http.Request) 
 
 	err := h.Store.AlertUpdate(r.Context(), updatedAlert, agents)
 	if err != nil {
-		http.Error(w, "Failed to update alert rule: "+err.Error(), http.StatusInternalServerError)
+		code := http.StatusInternalServerError
+		if _, ok := err.(interface{ Validation() bool }); ok {
+			code = http.StatusBadRequest
+		}
+		http.Error(w, "Failed to update alert rule: "+err.Error(), code)
 		return
 	}
 

@@ -2,6 +2,7 @@ package routine
 
 import (
 	"certainstats/internal/metrics"
+	"certainstats/internal/networkservice"
 	"certainstats/internal/store/sqlite"
 	"certainstats/internal/ws"
 
@@ -9,6 +10,7 @@ import (
 )
 
 type Routine struct {
+	Network     *networkservice.Service
 	Store       *sqlite.Store
 	TSDB        *tsdb.DB
 	WS          *ws.Manager

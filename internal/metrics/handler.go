@@ -519,3 +519,6 @@ func loadIntervals(request context.Context, q storage.Querier, matchers []*label
 	}
 	return values, set.Err()
 }
+
+// AcquirePrivateQuery applies the same query capacity limit to monitor history.
+func AcquirePrivateQuery(ctx context.Context) (func(), error) { return acquireTSDB(ctx, false) }

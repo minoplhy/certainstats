@@ -17,11 +17,11 @@ func triggerSnapshot(t a.Trigger) string { b, _ := json.Marshal(t); return strin
 
 const incidentSelect = `SELECT h.history_id,h.alert_id,h.agent_id,h.user_id,h.agent_nickname,h.alert_nickname,
  h.triggered_at,h.resolved_at,h.closed_at,h.close_reason,h.trigger_value,h.notified_status,h.trigger_snapshot,
- h.target_id,h.target_name,h.error_message,h.legacy,
- EXISTS(SELECT 1 FROM alerts a JOIN agents n ON n.agent_id=h.agent_id WHERE a.alert_id=h.alert_id AND a.user_id=h.user_id AND n.user_id=h.user_id) AND h.closed_at IS NULL,
+ h.target_id,h.target_name,h.error_message,h.legacy,h.subject_kind,h.monitor_id,h.monitor_snapshot,
+ EXISTS(SELECT 1 FROM alerts a JOIN agents n ON n.agent_id=h.agent_id WHERE a.alert_id=h.alert_id AND a.user_id=h.user_id AND n.user_id=h.user_id) AND h.closed_at IS NULL AND (h.monitor_id='' OR EXISTS(SELECT 1 FROM network_monitors m JOIN alert_monitors am ON am.monitor_id=m.monitor_id AND am.alert_id=h.alert_id WHERE m.monitor_id=h.monitor_id AND m.enabled=1 AND m.archived_at IS NULL AND EXISTS(SELECT 1 FROM alerts r WHERE r.alert_id=h.alert_id AND r.enabled=1))),
  EXISTS(SELECT 1 FROM alerts a JOIN agents n ON n.agent_id=h.agent_id WHERE a.alert_id=h.alert_id AND a.user_id=h.user_id AND n.user_id=h.user_id
  AND ((h.target_id!='' AND EXISTS(SELECT 1 FROM alert_targets t WHERE t.target_id=h.target_id AND t.user_id=h.user_id))
- OR (h.target_id='' AND json_extract(a.action_config,'$.type')!='preset' AND COALESCE(json_extract(a.action_config,'$.destination'),'')!=''))) AND h.closed_at IS NULL,
+ OR (h.target_id='' AND json_extract(a.action_config,'$.type')!='preset' AND COALESCE(json_extract(a.action_config,'$.destination'),'')!=''))) AND h.closed_at IS NULL AND (h.monitor_id='' OR EXISTS(SELECT 1 FROM network_monitors m JOIN alert_monitors am ON am.monitor_id=m.monitor_id AND am.alert_id=h.alert_id WHERE m.monitor_id=h.monitor_id AND m.enabled=1 AND m.archived_at IS NULL AND EXISTS(SELECT 1 FROM alerts r WHERE r.alert_id=h.alert_id AND r.enabled=1))),
  COALESCE((SELECT e.status FROM alert_history_events e WHERE e.history_id=h.history_id AND e.phase='firing' ORDER BY e.created_at DESC,e.event_id DESC LIMIT 1),h.notified_status),
  COALESCE((SELECT e.status FROM alert_history_events e WHERE e.history_id=h.history_id AND e.phase='recovery' ORDER BY e.created_at DESC,e.event_id DESC LIMIT 1),'')
  FROM alert_history h `
@@ -31,8 +31,8 @@ type scanner interface{ Scan(...any) error }
 func scanIncident(row scanner) (*a.AlertHistory, error) {
 	h := new(a.AlertHistory)
 	var resolved, closed sql.NullTime
-	var snapshot string
-	err := row.Scan(&h.HistoryID, &h.AlertID, &h.AgentID, &h.UserID, &h.AgentNickname, &h.AlertNickname, &h.TriggeredAt, &resolved, &closed, &h.CloseReason, &h.TriggerValue, &h.NotifiedStatus, &snapshot, &h.TargetID, &h.TargetName, &h.ErrorMessage, &h.Legacy, &h.MonitoringAvailable, &h.RetryAvailable, &h.FiringDelivery, &h.RecoveryDelivery)
+	var snapshot, monitor string
+	err := row.Scan(&h.HistoryID, &h.AlertID, &h.AgentID, &h.UserID, &h.AgentNickname, &h.AlertNickname, &h.TriggeredAt, &resolved, &closed, &h.CloseReason, &h.TriggerValue, &h.NotifiedStatus, &snapshot, &h.TargetID, &h.TargetName, &h.ErrorMessage, &h.Legacy, &h.SubjectKind, &h.MonitorID, &monitor, &h.MonitoringAvailable, &h.RetryAvailable, &h.FiringDelivery, &h.RecoveryDelivery)
 	if err != nil {
 		return nil, err
 	}
@@ -43,10 +43,18 @@ func scanIncident(row scanner) (*a.AlertHistory, error) {
 		h.ClosedAt = &closed.Time
 	}
 	_ = json.Unmarshal([]byte(snapshot), &h.Trigger)
+	_ = json.Unmarshal([]byte(monitor), &h.Monitor)
 	return h, nil
 }
 func (s *Store) AlertHistoryGetByID(ctx context.Context, id, user string) (*a.AlertHistory, error) {
-	return scanIncident(s.db.QueryRowContext(ctx, incidentSelect+`WHERE h.history_id=? AND h.user_id=?`, id, user))
+	h, e := scanIncident(s.db.QueryRowContext(ctx, incidentSelect+`WHERE h.history_id=? AND h.user_id=?`, id, user))
+	if e != nil {
+		return nil, e
+	}
+	if e = s.incidentCapabilities(ctx, s.db, h); e != nil {
+		return nil, e
+	}
+	return h, nil
 }
 func (s *Store) AlertHistoryListPaginated(ctx context.Context, user string, page, limit int, q, status string) ([]a.AlertHistory, int, error) {
 	return s.AlertHistoryListFiltered(ctx, user, page, limit, q, status, "")
@@ -76,9 +84,9 @@ func (s *Store) AlertHistoryListFiltered(ctx context.Context, user string, page,
 		args = append(args, node)
 	}
 	if q != "" {
-		clauses = append(clauses, `(h.agent_nickname LIKE ? ESCAPE '\' OR h.agent_id LIKE ? ESCAPE '\' OR h.alert_nickname LIKE ? ESCAPE '\')`)
+		clauses = append(clauses, `(h.agent_nickname LIKE ? ESCAPE '\' OR h.agent_id LIKE ? ESCAPE '\' OR h.alert_nickname LIKE ? ESCAPE '\' OR json_extract(h.monitor_snapshot,'$.target') LIKE ? ESCAPE '\')`)
 		q = "%" + strings.NewReplacer(`\`, `\\`, "%", `\%`, "_", `\_`).Replace(q) + "%"
-		args = append(args, q, q, q)
+		args = append(args, q, q, q, q)
 	}
 	where := "WHERE " + strings.Join(clauses, " AND ")
 	var total int
@@ -98,7 +106,16 @@ func (s *Store) AlertHistoryListFiltered(ctx context.Context, user string, page,
 		}
 		out = append(out, *h)
 	}
-	return out, total, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, 0, err
+	}
+	rows.Close()
+	for i := range out {
+		if err := s.incidentCapabilities(ctx, s.db, &out[i]); err != nil {
+			return nil, 0, err
+		}
+	}
+	return out, total, nil
 }
 func (s *Store) AlertHistorySummary(ctx context.Context, user string) (int, error) {
 	var n int
@@ -175,6 +192,9 @@ func (s *Store) AlertAttemptQueue(ctx context.Context, user, id, phase, retryOf 
 	if err != nil {
 		return e, err
 	}
+	if err = s.incidentCapabilities(ctx, tx, h); err != nil {
+		return e, err
+	}
 	if !h.MonitoringAvailable || ((retryOf != "" || h.Legacy) && !h.RetryAvailable) || (phase == "firing" && h.ResolvedAt != nil) || (phase == "recovery" && h.ResolvedAt == nil) {
 		return e, ErrAttemptUnavailable
 	}
@@ -221,6 +241,9 @@ func (s *Store) AlertAttemptStart(ctx context.Context, id string) (*a.AlertHisto
 	}
 	if e.Status != "queued" {
 		return nil, e, ErrAttemptUnavailable
+	}
+	if err = s.incidentCapabilities(ctx, tx, h); err != nil {
+		return nil, e, err
 	}
 	if !h.MonitoringAvailable || (e.Phase == "firing" && h.ResolvedAt != nil) {
 		_, err = tx.ExecContext(ctx, `UPDATE alert_history_events SET status='skipped',completed_at=?,error_message='Incident is no longer eligible' WHERE event_id=? AND status='queued'`, time.Now().UTC(), id)
@@ -273,9 +296,13 @@ func (s *Store) AlertAttemptComplete(ctx context.Context, id, status, message st
 			agentStatus = "failed"
 		}
 		if status != "skipped" {
+			if _, err = tx.ExecContext(ctx, `UPDATE alert_monitors SET status=?,error_message=? WHERE EXISTS(SELECT 1 FROM alert_history h WHERE h.history_id=? AND h.alert_id=alert_monitors.alert_id AND h.monitor_id=alert_monitors.monitor_id AND h.history_id=alert_monitors.history_id AND h.resolved_at IS NULL AND h.closed_at IS NULL)`, agentStatus, message, e.HistoryID); err != nil {
+				return err
+			}
+
 			if _, err = tx.ExecContext(ctx, `UPDATE alert_agents SET status=?,error_message=? WHERE EXISTS(
    SELECT 1 FROM alert_history h WHERE h.history_id=? AND h.alert_id=alert_agents.alert_id AND h.agent_id=alert_agents.agent_id
-   AND h.resolved_at IS NULL AND h.closed_at IS NULL AND h.triggered_at=alert_agents.last_fired_at)`, agentStatus, message, e.HistoryID); err != nil {
+   AND h.monitor_id='' AND h.resolved_at IS NULL AND h.closed_at IS NULL AND h.triggered_at=alert_agents.last_fired_at)`, agentStatus, message, e.HistoryID); err != nil {
 				return err
 			}
 		}

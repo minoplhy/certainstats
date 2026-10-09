@@ -1,5 +1,6 @@
 {{define "content"}}
-<div id="agents-overview-view">
+<div id="agents-spa-view"{{if eq .ActiveNav "network"}} hidden{{end}}>
+<div id="agents-overview-view"{{if .InitialAgent}} hidden{{end}}>
   <section class="hero" aria-labelledby="hub-headline">
     <div class="hero-eyebrow">
       <span>Agent Hub</span><span aria-hidden="true">·</span><span id="node-count-badge">{{len .Agents}} {{if eq (len .Agents) 1}}node{{else}}nodes{{end}}</span>
@@ -26,8 +27,14 @@
 {{template "agents_provision_modal" .}}
 {{template "reinstall_modal" .}}
 {{template "uninstall_modal" .}}
+</div>
+<div id="network-spa-view"{{if ne .ActiveNav "network"}} hidden{{end}}>
+  {{template "network_monitors_hero" .}}
+  {{template "network_monitors_component" .}}
+</div>
 
 <script src="{{.StaticPath}}/{{asset "js/incident_history.js"}}" integrity="{{integrity "js/incident_history.js"}}"></script>
+<script src="{{.StaticPath}}/{{asset "js/network_monitors.js"}}" integrity="{{integrity "js/network_monitors.js"}}"></script>
 <script src="{{.StaticPath}}/{{asset "js/admin_agents.js"}}" integrity="{{integrity "js/admin_agents.js"}}"></script>
 <script type="application/json" id="page-config" data-module="CertainStatsAdminAgents">{{bootstrap .}}</script>
 <script src="{{.StaticPath}}/{{asset "js/bootstrap.js"}}" integrity="{{integrity "js/bootstrap.js"}}"></script>

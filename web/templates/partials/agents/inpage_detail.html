@@ -1,5 +1,5 @@
 {{define "agents_inpage_detail"}}
-<div id="agents-detail-view" hidden>
+<div id="agents-detail-view"{{if not .InitialAgent}} hidden{{end}}>
   <section class="detail-hero">
     <div class="hero-eyebrow">
       <a href="{{.PanelPath}}/" data-click-action="closeAgentDetail" data-prevent-default="true">&larr; Agent Hub</a>
@@ -183,6 +183,11 @@
   <details class="detail-section incident-node-history">
     <summary class="section-title">Incident history</summary>
     <div data-incident-history>{{template "incident_history_controls" .}}</div>
+  </details>
+  <p class="muted">Agent software: <span id="detail-agent-version">Unknown</span> · Protocol: <span id="detail-protocol-version">Unknown</span></p>
+  <details class="detail-section network-node-section">
+    <summary class="section-title">Network monitors</summary>
+    {{template "network_monitors_component" .}}
   </details>
 </div>
 {{end}}

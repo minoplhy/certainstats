@@ -1,21 +1,25 @@
 package alert
 
-import "time"
+import (
+	nm "certainstats/internal/networkmonitor"
+	"time"
+)
 
 type TriggerType string
 
 const (
-	TriggerTypeDown      TriggerType = "agent_down"
-	TriggerTypeCPU       TriggerType = "cpu_usage"
-	TriggerTypeCPUIOWait TriggerType = "cpu_iowait"
-	TriggerTypeCPUSteal  TriggerType = "cpu_steal"
-	TriggerTypeRAM       TriggerType = "ram_usage"
-	TriggerTypeSwap      TriggerType = "swap_usage"
-	TriggerTypeDisk      TriggerType = "disk_usage"
-	TriggerTypeNetRx     TriggerType = "net_rx"
-	TriggerTypeNetTx     TriggerType = "net_tx"
-	TriggerTypeDiskRead  TriggerType = "disk_read"
-	TriggerTypeDiskWrite TriggerType = "disk_write"
+	TriggerTypeNetworkLoss TriggerType = "network_loss"
+	TriggerTypeDown        TriggerType = "agent_down"
+	TriggerTypeCPU         TriggerType = "cpu_usage"
+	TriggerTypeCPUIOWait   TriggerType = "cpu_iowait"
+	TriggerTypeCPUSteal    TriggerType = "cpu_steal"
+	TriggerTypeRAM         TriggerType = "ram_usage"
+	TriggerTypeSwap        TriggerType = "swap_usage"
+	TriggerTypeDisk        TriggerType = "disk_usage"
+	TriggerTypeNetRx       TriggerType = "net_rx"
+	TriggerTypeNetTx       TriggerType = "net_tx"
+	TriggerTypeDiskRead    TriggerType = "disk_read"
+	TriggerTypeDiskWrite   TriggerType = "disk_write"
 )
 
 type Operator string
@@ -36,21 +40,23 @@ const (
 
 // --- Main Structs ---
 type Alert struct {
-	AlertID  string       `json:"alert_id"`
-	UserID   string       `json:"-"`
-	Nickname string       `json:"nickname"`
-	Enabled  bool         `json:"enabled"`
-	Trigger  Trigger      `json:"trigger"`
-	Action   AlertAction  `json:"action"`
-	Agents   []AgentState `json:"agents"`
+	MonitorIDs []string     `json:"monitor_ids"`
+	AlertID    string       `json:"alert_id"`
+	UserID     string       `json:"-"`
+	Nickname   string       `json:"nickname"`
+	Enabled    bool         `json:"enabled"`
+	Trigger    Trigger      `json:"trigger"`
+	Action     AlertAction  `json:"action"`
+	Agents     []AgentState `json:"agents"`
 }
 
 type AlertPayload struct {
-	Nickname string      `json:"nickname"`
-	Enabled  bool        `json:"enabled"`
-	Trigger  Trigger     `json:"trigger"`
-	Action   AlertAction `json:"action"`
-	Agents   []string    `json:"agents"` // List of AgentIDs
+	MonitorIDs []string    `json:"monitor_ids"`
+	Nickname   string      `json:"nickname"`
+	Enabled    bool        `json:"enabled"`
+	Trigger    Trigger     `json:"trigger"`
+	Action     AlertAction `json:"action"`
+	Agents     []string    `json:"agents"` // List of AgentIDs
 }
 
 type Trigger struct {
@@ -106,6 +112,9 @@ type HistoryEvent struct {
 }
 
 type AlertHistory struct {
+	SubjectKind         string     `json:"subject_kind"`
+	MonitorID           string     `json:"monitor_id,omitempty"`
+	Monitor             nm.Config  `json:"monitor,omitempty"`
 	MonitoringAvailable bool       `json:"-"`
 	ClosedAt            *time.Time `json:"closed_at,omitempty"`
 	CloseReason         string     `json:"close_reason,omitempty"`

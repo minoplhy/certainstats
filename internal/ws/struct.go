@@ -12,8 +12,13 @@ import (
 )
 
 type Hub struct {
-	conn *websocket.Conn
-	mu   sync.Mutex
+	// ConnectionEpoch is assigned before registration and remains immutable.
+	ConnectionEpoch string
+	pendingMu       sync.Mutex
+	pending         map[uint32]pendingRequest
+	nextID          uint32
+	conn            *websocket.Conn
+	mu              sync.Mutex
 }
 
 // Send sends a CBOR message to the hub
@@ -41,12 +46,13 @@ func (h *Hub) SetConn(conn *websocket.Conn) {
 	if h.conn != nil {
 		h.conn.Close()
 	}
-	conn.MaxPayloadBytes = 16384
+	conn.MaxPayloadBytes = 1 << 20
 	h.conn = conn
 }
 
 // Close closes the active connection
 func (h *Hub) Close() {
+	h.cancelPending()
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if h.conn != nil {

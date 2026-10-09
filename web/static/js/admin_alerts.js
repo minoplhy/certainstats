@@ -5,6 +5,32 @@
 
   function handleTriggerTypeChange(selectEl, prefix) {
     const val = selectEl.value;
+    const network = val === 'network_loss';
+    const group = document.querySelector('[data-network-rule=' + prefix + ']');
+    if (group) {
+      group.hidden = !network;
+      group.querySelectorAll('input').forEach(cb => { cb.disabled = !network; });
+    }
+    const modal = document.querySelector('#' + (prefix === 'create' ? 'new' : prefix) + '-alert-modal');
+    if (modal) modal.querySelectorAll('input[name=agents]').forEach(cb => {
+      cb.disabled = network;
+      cb.closest('.form-fieldset').hidden = network;
+    });
+    const duration = document.getElementById(prefix + '-duration');
+    if (duration) {
+      duration.readOnly = network;
+      if (network) duration.value = '1h';
+    }
+    const durationLabel = document.querySelector('label[for=' + prefix + '-duration]');
+    if (durationLabel) durationLabel.textContent = network ? 'Loss window' : 'For at least';
+    const durationHint = document.querySelector('[data-duration-hint=' + prefix + ']');
+    if (durationHint) durationHint.textContent = network ? 'Uses the agent’s loss rate over the past hour, after three probes.' : 'The condition must hold this long before the alert fires, e.g. 5m or 1h.';
+    const operator = document.getElementById(prefix + '-operator');
+    if (operator) {
+      operator.disabled = network;
+      if (network) operator.value = '>';
+    }
+    if (network && prefix === 'create') document.getElementById(prefix + '-threshold').value = '5';
     const threshRow = document.getElementById(prefix + '-threshold-row');
     const unitSpan = document.getElementById(prefix + '-threshold-unit');
     
@@ -133,6 +159,10 @@
           const payload = this.getAttribute('data-payload') || '';
           const agentsStr = this.getAttribute('data-agents') || '';
           const selectedAgents = agentsStr ? agentsStr.split(',') : [];
+          const monitorIDs = (this.getAttribute('data-monitors') || '').split(',');
+          document.querySelectorAll('#edit-alert-modal input[name=monitor_ids]').forEach(cb => {
+            cb.checked = monitorIDs.includes(cb.value);
+          });
 
           document.getElementById('edit-alert-id').value = id;
           document.getElementById('edit-nickname').value = nickname;

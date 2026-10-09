@@ -117,6 +117,10 @@ func (b *AgentBroadcaster) BroadcastToDash(dashID string, update *browserpb.Tele
 }
 
 func (b *AgentBroadcaster) sendTo(targets []*websocket.Conn, update *browserpb.TelemetryEnvelope, public bool) {
+	if public && update.GetPulse().GetNetwork() != nil {
+		update = proto.Clone(update).(*browserpb.TelemetryEnvelope)
+		update.Pulse.Network = nil
+	}
 	var payload []byte
 	var err error
 	if b.protobuf {

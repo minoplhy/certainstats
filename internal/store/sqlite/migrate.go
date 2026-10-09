@@ -200,5 +200,8 @@ func (s *Store) migrate() error {
 			return err
 		}
 	}
-	return s.migrateIncidentHistory()
+	if err := s.migrateIncidentHistory(); err != nil {
+		return err
+	}
+	return s.migrateNetworkMonitors()
 }

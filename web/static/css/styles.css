@@ -3767,3 +3767,112 @@ dialog.modal.modal-confirm {
 @media (max-width: 768px) {
   #history-section, .incident-node-history { scroll-margin-top: 120px; }
 }
+
+/* Network monitors — the Network view and node details. Hero, toolbar and badges reuse the hub classes. */
+.network-toolbar-select { width: auto; min-width: 140px; }
+.network-history { margin-bottom: 28px; }
+.network-history > .section-header { align-items: flex-end; }
+.network-history > .section-header > [data-network-time-picker] { min-width: 0; max-width: 100%; }
+/* Route changes focus the view heading for screen readers; it needs no focus box. */
+h1[tabindex="-1"]:focus, h2[tabindex="-1"]:focus { outline: none; }
+.network-status { font-size: 13px; color: var(--muted); }
+.network-status:empty { display: none; }
+.network-chart-grid { margin: 12px 0; }
+.network-chart-grid .chart-card { overflow: hidden; }
+.network-chart-grid .chart-container { height: 240px; }
+.network-chart-grid canvas { width: 100%; height: 100%; }
+.network-legend { display: flex; flex-wrap: wrap; gap: 12px 24px; }
+.network-legend-group { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; max-width: 100%; }
+.network-legend-title { font-size: 13px; overflow-wrap: anywhere; }
+.network-series-toggle { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; padding: 5px 10px; border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--surface); color: var(--text); font: inherit; font-size: 13px; text-align: left; overflow-wrap: anywhere; cursor: pointer; }
+.network-series-toggle.is-hidden { opacity: .5; }
+.network-series-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.network-chart-note { margin-top: 12px; }
+
+/* Monitor list: one dense row per monitor; columns shared by the header and rows. */
+.network-list { --network-columns: minmax(220px, 2.2fr) minmax(110px, 1fr) 88px 120px 128px 80px 150px 172px; border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); }
+.network-list.is-node { --network-columns: minmax(220px, 2.4fr) 88px 120px 128px 80px 150px 172px; }
+.network-list:has(> .empty-state), .network-list:has(> .network-empty) { border: none; background: none; }
+.network-list-head, .network-row-main { display: grid; grid-template-columns: var(--network-columns); gap: 14px; align-items: center; padding: 0 16px; }
+.network-list-head { position: sticky; top: 56px; z-index: 2; padding-top: 10px; padding-bottom: 10px; border-bottom: 1px solid var(--line); border-radius: var(--r) var(--r) 0 0; background: var(--surface); color: var(--muted); font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
+.network-row + .network-row { border-top: 1px solid var(--line); }
+.network-row-main { min-height: 56px; padding-top: 8px; padding-bottom: 8px; font-size: 13px; list-style: none; cursor: pointer; }
+.network-row-main::-webkit-details-marker { display: none; }
+.network-row-main:hover, .network-row[open] > .network-row-main { background: var(--surface-2); }
+.network-row-main:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; }
+.network-cell-monitor { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.network-monitor-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.network-target { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.network-row-sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: 12px; }
+.network-cell-node { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-2); }
+.network-cell-response { white-space: nowrap; }
+.network-spark { display: block; width: 120px; height: 28px; }
+.network-cell-loss { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; }
+.network-cell-loss .usage-bar-track { margin: 0; }
+.network-cell-time { white-space: nowrap; font-size: 12px; }
+.network-cell-state { display: flex; flex-wrap: wrap; gap: 4px; }
+.network-row-actions { display: flex; justify-content: flex-end; gap: 2px; opacity: .55; transition: opacity var(--ease); }
+.network-row-main:hover .network-row-actions, .network-row-actions:focus-within, .network-row[open] .network-row-actions { opacity: 1; }
+.network-row-details { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 14px 24px; margin: 0; padding: 14px 16px 18px 34px; border-top: 1px solid var(--line); background: var(--surface-2); font-size: 13px; }
+.network-row-details dt { margin-bottom: 4px; font-size: 11px; }
+.network-row-details dd { margin: 0; overflow-wrap: anywhere; }
+.network-empty { padding: 32px 0; text-align: center; }
+.seg-loss { background-color: var(--bad); }
+.status-dot.warn { background-color: var(--warn); box-shadow: 0 0 0 3px color-mix(in srgb, var(--warn) 18%, transparent); }
+
+.network-pagination { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 12px; padding-top: 16px; }
+.network-page-size { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+.network-page-size select { width: auto; }
+/* Add / edit monitor dialog — sections and pickers follow the alert rule dialog. */
+.network-dialog .inline-alert { margin-bottom: 16px; }
+.network-dialog .inline-alert[hidden] { display: none; }
+.network-protocol-picker { align-self: start; width: fit-content; }
+.network-dialog .form-input.mono { font-family: var(--font-mono); }
+.network-agent-count { margin-left: 6px; font-size: 13px; font-weight: 500; }
+.network-protocol-hint { margin: 8px 0 14px; }
+.network-target-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: end; }
+.network-target-row > [hidden] { display: none; }
+.network-port-field .form-input { width: 110px; }
+.network-target-row [data-network-server] .form-input { width: 200px; }
+.network-interval { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.network-interval-custom { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; }
+.network-interval-custom .form-input { width: 96px; }
+.network-dialog .node-grid { max-height: 260px; }
+.node-select-pill.is-disabled { opacity: .55; cursor: not-allowed; }
+.node-select-pill input:disabled { cursor: not-allowed; }
+.network-node-section > summary { cursor: pointer; padding: 8px 0; }
+.network-node-section[open] > summary { margin-bottom: 18px; }
+@media (max-width: 1100px) {
+  /* Without the sparkline: monitor, (node), response, loss, last probe, state, actions. */
+  .network-list { --network-columns: minmax(200px, 2fr) minmax(100px, 1fr) 80px 120px 72px 140px 160px; }
+  .network-list.is-node { --network-columns: minmax(200px, 2fr) 80px 120px 72px 140px 160px; }
+  .network-list .network-spark, .network-list-head > :nth-last-child(5) { display: none; }
+}
+@media (max-width: 900px) {
+  .network-chart-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 768px) {
+  .network-list-head { display: none; }
+  .network-list, .network-list.is-node { --network-columns: minmax(0, 1fr) auto; }
+  .network-row-main { grid-template-columns: minmax(0, 1fr) auto auto; gap: 6px 12px; padding: 12px 14px; }
+  .network-cell-monitor { grid-column: 1 / -1; }
+  .network-cell-node, .network-cell-time { display: none; }
+  .network-list .network-spark { display: none; }
+  .network-cell-loss { grid-column: 1; grid-row: 2; }
+  .network-cell-state { grid-column: 2; grid-row: 2; }
+  .network-cell-response { grid-column: 3; grid-row: 2; text-align: right; }
+  .network-row-actions { grid-column: 1 / -1; grid-row: 3; justify-content: flex-start; opacity: 1; }
+  .network-history > .section-header > [data-network-time-picker] { width: 100%; }
+  .network-row-details { padding-left: 14px; }
+}
+@media (max-width: 600px) {
+  .network-toolbar .toolbar-group { overflow-x: auto; }
+  .network-toolbar-select { flex: 1 1 140px; }
+  .network-chart-grid .chart-card { padding: 16px 12px; }
+  .network-legend-group { align-items: flex-start; }
+  .network-legend-title { flex-basis: 100%; }
+  .network-pagination { justify-content: flex-start; }
+  .network-target-row { grid-template-columns: 1fr; }
+  .network-target-row [data-network-server] .form-input, .network-port-field .form-input { width: 100%; }
+  .network-protocol-picker { width: 100%; }
+}

@@ -24,6 +24,8 @@ func DispatchNotification(action alert.AlertAction, nctx NotificationContext) er
 
 func getTriggerLabel(t string) string {
 	switch t {
+	case "network_loss":
+		return "Network monitor loss"
 	case "agent_down":
 		return "Node Down (Offline)"
 	case "cpu_usage":
@@ -55,7 +57,7 @@ func formatMetricValue(t string, val float64) string {
 	switch t {
 	case "agent_down":
 		return "Offline"
-	case "cpu_usage", "cpu_iowait", "cpu_steal", "ram_usage", "swap_usage", "disk_usage":
+	case "network_loss", "cpu_usage", "cpu_iowait", "cpu_steal", "ram_usage", "swap_usage", "disk_usage":
 		return fmt.Sprintf("%.2f%%", val)
 	case "net_rx", "net_tx", "disk_read", "disk_write":
 		return fmt.Sprintf("%.2f KiB/s", val)
@@ -112,7 +114,9 @@ func applyTemplate(tmpl string, nctx NotificationContext, isDiscord bool) string
 		duration = formatDuration(nctx.ResolvedAt.Sub(*nctx.WentOfflineAt))
 	}
 
+	jsonText := func(value string) string { raw, _ := json.Marshal(value); return string(raw[1 : len(raw)-1]) }
 	r := strings.NewReplacer(
+		"{{MONITOR_ID}}", jsonText(nctx.MonitorID), "{{MONITOR_TARGET}}", jsonText(nctx.MonitorTarget), "{{MONITOR_PROTOCOL}}", jsonText(nctx.MonitorProtocol), "{{DNS_SERVER}}", jsonText(nctx.DNSServer),
 		"{{AGENT_ID}}", nctx.AgentID,
 		"{{NICKNAME}}", nctx.Nickname,
 		"{{TRIGGER_TYPE}}", nctx.TriggerType,
@@ -264,6 +268,9 @@ func sendDiscordWebhook(action alert.AlertAction, nctx NotificationContext) erro
 			}
 		}
 
+		if nctx.MonitorID != "" {
+			fields = append(fields, map[string]interface{}{"name": "Monitor target", "value": nctx.MonitorTarget, "inline": false}, map[string]interface{}{"name": "Protocol", "value": nctx.MonitorProtocol, "inline": true})
+		}
 		discordPayload := map[string]interface{}{
 			"embeds": []map[string]interface{}{
 				{
@@ -321,6 +328,7 @@ func sendWebhook(action alert.AlertAction, nctx NotificationContext) error {
 	} else {
 		// 2. Fallback to a standard JSON format if Payload is empty
 		payloadBytes, err = json.Marshal(defaultPayload{
+			MonitorID: nctx.MonitorID, MonitorTarget: nctx.MonitorTarget, MonitorProtocol: nctx.MonitorProtocol, DNSServer: nctx.DNSServer,
 			AgentID:     nctx.AgentID,
 			Nickname:    nctx.Nickname,
 			TriggerType: nctx.TriggerType,

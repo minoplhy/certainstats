@@ -2,6 +2,7 @@ package agent
 
 import (
 	agentparser "certainstats/internal/agent_parser"
+	"certainstats/internal/agentmeta"
 	"certainstats/internal/metrics"
 	"certainstats/internal/store"
 	"context"
@@ -21,6 +22,11 @@ import (
 func Ingest(ctx context.Context, agents store.AgentStore, tdb *tsdb.DB, cache *metrics.RealtimeCache, id *store.AgentIdentity, data *agentparser.ParsedData) error {
 	unlock := lockAgent(id.AgentID)
 	defer unlock()
+	if data.Runtime != nil {
+		if err := agentmeta.Validate(*data.Runtime); err != nil {
+			return err
+		}
+	}
 	for _, m := range data.Metrics {
 		if !m.Timestamp.IsZero() && (m.Timestamp.UnixMilli() <= 0 || m.Timestamp.After(time.Now().Add(10*time.Minute))) {
 			return fmt.Errorf("invalid sample timestamp")
@@ -54,7 +60,7 @@ func Ingest(ctx context.Context, agents store.AgentStore, tdb *tsdb.DB, cache *m
 	}
 	if stable {
 		for _, sample := range data.Metrics {
-			part := &agentparser.ParsedData{AgentInfo: data.AgentInfo, Metrics: []agentparser.Telemetry{sample}}
+			part := &agentparser.ParsedData{AgentInfo: data.AgentInfo, Runtime: data.Runtime, Metrics: []agentparser.Telemetry{sample}}
 			if err := ingestRecord(ctx, agents, journal, tdb, cache, id, part); err != nil {
 				return err
 			}
@@ -149,6 +155,11 @@ func replayIngestion(ctx context.Context, agents store.AgentStore, journal store
 	id := &store.AgentIdentity{AgentID: record.AgentID, UserID: record.UserID}
 	if len(data.Metrics) > 0 {
 		if err := WriteStatsToTSDB(ctx, tdb, id, data.Metrics); err != nil {
+			return err
+		}
+	}
+	if data.Runtime != nil {
+		if err := agents.AgentUpdateRuntime(ctx, id.AgentID, id.UserID, *data.Runtime); err != nil {
 			return err
 		}
 	}

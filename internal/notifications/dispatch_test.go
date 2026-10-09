@@ -49,6 +49,7 @@ func TestFormatMetricValue(t *testing.T) {
 		{"agent_down", 0.0, "Offline"},
 		{"cpu_usage", 82.35, "82.35%"},
 		{"ram_usage", 45.1, "45.10%"},
+		{"network_loss", 8.1, "8.10%"},
 		{"net_rx", 1024.56, "1024.56 KiB/s"},
 		{"disk_write", 50.0, "50.00 KiB/s"},
 		{"other_metric", 9.99, "9.99"},
@@ -535,4 +536,13 @@ func TestDispatchNotification(t *testing.T) {
 			t.Errorf("expected unknown destination type error, got %v", err)
 		}
 	})
+}
+
+func TestNetworkTemplatePreservesQuotedTarget(t *testing.T) {
+	target := `https://example.com/?q="status"`
+	raw := applyTemplate(`{"target":"{{MONITOR_TARGET}}","monitor":"{{MONITOR_ID}}","protocol":"{{MONITOR_PROTOCOL}}","dns":"{{DNS_SERVER}}"}`, NotificationContext{MonitorID: "monitor", MonitorTarget: target, MonitorProtocol: "http"}, false)
+	var value map[string]string
+	if e := json.Unmarshal([]byte(raw), &value); e != nil || value["target"] != target || value["monitor"] != "monitor" {
+		t.Fatal(raw, e)
+	}
 }

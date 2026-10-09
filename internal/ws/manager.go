@@ -66,10 +66,22 @@ func (m *Manager) Broadcast(req any) {
 // Range iterates over all connected agents and calls the provided function.
 func (m *Manager) Range(fn func(token string, hub *Hub)) {
 	m.mu.RLock()
-	defer m.mu.RUnlock()
-
-	for token, hub := range m.agents {
+	entries := make(map[string]*Hub, len(m.agents))
+	for k, v := range m.agents {
+		entries[k] = v
+	}
+	m.mu.RUnlock()
+	for token, hub := range entries {
 		fn(token, hub)
+	}
+}
+
+// UnregisterHub protects a replacement connection from an older reader's cleanup.
+func (m *Manager) UnregisterHub(token string, hub *Hub) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.agents[token] == hub {
+		delete(m.agents, token)
 	}
 }
 

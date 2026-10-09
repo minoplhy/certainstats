@@ -141,3 +141,6 @@ func publicAbsCacheKey(r *http.Request, tr TimeRange) string {
 	qe := strconv.FormatInt((tr.EndMs/60_000)*60_000, 10)
 	return "pub_" + dashID + "_" + pubAgentID + "_" + metric + "_abs_" + qs + "_" + qe
 }
+
+// ParsePrivateTimeRange shares the private range policy with monitor history.
+func ParsePrivateTimeRange(r *http.Request) (TimeRange, bool) { return parsePrivateTimeRange(r) }

@@ -12,10 +12,15 @@ type WebSocketAction = uint8
 
 const (
 	// Request system data from agent
-	GetData WebSocketAction = iota
+	GetData WebSocketAction = 0
 	// Hub verification challenge
-	CheckFingerprint
+	CheckFingerprint WebSocketAction = 1
+	// Network monitor configuration (Beszel 0.20+)
+	SyncNetworkMonitors WebSocketAction = 7
 )
+
+// StatsCacheTimeMs is the agent-side stats cache window requested with GetData.
+const StatsCacheTimeMs = 60000
 
 // HubRequest defines the structure for requests sent from hub to agent.
 type HubRequest[T any] struct {
@@ -78,7 +83,7 @@ func (acr *AgentConnectRequest) Upgrade(w http.ResponseWriter, r *http.Request, 
 		},
 		Handler: func(conn *websocket.Conn) {
 			log.Debugf("[WS] Agent connection established")
-			conn.MaxPayloadBytes = 16384
+			conn.MaxPayloadBytes = 1 << 20
 			handler(conn, token, version)
 		},
 	}

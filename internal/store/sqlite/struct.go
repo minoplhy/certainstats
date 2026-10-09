@@ -1,6 +1,7 @@
 package sqlite
 
 import (
+	"certainstats/internal/agent_parser/registry"
 	"certainstats/internal/store"
 	"database/sql"
 	"sync"
@@ -10,8 +11,9 @@ import (
 // store.UserStore, and store.DashboardStore against SQLite.
 // The compiler enforces this via the var _ checks below.
 type Store struct {
-	db    *sql.DB
-	cache sync.Map // token string → *store.AgentIdentity
+	Providers *registry.Registry
+	db        *sql.DB
+	cache     sync.Map // token string → *store.AgentIdentity
 }
 
 // Compile-time interface compliance checks.
@@ -23,3 +25,10 @@ var (
 	_ store.DashboardStore = (*Store)(nil)
 	_ store.AlertsStore    = (*Store)(nil)
 )
+
+func (s *Store) providers() *registry.Registry {
+	if s.Providers != nil {
+		return s.Providers
+	}
+	return registry.NewRegistry()
+}

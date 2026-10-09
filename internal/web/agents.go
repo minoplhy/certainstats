@@ -27,8 +27,25 @@ func (h *WebHandler) AgentsListHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	pd := h.newPageData(r, "Agent Hub", "agents", map[string]any{
-		"Agents":       agents,
+	// The hub, agent details and Network share one SPA page; the URL picks the initial view.
+	path := strings.TrimSuffix(r.URL.Path, "/")
+	title, nav := "Agent Hub", "agents"
+	initialAgent := ""
+	for _, a := range agents {
+		if path == h.PanelPath+"/"+a.AgentID {
+			initialAgent = a.AgentID
+			title = "Agent Details"
+			break
+		}
+	}
+	if path == h.PanelPath+"/network-monitors" {
+		title, nav = "Network Monitors", "network"
+	}
+	pd := h.newPageData(r, title, nav, map[string]any{
+		"Agents": agents,
+		// The content template's dot is this map, so it needs its own copy.
+		"ActiveNav":    nav,
+		"InitialAgent": initialAgent,
 		"OnlineCount":  online,
 		"OfflineCount": len(agents) - online,
 	})

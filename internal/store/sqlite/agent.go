@@ -16,8 +16,8 @@ func (s *Store) AgentGetByToken(ctx context.Context, token string) (*store.Agent
 
 	var id store.AgentIdentity
 	err := s.db.QueryRowContext(ctx,
-		`SELECT user_id, agent_id FROM agents WHERE token = ?`, token,
-	).Scan(&id.UserID, &id.AgentID)
+		`SELECT user_id, agent_id, agent_type FROM agents WHERE token = ?`, token,
+	).Scan(&id.UserID, &id.AgentID, &id.AgentType)
 	if err != nil {
 		return nil, err
 	}
@@ -93,7 +93,7 @@ func (s *Store) AgentList(ctx context.Context, userID string) ([]store.Agent, er
 		SELECT agent_id, user_id, agent_type, nickname, last_seen, is_online, uptime,
 		       linux_version, cpu_model, cpu_cores, ram_size, swap_size, disk_size,
 		       total_rx_bytes, total_tx_bytes, total_disk_read_bytes, total_disk_write_bytes,
-		       note
+		       note, `+runtimeColumns+`
 		FROM   agents
 		WHERE  user_id = ?
 		ORDER  BY is_online ASC, nickname ASC`,
@@ -108,16 +108,20 @@ func (s *Store) AgentList(ctx context.Context, userID string) ([]store.Agent, er
 	for rows.Next() {
 		var a store.Agent
 		var lastSeen sql.NullTime
-		if err := rows.Scan(
+		var runtime runtimeScan
+		if err := rows.Scan(append([]any{
 			&a.AgentID, &a.UserID, &a.AgentType, &a.Nickname, &lastSeen, &a.IsOnline, &a.Uptime,
 			&a.LinuxVersion, &a.CpuModel, &a.CpuCores, &a.RamSize, &a.SwapSize, &a.DiskSize,
 			&a.TotalRxBytes, &a.TotalTxBytes, &a.TotalDiskReadBytes, &a.TotalDiskWriteBytes,
 			&a.Note,
-		); err != nil {
+		}, runtime.targets()...)...); err != nil {
 			return nil, err
 		}
 		if lastSeen.Valid {
 			a.LastSeen = &lastSeen.Time
+		}
+		if err := runtime.apply(&a); err != nil {
+			return nil, err
 		}
 		a.Disks = disksMap[a.AgentID]
 		out = append(out, a)
@@ -222,25 +226,29 @@ func (s *Store) AgentDelete(ctx context.Context, agentID, userID string) error {
 func (s *Store) AgentGetByID(ctx context.Context, agentID, userID string) (*store.Agent, error) {
 	var a store.Agent
 	var lastSeen sql.NullTime
+	var runtime runtimeScan
 	err := s.db.QueryRowContext(ctx, `
 		SELECT agent_id, user_id, agent_type, nickname, last_seen, is_online, uptime,
 		       linux_version, cpu_model, cpu_cores, ram_size, swap_size, disk_size,
 		       total_rx_bytes, total_tx_bytes, total_disk_read_bytes, total_disk_write_bytes,
-		       note
+		       note, `+runtimeColumns+`
 		FROM   agents
 		WHERE  agent_id = ? AND user_id = ?`,
 		agentID, userID,
-	).Scan(
+	).Scan(append([]any{
 		&a.AgentID, &a.UserID, &a.AgentType, &a.Nickname, &lastSeen, &a.IsOnline, &a.Uptime,
 		&a.LinuxVersion, &a.CpuModel, &a.CpuCores, &a.RamSize, &a.SwapSize, &a.DiskSize,
 		&a.TotalRxBytes, &a.TotalTxBytes, &a.TotalDiskReadBytes, &a.TotalDiskWriteBytes,
 		&a.Note,
-	)
+	}, runtime.targets()...)...)
 	if err != nil {
 		return nil, err
 	}
 	if lastSeen.Valid {
 		a.LastSeen = &lastSeen.Time
+	}
+	if err = runtime.apply(&a); err != nil {
+		return nil, err
 	}
 
 	diskRows, err := s.db.QueryContext(ctx, `

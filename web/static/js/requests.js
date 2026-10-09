@@ -1,11 +1,11 @@
 (function () {
   'use strict';
   const groups = new Map();
-  function begin(key, retry) {
+  function begin(key, retry, options = {}) {
     groups.get(key)?.abort();
     const controller = new AbortController();groups.set(key, controller);
     let pending = 0, failed = false, samples = 0, retryAt = 0;
-    const container = document.getElementById(key);
+    const container = options.silent ? null : document.getElementById(key);
     let status = container?.querySelector('[data-request-status]');
     if (container && !status) { status = document.createElement('div');status.dataset.requestStatus = '';status.className = 'request-status';status.setAttribute('role', 'status');container.prepend(status); }
     function render() {
@@ -32,7 +32,11 @@
       }
     };
   }
+  function cancel(key) {
+    groups.get(key)?.abort();
+    groups.delete(key);
+  }
   function cancelAll() {for (const controller of groups.values()) controller.abort();groups.clear();}
   window.addEventListener('pagehide', cancelAll);
-  window.CertainStatsRequests = {begin, cancelAll};
+  window.CertainStatsRequests = {begin, cancel, cancelAll};
 })();

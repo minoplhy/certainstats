@@ -2,6 +2,7 @@ package sqlite
 
 import (
 	"certainstats/internal/base/alert"
+	nm "certainstats/internal/networkmonitor"
 	"certainstats/internal/store"
 	"context"
 	"database/sql"
@@ -51,6 +52,9 @@ func (s *Store) AlertCreate(ctx context.Context, d store.Alert) error {
 		}
 	}
 
+	if err = s.setAlertMonitors(ctx, tx, d); err != nil {
+		return err
+	}
 	return tx.Commit()
 }
 
@@ -113,7 +117,16 @@ func (s *Store) AlertList(ctx context.Context, userID string) ([]store.Alert, er
 
 		out = append(out, a)
 	}
-	return out, rows.Err()
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+	rows.Close()
+	for i := range out {
+		if err = s.loadAlertMonitors(ctx, &out[i]); err != nil {
+			return nil, err
+		}
+	}
+	return out, nil
 }
 
 // AlertGetInfo fetches a single alert and its mapped agents
@@ -157,6 +170,9 @@ func (s *Store) AlertGetInfo(ctx context.Context, alertID string, userID string)
 		a.Agents = []alert.AgentState{}
 	}
 
+	if err = s.loadAlertMonitors(ctx, &a); err != nil {
+		return store.Alert{}, err
+	}
 	return a, nil
 }
 
@@ -217,6 +233,9 @@ func (s *Store) AlertRemoveAgents(ctx context.Context, alertID string, agentsID 
 
 // AlertUpdate fully updates an alert's configuration and performs a smart diff on its agents
 func (s *Store) AlertUpdate(ctx context.Context, d store.Alert, newAgents []string) error {
+	if d.Trigger.Type == alert.TriggerTypeNetworkLoss && len(newAgents) > 0 {
+		return nm.Invalid("network rules require monitors and no agent selection")
+	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -314,6 +333,9 @@ func (s *Store) AlertUpdate(ctx context.Context, d store.Alert, newAgents []stri
 		}
 	}
 
+	if err = s.setAlertMonitors(ctx, tx, d); err != nil {
+		return err
+	}
 	return tx.Commit()
 }
 
