@@ -42,6 +42,9 @@ func PublicWebSocketHandler(dashboard store.DashboardStore, broadcaster *AgentBr
 			apiresponse.Error(w, http.StatusForbidden, "Public access disabled")
 			return
 		}
+		if !requireBrowserProtocol(w, r, broadcaster.protobuf) {
+			return
+		}
 
 		release, ok := browserSlot(w, "dash:"+dashID, 256)
 		if !ok {
@@ -57,7 +60,7 @@ func PublicWebSocketHandler(dashboard store.DashboardStore, broadcaster *AgentBr
 					log.Printf("[Public-WS] Rejected connection from unauthorized origin: %s", origin)
 					return err
 				}
-				return nil
+				return selectBrowserProtocol(config, broadcaster.protobuf)
 			},
 			Handler: func(conn *websocket.Conn) {
 				defer conn.Close()
@@ -76,7 +79,7 @@ func PublicWebSocketHandler(dashboard store.DashboardStore, broadcaster *AgentBr
 
 				// Keep connection open
 				for {
-					var msg string
+					var msg []byte
 					if err := websocket.Message.Receive(conn, &msg); err != nil {
 						log.Debugf("[Public-WS] Viewer disconnected for Dashboard: %s", dashID)
 						break

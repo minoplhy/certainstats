@@ -16,7 +16,7 @@ func u64Ptr(u uint64) *uint64 { return &u }
 func strPtr(s string) *string { return &s }
 
 func TestRenderer_ParseAndRender(t *testing.T) {
-	renderer, err := NewRenderer()
+	renderer, err := NewRenderer(false)
 	if err != nil {
 		t.Fatalf("NewRenderer failed: %v", err)
 	}
@@ -122,7 +122,7 @@ func TestRenderer_ParseAndRender(t *testing.T) {
 }
 
 func TestDashboardEdit_RenderJSValid(t *testing.T) {
-	renderer, err := NewRenderer()
+	renderer, err := NewRenderer(false)
 	if err != nil {
 		t.Fatalf("NewRenderer failed: %v", err)
 	}
@@ -244,5 +244,32 @@ func TestBootstrapPrivacy(t *testing.T) {
 	config = string(bootstrap(map[string]any{"Sessions": []store.Session{{Token: "credential"}}, "CurrentToken": "credential"}))
 	if strings.Contains(config, "credential") {
 		t.Fatal("session credential in JavaScript configuration")
+	}
+}
+
+func TestRendererWebSocketMode(t *testing.T) {
+	for _, protobuf := range []bool{false, true} {
+		renderer, err := NewRenderer(protobuf)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, page := range []string{"login.html", "public_dashboard.html"} {
+			var output bytes.Buffer
+			data := PageData{Data: map[string]any{"Dashboard": store.Dashboard{AccessRules: accessrules.AccessRules{}}}}
+			if err := renderer.Render(&output, page, data); err != nil {
+				t.Fatal(err)
+			}
+			html := output.String()
+			value := "false"
+			if protobuf {
+				value = "true"
+			}
+			if !strings.Contains(html, `data-ws-protobuf="`+value+`"`) {
+				t.Fatal("missing inert mode")
+			}
+			if strings.Contains(html, "js/browser_protocol") != protobuf {
+				t.Fatal("decoder loading disagrees with mode")
+			}
+		}
 	}
 }

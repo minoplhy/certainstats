@@ -22,10 +22,35 @@ test('hostile disk paths remain text and preserve field visibility',()=>{
  const legend=fragment.children[1].children[0].children[1];assert.equal(legend.children.length,1);
 });
 test('active templates contain external scripts and inert configuration',()=>{
- function visit(dir) {for(const file of fs.readdirSync(dir,{withFileTypes:true})) {const name=dir+'/'+file.name;if(file.isDirectory()) visit(name);else if(name.endsWith('.html')) {const html=fs.readFileSync(name,'utf8');assert.doesNotMatch(html,/\son(?:click|submit|change|input)\s*=/,name);assert.doesNotMatch(html,/<script\s*>/,name);}}}
+ function visit(dir) {for(const file of fs.readdirSync(dir,{withFileTypes:true})) {const name=dir+'/'+file.name;if(file.isDirectory()) visit(name);else if(name.endsWith('.html')) {const html=fs.readFileSync(name,'utf8');assert.doesNotMatch(html,/\son[a-z]+\s*=/i,name);for (const [, attributes] of html.matchAll(/<script\b([^>]*)>/gi)) assert.match(attributes,/\bsrc\s*=|\btype\s*=\s*"application\/json"/i,name);}}}
  visit('web/templates');
 });
 test('active JavaScript parses',()=>{for(const file of fs.readdirSync('web/static/js')) if(file.endsWith('.js')) new vm.Script(fs.readFileSync('web/static/js/'+file,'utf8'),{filename:file});});
+
+test('Enter on the agent title starts renaming through the external event handlers', () => {
+ const callbacks = {};
+ let edits = 0;
+ let prevented = 0;
+ const context = {
+   window: {fetch: async () => {}, matchMedia: () => ({matches: false}), startInpageAgentNameEdit: () => {edits++;}},
+   document: {documentElement: {setAttribute() {}}, addEventListener: (type, fn) => {callbacks[type] = fn;}},
+   localStorage: {getItem: () => null}
+ };
+ vm.runInNewContext(fs.readFileSync('web/static/js/browser.js', 'utf8'), context);
+ const title = {
+   matches: selector => selector.includes('[data-click-action="startInpageAgentNameEdit"]'),
+   closest: () => title,
+   getAttribute: name => name === 'data-click-action' ? 'startInpageAgentNameEdit' : null,
+   hasAttribute: () => false,
+   click: () => callbacks.click({target: title})
+ };
+ callbacks.keydown({key: 'Enter', target: title, preventDefault: () => {prevented++;}});
+ assert.equal(edits, 1);
+ assert.equal(prevented, 1);
+ callbacks.keydown({key: 'Escape', target: title, preventDefault: () => {prevented++;}});
+ assert.equal(edits, 1);
+ assert.equal(prevented, 1);
+});
 
 
 test('history requests cancel obsolete work and preserve HTTP failures', async () => {

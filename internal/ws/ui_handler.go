@@ -26,6 +26,9 @@ func UIWebSocketHandler(broadcaster *AgentBroadcaster, sessions store.SessionSto
 			apiresponse.Error(w, 401, "Unauthorized")
 			return
 		}
+		if !requireBrowserProtocol(w, r, broadcaster.protobuf) {
+			return
+		}
 		release, ok := browserSlot(w, "user:"+userID, 64)
 		if !ok {
 			return
@@ -40,7 +43,7 @@ func UIWebSocketHandler(broadcaster *AgentBroadcaster, sessions store.SessionSto
 					log.Printf("[UI-WS] Rejected connection from unauthorized origin: %s", origin)
 					return err
 				}
-				return nil
+				return selectBrowserProtocol(config, broadcaster.protobuf)
 			},
 			Handler: func(conn *websocket.Conn) {
 				defer conn.Close()
@@ -62,7 +65,7 @@ func UIWebSocketHandler(broadcaster *AgentBroadcaster, sessions store.SessionSto
 				// Keep connection alive/open until client disconnects
 				// We don't expect messages FROM the UI for now, but we must read to detect disconnects
 				for {
-					var msg string
+					var msg []byte
 					if err := websocket.Message.Receive(conn, &msg); err != nil {
 						log.Debugf("[UI-WS] Browser disconnected for User: %s", userID)
 						break

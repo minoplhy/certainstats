@@ -7,12 +7,14 @@ import (
 	"certainstats/internal/metrics"
 	"certainstats/internal/security"
 	"certainstats/internal/ws"
+	"certainstats/internal/ws/browserpb"
 	"context"
 	"crypto/rand"
-	"encoding/json"
 	"os"
 	"strconv"
 	"time"
+
+	"google.golang.org/protobuf/proto"
 )
 
 // Start runs the central timer loop for all background tasks
@@ -274,30 +276,19 @@ func (e *Routine) PulseSync(ctx context.Context) {
 	// 2. Pulse Admins
 	activeUsers := e.Broadcaster.GetActiveUserIDs()
 	for _, userID := range activeUsers {
-		ownedSnaps := make(map[string]any)
+		ownedSnaps := make(map[string]*browserpb.Snapshot)
 		agents, err := e.Store.AgentList(ctx, userID)
 		if err != nil {
 			continue
 		}
 		for _, a := range agents {
-			if snap, ok := allSnaps[a.AgentID]; ok {
-				raw, err := json.Marshal(snap)
-				if err != nil {
-					continue
-				}
-				var fields map[string]any
-				if err := json.Unmarshal(raw, &fields); err != nil {
-					continue
-				}
-				fields["is_online"], fields["available"] = a.IsOnline, true
-				ownedSnaps[a.AgentID] = fields
-			} else {
-				ownedSnaps[a.AgentID] = map[string]any{"is_online": a.IsOnline, "available": false}
-			}
+			item := ws.BrowserSnapshot(allSnaps[a.AgentID], nil)
+			item.IsOnline = proto.Bool(a.IsOnline)
+			item.Available = proto.Bool(allSnaps[a.AgentID] != nil)
+			ownedSnaps[a.AgentID] = item
 		}
-		e.Broadcaster.BroadcastToUser(userID, ws.UIUpdate{
-			Type: "agent_update",
-			Data: ownedSnaps,
+		e.Broadcaster.BroadcastToUser(userID, &browserpb.TelemetryEnvelope{
+			Pulse: &browserpb.TelemetryPulse{Agents: ownedSnaps},
 		})
 	}
 
@@ -316,136 +307,30 @@ func (e *Routine) PulseSync(ctx context.Context) {
 			continue
 		}
 
-		filteredData := make(map[string]any)
-		for _, agentID := range agents {
-			if snap, ok := allSnaps[agentID.AgentID]; ok {
-				allowed := rule.MetricSet()
-				for feature := range rule.FeatureSet() {
-					allowed[feature] = struct{}{}
-				}
-				filtered := e.filterSnapshot(snap, allowed)
-
-				if _, ok := rule.FeatureSet()["disk_size"]; ok {
-					filtered["DiskTotalBytes"] = snap.DiskTotalBytes
-				}
-				filteredData[agentID.PublicAgentID] = filtered
+		filteredData := make(map[string]*browserpb.Snapshot)
+		allowed := rule.MetricSet()
+		for feature := range rule.FeatureSet() {
+			allowed[feature] = struct{}{}
+		}
+		for _, agent := range agents {
+			if snap := allSnaps[agent.AgentID]; snap != nil {
+				filteredData[agent.PublicAgentID] = ws.BrowserSnapshot(snap, allowed)
 			}
-			if _, allowed := rule.FeatureSet()["is_online"]; allowed {
-				info, err := e.Store.AgentGetByID(ctx, agentID.AgentID, dash.UserID)
+			if _, ok := allowed["is_online"]; ok {
+				info, err := e.Store.AgentGetByID(ctx, agent.AgentID, dash.UserID)
 				if err == nil {
-					item, ok := filteredData[agentID.PublicAgentID].(map[string]any)
-					if !ok {
-						item = map[string]any{"available": false}
-						filteredData[agentID.PublicAgentID] = item
+					item := filteredData[agent.PublicAgentID]
+					if item == nil {
+						item = &browserpb.Snapshot{Available: proto.Bool(false)}
+						filteredData[agent.PublicAgentID] = item
 					}
-					item["is_online"] = info.IsOnline
+					item.IsOnline = proto.Bool(info.IsOnline)
 				}
 			}
 		}
-
-		if len(agents) > 0 {
-			e.Broadcaster.BroadcastToDash(dashID, ws.UIUpdate{
-				Type: "agent_update",
-				Data: filteredData,
-			})
-		}
+		// Empty full pulses still establish freshness, including empty dashboards.
+		e.Broadcaster.BroadcastToDash(dashID, &browserpb.TelemetryEnvelope{
+			Pulse: &browserpb.TelemetryPulse{Agents: filteredData},
+		})
 	}
-}
-
-func (e *Routine) filterSnapshot(snap *metrics.AgentSnapshot, allowed map[string]struct{}) map[string]any {
-	out := make(map[string]any)
-	out["Timestamp"] = snap.Timestamp
-
-	_, allowedUptime := allowed["uptime"]
-	_, allowedCPUUsage := allowed["agent_cpu_usage"]
-	_, allowedCPUIOWait := allowed["agent_cpu_iowait"]
-	_, allowedCPUSteal := allowed["agent_cpu_steal"]
-	_, allowedRAMUsed := allowed["agent_ram_used"]
-	_, allowedSWAPUsed := allowed["agent_swap_used"]
-	_, allowedDiskUsed := allowed["agent_disk_used"]
-	_, allowedDiskReadBytes := allowed["agent_disk_read_bytes"]
-	_, allowedDiskWriteBytes := allowed["agent_disk_write_bytes"]
-	_, allowedRXBytes := allowed["agent_rx_bytes"]
-	_, allowedTXBytes := allowed["agent_tx_bytes"]
-
-	if allowedUptime && snap.Metadata != nil {
-		out["Uptime"] = snap.Metadata.Uptime
-	}
-
-	if allowedCPUUsage {
-		out["CPUUsagePercent"] = snap.CPUUsagePercent
-	}
-
-	if allowedCPUIOWait {
-		out["CPUIOWaitPercent"] = snap.CPUIOWaitPercent
-	}
-	if allowedCPUSteal {
-		out["CPUStealPercent"] = snap.CPUStealPercent
-	}
-
-	if allowedRAMUsed {
-		out["RAMUsedBytes"] = snap.RAMUsedBytes
-	}
-
-	if allowedSWAPUsed {
-		out["RAMSwapUsedBytes"] = snap.RAMSwapUsedBytes
-	}
-
-	if allowedDiskUsed {
-		out["DiskUsedBytes"] = snap.DiskUsedBytes
-
-	}
-	if allowedDiskUsed || allowedDiskReadBytes || allowedDiskWriteBytes {
-		disks := make([]map[string]any, 0, len(snap.Disks))
-		for _, d := range snap.Disks {
-			item := map[string]any{"path": d.Path}
-			if _, ok := allowed["disk_size"]; ok {
-				item["total_bytes"] = d.TotalBytes
-			}
-			if allowedDiskUsed {
-				item["used_bytes"] = d.UsedBytes
-			}
-			if allowedDiskReadBytes {
-				item["read_bytes"] = d.ReadBytes
-			}
-			if allowedDiskWriteBytes {
-				item["write_bytes"] = d.WriteBytes
-			}
-			disks = append(disks, item)
-		}
-		out["Disks"] = disks
-	}
-	if allowedDiskReadBytes {
-		out["DiskReadBps"] = snap.DiskReadBps
-	}
-	if allowedDiskWriteBytes {
-		out["DiskWriteBps"] = snap.DiskWriteBps
-	}
-	if allowedRXBytes {
-		out["RXBytes"] = snap.RXBytes
-		out["RXBps"] = snap.RXBps
-	}
-	if allowedTXBytes {
-		out["TXBytes"] = snap.TXBytes
-		out["TXBps"] = snap.TXBps
-	}
-
-	names := map[string]string{"agent_cpu_usage": "CPUUsagePercent", "agent_cpu_iowait": "CPUIOWaitPercent", "agent_cpu_steal": "CPUStealPercent", "agent_ram_used": "RAMUsedBytes", "agent_swap_used": "RAMSwapUsedBytes", "agent_disk_used": "DiskUsedBytes"}
-	for metric, field := range names {
-		if snap.Missing[metric] {
-			if _, ok := out[field]; ok {
-				out[field] = nil
-			}
-		}
-	}
-	for metric, fields := range map[string][]string{"agent_rx_bytes": {"RXBytes", "RXBps"}, "agent_tx_bytes": {"TXBytes", "TXBps"}, "agent_disk_read_bytes": {"DiskReadBps"}, "agent_disk_write_bytes": {"DiskWriteBps"}} {
-		if snap.Missing[metric] {
-			for _, field := range fields {
-				if _, ok := out[field]; ok {
-					out[field] = nil
-				}
-			}
-		}
-	}
-	return out
 }

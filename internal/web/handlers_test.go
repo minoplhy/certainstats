@@ -134,7 +134,7 @@ func (m *mockWebStore) DashboardUpdate(ctx context.Context, d store.Dashboard, n
 
 func TestAgentProvisionHandler_BeszelSSHAndRedirect(t *testing.T) {
 	mock := &mockWebStore{}
-	renderer, err := NewRenderer()
+	renderer, err := NewRenderer(false)
 	if err != nil {
 		t.Fatalf("failed to init renderer: %v", err)
 	}
@@ -232,7 +232,7 @@ func TestAgentProvisionHandler_BeszelSSHAndRedirect(t *testing.T) {
 
 func TestPublicDashboardHandler_ContextCache(t *testing.T) {
 	mock := &mockWebStore{}
-	renderer, err := NewRenderer()
+	renderer, err := NewRenderer(false)
 	if err != nil {
 		t.Fatalf("failed to init renderer: %v", err)
 	}
@@ -312,7 +312,7 @@ func TestWebLoginHandler_SessionExpiration(t *testing.T) {
 		t.Fatalf("failed to hash password: %v", err)
 	}
 
-	renderer, err := NewRenderer()
+	renderer, err := NewRenderer(false)
 	if err != nil {
 		t.Fatalf("failed to init renderer: %v", err)
 	}
@@ -398,7 +398,7 @@ func TestWebLoginHandler_SessionExpiration(t *testing.T) {
 }
 
 func TestDashboardUpdateHandler_PreservesAllAgentsWhenNewAdded(t *testing.T) {
-	renderer, err := NewRenderer()
+	renderer, err := NewRenderer(false)
 	if err != nil {
 		t.Fatalf("failed to init renderer: %v", err)
 	}

@@ -9,6 +9,7 @@ services:
     volumes:
       - ./data:/app/data
     environment:
+      - WS_PROTOBUF=${WS_PROTOBUF:-false}
       - PANEL_PATH=${PANEL_PATH:-/}
       - PUBLIC_PATH=${PUBLIC_PATH:-/dashboard}
       - DATA_DIR=/app/data

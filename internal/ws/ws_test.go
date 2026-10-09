@@ -1,7 +1,7 @@
 package ws
 
 import (
-	"encoding/json"
+	"certainstats/internal/ws/browserpb"
 	"net/http/httptest"
 	"testing"
 	"time"
@@ -25,7 +25,7 @@ func TestAgentBroadcaster(t *testing.T) {
 	wsURL := "ws" + server.URL[4:]
 
 	// Create broadcaster
-	b := NewAgentBroadcaster()
+	b := NewAgentBroadcaster(true)
 
 	t.Run("user subscribe and broadcast", func(t *testing.T) {
 		ws, err := websocket.Dial(wsURL, "", server.URL)
@@ -42,7 +42,7 @@ func TestAgentBroadcaster(t *testing.T) {
 		}
 
 		// Try broadcasting
-		b.BroadcastToUser("user1", UIUpdate{Type: "test", Data: "hello"})
+		b.BroadcastToUser("user1", &browserpb.TelemetryEnvelope{Pulse: &browserpb.TelemetryPulse{}})
 
 		b.UnsubscribeUser("user1", ws)
 		activeUsers = b.GetActiveUserIDs()
@@ -65,7 +65,7 @@ func TestAgentBroadcaster(t *testing.T) {
 			t.Errorf("expected active dashes to contain dash1, got %+v", activeDashes)
 		}
 
-		b.BroadcastToDash("dash1", UIUpdate{Type: "test", Data: "hello"})
+		b.BroadcastToDash("dash1", &browserpb.TelemetryEnvelope{Pulse: &browserpb.TelemetryPulse{}})
 
 		b.UnsubscribeDash("dash1", ws)
 		activeDashes = b.GetActiveDashIDs()
@@ -214,20 +214,5 @@ func TestHubDisconnectedErrors(t *testing.T) {
 
 	if err := hub.SetWriteDeadline(time.Now()); err == nil || err.Error() != "not connected" {
 		t.Errorf("expected 'not connected' error, got %v", err)
-	}
-}
-
-func TestUIUpdateJSON(t *testing.T) {
-	update := UIUpdate{
-		Type: "status",
-		Data: "online",
-	}
-	bytes, err := json.Marshal(update)
-	if err != nil {
-		t.Fatalf("failed to marshal: %v", err)
-	}
-	expected := `{"type":"status","data":"online"}`
-	if string(bytes) != expected {
-		t.Errorf("expected %q, got %q", expected, string(bytes))
 	}
 }

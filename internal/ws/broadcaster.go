@@ -1,20 +1,16 @@
 package ws
 
 import (
-	"encoding/json"
+	"certainstats/internal/ws/browserpb"
 	"sync"
 
 	"golang.org/x/net/websocket"
+	"google.golang.org/protobuf/proto"
 )
-
-// UIUpdate represents the packet sent to the frontend
-type UIUpdate struct {
-	Type string      `json:"type"`
-	Data interface{} `json:"data"`
-}
 
 // AgentBroadcaster manages WebSocket connections from browsers (Admin and Public)
 type AgentBroadcaster struct {
+	protobuf       bool
 	mu             sync.RWMutex
 	sessionClients map[string]map[*websocket.Conn]bool
 	writers        map[*websocket.Conn]*browserWriter
@@ -22,8 +18,9 @@ type AgentBroadcaster struct {
 	dashClients    map[string]map[*websocket.Conn]bool // dashID -> connections
 }
 
-func NewAgentBroadcaster() *AgentBroadcaster {
+func NewAgentBroadcaster(protobuf bool) *AgentBroadcaster {
 	return &AgentBroadcaster{
+		protobuf:       protobuf,
 		writers:        make(map[*websocket.Conn]*browserWriter),
 		userClients:    make(map[string]map[*websocket.Conn]bool),
 		sessionClients: make(map[string]map[*websocket.Conn]bool),
@@ -84,7 +81,7 @@ func (b *AgentBroadcaster) UnsubscribeDash(dashID string, conn *websocket.Conn) 
 }
 
 // BroadcastToUser sends an update to an authenticted user
-func (b *AgentBroadcaster) BroadcastToUser(userID string, update UIUpdate) {
+func (b *AgentBroadcaster) BroadcastToUser(userID string, update *browserpb.TelemetryEnvelope) {
 	b.mu.RLock()
 	clients, exists := b.userClients[userID]
 	if !exists {
@@ -98,11 +95,11 @@ func (b *AgentBroadcaster) BroadcastToUser(userID string, update UIUpdate) {
 	}
 	b.mu.RUnlock()
 
-	b.sendTo(targets, update)
+	b.sendTo(targets, update, false)
 }
 
 // BroadcastToDash sends an update to a public dashboard
-func (b *AgentBroadcaster) BroadcastToDash(dashID string, update UIUpdate) {
+func (b *AgentBroadcaster) BroadcastToDash(dashID string, update *browserpb.TelemetryEnvelope) {
 	b.mu.RLock()
 	clients, exists := b.dashClients[dashID]
 	if !exists {
@@ -116,11 +113,17 @@ func (b *AgentBroadcaster) BroadcastToDash(dashID string, update UIUpdate) {
 	}
 	b.mu.RUnlock()
 
-	b.sendTo(targets, update)
+	b.sendTo(targets, update, true)
 }
 
-func (b *AgentBroadcaster) sendTo(targets []*websocket.Conn, update UIUpdate) {
-	payload, err := json.Marshal(update)
+func (b *AgentBroadcaster) sendTo(targets []*websocket.Conn, update *browserpb.TelemetryEnvelope, public bool) {
+	var payload []byte
+	var err error
+	if b.protobuf {
+		payload, err = proto.Marshal(update)
+	} else {
+		payload, err = marshalLegacyJSON(update, public)
+	}
 	if err != nil {
 		return
 	}

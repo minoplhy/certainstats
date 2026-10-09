@@ -1,0 +1,66 @@
+syntax = "proto3";
+
+package certainstats.browser.v1;
+option go_package = "certainstats/internal/ws/browserpb";
+
+import "google/protobuf/timestamp.proto";
+
+// One full pulse per WebSocket binary frame. Map keys are private IDs for
+// authenticated owners and public IDs for public dashboard viewers.
+message TelemetryEnvelope {
+  TelemetryPulse pulse = 1;
+}
+message TelemetryPulse {
+  map<string, Snapshot> agents = 1;
+}
+
+// Absent wrapper = not provided/allowed. Present empty wrapper = unavailable.
+// Explicit scalar presence preserves measured zero and full uint64 precision.
+message FloatValue { optional double value = 1; }
+message UintValue { optional uint64 value = 1; }
+message DiskList { repeated Disk items = 1; }
+message LoadAverage { repeated double values = 1; }
+message Temperatures { map<string, double> values = 1; }
+message MissingMetrics { map<string, bool> values = 1; }
+
+message Snapshot {
+  google.protobuf.Timestamp timestamp = 1;
+  optional bool available = 2;
+  optional bool is_online = 3;
+  FloatValue cpu_usage_percent = 4;
+  FloatValue cpu_iowait_percent = 5;
+  FloatValue cpu_steal_percent = 6;
+  UintValue ram_used_bytes = 7;
+  UintValue ram_swap_used_bytes = 8;
+  UintValue disk_used_bytes = 9;
+  UintValue disk_total_bytes = 10;
+  DiskList disks = 11;
+  LoadAverage load_avg = 12;
+  Temperatures temperatures = 13;
+  FloatValue rx_bytes = 14;
+  FloatValue tx_bytes = 15;
+  FloatValue rx_bps = 16;
+  FloatValue tx_bps = 17;
+  FloatValue disk_read_bps = 18;
+  FloatValue disk_write_bps = 19;
+  optional uint32 uptime = 20;
+  Metadata metadata = 21;
+  MissingMetrics missing = 22;
+  optional string agent_id = 23; // Authenticated owner snapshots only.
+}
+message Disk {
+  string path = 1;
+  UintValue used_bytes = 2;
+  UintValue total_bytes = 3;
+  UintValue read_bytes = 4;
+  UintValue write_bytes = 5;
+}
+message Metadata {
+  uint32 uptime = 1;
+  string linux_version = 2;
+  string cpu_model = 3;
+  uint32 cpu_cores = 4;
+  uint64 ram_size = 5;
+  uint64 swap_size = 6;
+  uint64 disk_size = 7;
+}

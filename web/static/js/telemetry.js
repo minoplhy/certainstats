@@ -630,45 +630,85 @@
         ? wsPath
         : protocol + '//' + window.location.host + cleanPath;
 
-      let lastPulse = 0, reconnectTimer = null, disposed = false;
-      function status(text) {const node=document.getElementById('feed-status');if (node) {node.hidden=false;node.textContent=text;}}
-      const staleTimer=setInterval(() => {if (lastPulse && Date.now()-lastPulse>45000) status('Live feed stale · Last pulse ' + new Date(lastPulse).toLocaleTimeString());},5000);
-      window.addEventListener('pagehide',()=>{disposed=true;clearInterval(staleTimer);clearTimeout(reconnectTimer);globalSocket?.close();updateListeners=[];},{once:true});
+      let lastPulse = 0, reconnectTimer = null, disposed = false, failures = 0;
+      const protobuf = document.documentElement?.dataset.wsProtobuf === 'true';
+      const codec = window.CertainStatsBrowserProtocol;
+      function status(text) {
+        const node = document.getElementById('feed-status');
+        if (!node) return;
+        node.hidden = false;
+        node.replaceChildren(document.createTextNode(text));
+        if (failures >= 3) {
+          const reload = document.createElement('button');
+          reload.type = 'button';
+          reload.textContent = 'Reload page';
+          reload.addEventListener('click', () => window.location.reload());
+          node.append(document.createTextNode(' '), reload);
+        }
+      }
+      const staleTimer = setInterval(() => {
+        if (lastPulse && Date.now() - lastPulse > 45000) {
+          status('Live feed stale · Last pulse ' + new Date(lastPulse).toLocaleTimeString());
+        }
+      }, 5000);
+      window.addEventListener('pagehide', () => {
+        disposed = true;
+        clearInterval(staleTimer);
+        clearTimeout(reconnectTimer);
+        globalSocket?.close();
+        updateListeners = [];
+      }, {once: true});
 
       function connect() {
- if (disposed) return;
- status("Connecting to live feed…");
+        if (disposed) return;
+        status('Connecting to live feed…');
         try {
-          globalSocket = new WebSocket(fullUrl);
-
-          globalSocket.onopen = function () {
+          if (protobuf && !codec) throw new Error('Telemetry decoder unavailable. Reload the page.');
+          const socket = protobuf ? new WebSocket(fullUrl, codec.protocol) : new WebSocket(fullUrl);
+          globalSocket = socket;
+          if (protobuf) socket.binaryType = 'arraybuffer';
+          let opened = false;
+          socket.onopen = function () {
+            if (disposed) { socket.close(); return; }
+            opened = true;
+            failures = 0;
             status('Connected · Waiting for telemetry');
           };
-
-          globalSocket.onmessage = function (event) {
+          socket.onmessage = function (event) {
+            if (disposed || socket !== globalSocket) return;
+            let snaps;
             try {
-              const msg = JSON.parse(event.data);
-              if (msg.type === 'agent_update' || msg.type === 'telemetry_snapshot') {
-                lastPulse=Date.now();status("Live · Last update " + new Date(lastPulse).toLocaleTimeString() + " · " + Intl.DateTimeFormat().resolvedOptions().timeZone);
- const snaps = msg.data || {};
-                updateListeners.forEach(fn => fn(snaps));
+              if (protobuf) {
+                snaps = codec.snapshots(codec.decode(event.data));
+              } else {
+                if (typeof event.data !== 'string') throw new Error('Expected JSON text frame');
+                const message = JSON.parse(event.data);
+                if (message.type !== 'agent_update' || !message.data || typeof message.data !== 'object' || Array.isArray(message.data)) throw new Error('Invalid telemetry pulse');
+                snaps = message.data;
               }
             } catch (e) {
-              console.error('[CertainStats WS] Parse Error:', e);
+              console.error('[CertainStats WS] Invalid telemetry frame:', e);
+              socket.close(1002, 'Invalid telemetry frame');
+              return;
             }
+            lastPulse = Date.now();
+            status('Live · Last update ' + new Date(lastPulse).toLocaleTimeString() + ' · ' + Intl.DateTimeFormat().resolvedOptions().timeZone);
+            updateListeners.forEach(fn => fn(snaps));
           };
-
-          globalSocket.onerror = function (err) {
-            console.warn('[CertainStats WS] Error:', err);
+          socket.onerror = function (err) {
+            if (!disposed) console.warn('[CertainStats WS] Error:', err);
           };
-
-          globalSocket.onclose = function () {
-            console.log('[CertainStats WS] Disconnected. Reconnecting in 3s...');
-            status("Disconnected · Retrying…");reconnectTimer=setTimeout(connect,3000);
+          socket.onclose = function () {
+            if (disposed || socket !== globalSocket) return;
+            if (!opened) failures++;
+            status('Disconnected · Retrying…');
+            reconnectTimer = setTimeout(connect, 3000);
           };
         } catch (e) {
+          failures++;
           console.error('[CertainStats WS] Connect exception:', e);
-          reconnectTimer=setTimeout(connect,5000);
+          status('Connection failed · Retrying…');
+          reconnectTimer = setTimeout(connect, 5000);
         }
       }
 

@@ -25,7 +25,11 @@ func (b *AgentBroadcaster) startWriter(conn *websocket.Conn) {
 				return
 			case payload := <-writer.queue:
 				_ = conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
-				if err := websocket.Message.Send(conn, string(payload)); err != nil {
+				var frame any = payload
+				if !b.protobuf {
+					frame = string(payload)
+				}
+				if err := websocket.Message.Send(conn, frame); err != nil {
 					conn.Close()
 					return
 				}

@@ -50,7 +50,7 @@ func (m *mockSettingsStore) UpdatePassword(ctx context.Context, userID, newPassw
 }
 
 func TestSettingsHandler(t *testing.T) {
-	renderer, err := NewRenderer()
+	renderer, err := NewRenderer(false)
 	if err != nil {
 		t.Fatalf("failed to init renderer: %v", err)
 	}
@@ -81,7 +81,7 @@ func TestSettingsHandler(t *testing.T) {
 }
 
 func TestSessionEjectHandler(t *testing.T) {
-	renderer, err := NewRenderer()
+	renderer, err := NewRenderer(false)
 	if err != nil {
 		t.Fatalf("failed to init renderer: %v", err)
 	}
@@ -163,7 +163,7 @@ func TestSessionEjectHandler(t *testing.T) {
 }
 
 func TestSessionEjectOtherHandler(t *testing.T) {
-	renderer, _ := NewRenderer()
+	renderer, _ := NewRenderer(false)
 	mock := &mockSettingsStore{}
 	h := &WebHandler{
 		Renderer:  renderer,
@@ -190,7 +190,7 @@ func TestSessionEjectOtherHandler(t *testing.T) {
 }
 
 func TestPasswordChangeHandler(t *testing.T) {
-	renderer, _ := NewRenderer()
+	renderer, _ := NewRenderer(false)
 	hashed, _ := bcrypt.GenerateFromPassword([]byte("oldPassword123"), bcrypt.DefaultCost)
 	mock := &mockSettingsStore{
 		user: &store.User{UserID: "usr_1", PasswordHash: string(hashed)},

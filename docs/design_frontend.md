@@ -15,6 +15,10 @@
 
 CertainStats renders pages on the server with Go `html/template` and makes them live with small vanilla JS modules. There is no Node.js build, npm package or frontend framework at runtime.
 
+Browser live feeds default to JSON. Experimental `WS_PROTOBUF=true` loads a locally bundled Protobuf decoder. Its Go and JavaScript
+artifacts are checked in; Node tooling is needed only for protocol regeneration.
+See [browser protocol](browser-protocol.md) for schema and build instructions.
+
 ### Core Rules
 1. **Say the state in words first.** Each main page opens with a headline that states the situation ("1 node is offline. The other 5 are healthy."), then shows the numbers.
 2. **Hybrid server render + in-page navigation.** HTML is rendered on the server in under 1ms. Opening an agent detail swaps views in place with `pushState`, without a full page load.

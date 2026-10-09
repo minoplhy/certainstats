@@ -1,0 +1,13 @@
+{
+  "name": "certainstats-browser-protocol",
+  "private": true,
+  "scripts": {
+    "generate": "node generate.cjs"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2",
+    "long": "5.3.2",
+    "protobufjs": "8.8.0",
+    "protobufjs-cli": "2.7.0"
+  }
+}

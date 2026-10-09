@@ -24,6 +24,7 @@ The backend is a single Go binary (`certainstats`) using:
 - **Prometheus TSDB** for time-series storage
 - **SQLite** (via `modernc.org/sqlite`) for agent state, sessions, alerts, dashboards
 - **WebSockets** for real-time agent data push to the admin UI
+- **JSON** for admin/public browser WebSocket pulses by default, with experimental binary **Protocol Buffers** enabled by `WS_PROTOBUF=true`; see [browser protocol](browser-protocol.md)
 - **CBOR** encoding for agent submissions
 
 ---

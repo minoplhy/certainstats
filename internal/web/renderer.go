@@ -89,11 +89,12 @@ func middleTrim(s string, head, tail int) string {
 	return string(r[:head]) + "…" + string(r[len(r)-tail:])
 }
 
-func NewRenderer() (*TemplateRenderer, error) {
+func NewRenderer(protobuf bool) (*TemplateRenderer, error) {
 	funcMap := template.FuncMap{
-		"bootstrap": bootstrap,
-		"asset":     minify.AssetPath,
-		"integrity": minify.AssetIntegrity,
+		"wsProtobuf": func() bool { return protobuf },
+		"bootstrap":  bootstrap,
+		"asset":      minify.AssetPath,
+		"integrity":  minify.AssetIntegrity,
 		"isOnline": func(val any) bool {
 			if val == nil {
 				return false

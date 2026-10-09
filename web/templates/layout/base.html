@@ -1,6 +1,6 @@
 {{define "base"}}
 <!DOCTYPE html>
-<html lang="en" data-theme="light">
+<html data-ws-protobuf="{{wsProtobuf}}" lang="en" data-theme="light">
 <head>
   <meta charset="UTF-8">
   <meta name="csrf-token" content="{{.CSRFToken}}">
@@ -12,6 +12,7 @@
   <script src="{{.StaticPath}}/{{asset "js/disk_dom.js"}}" integrity="{{integrity "js/disk_dom.js"}}"></script>
   <script src="{{.StaticPath}}/{{asset "js/requests.js"}}" integrity="{{integrity "js/requests.js"}}"></script>
   <script src="{{.StaticPath}}/{{asset "js/chart.js"}}" integrity="{{integrity "js/chart.js"}}"></script>
+  {{if wsProtobuf}}<script src="{{.StaticPath}}/{{asset "js/browser_protocol.js"}}" integrity="{{integrity "js/browser_protocol.js"}}"></script>{{end}}
   <script src="{{.StaticPath}}/{{asset "js/telemetry.js"}}" integrity="{{integrity "js/telemetry.js"}}"></script>
   <script src="{{.StaticPath}}/{{asset "js/provision_renderer.js"}}" integrity="{{integrity "js/provision_renderer.js"}}"></script>
 </head>

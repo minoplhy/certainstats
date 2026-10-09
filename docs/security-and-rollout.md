@@ -6,6 +6,12 @@ Production serves Go templates and vanilla JavaScript from `web/`. The React dir
 
 Browser mutations, including login, logout and initial setup, require a signed CSRF token. Fetch a browser page with a cookie jar, retain the `csrf_token` cookie, and send the page's `csrf-token` meta value as `X-CSRF-Token` for JSON requests or `csrf_token` in URL-encoded forms. Agent-token submissions are exempt. Tokens are signed with a process-local key; reload an open form after restarting the server.
 
+Browser live feeds default to JSON. Experimental `WS_PROTOBUF=true` enables binary Protobuf with the required `certainstats.protobuf.v1`
+WebSocket subprotocol. There is no automatic format fallback. HTTP APIs and agent protocols
+retain their existing formats. See [browser protocol](browser-protocol.md) for
+field presence, generation, tests, and deployment compatibility. Deploy backend
+and browser assets together; restart after changing `WS_PROTOBUF` and reload open tabs.
+
 Setup is a single conditional SQLite insert. The initial credential is written to `DATA_DIR/setup-token` with mode `0600`, printed nowhere, and removed after successful setup. The `/api/first-time-setup/restart` route is removed. Setup succeeds without restarting the server.
 
 Public HTML, JSON, history, and browser WebSockets deny missing or empty public access rules. Empty checkbox selections remain empty. Membership changes validate the dashboard owner and every agent owner within the mutation transaction. Browser administrator snapshots contain only that user's agents. Nested disk capacity, read and write values are independently controlled.

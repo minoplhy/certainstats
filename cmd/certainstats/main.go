@@ -101,7 +101,8 @@ func main() {
 	if err := agent.RecoverIngestion(ctx, db, tdb, metricsCache); err != nil {
 		log.Fatalf("ingestion recovery: %v", err)
 	}
-	uiBroadcaster := ws.NewAgentBroadcaster()
+	wsProtobuf := ws.ProtobufEnabled(os.Getenv("WS_PROTOBUF"))
+	uiBroadcaster := ws.NewAgentBroadcaster(wsProtobuf)
 	b_ctx.SessionRevoked = uiBroadcaster.CloseSession
 	b_ctx.DashboardRevoked = func(id string) {
 		if id == "" {
@@ -185,7 +186,7 @@ func main() {
 	if err := web.InitStatic(); err != nil {
 		log.Fatalf("static asset pipeline: %v", err)
 	}
-	renderer, err := web.NewRenderer()
+	renderer, err := web.NewRenderer(wsProtobuf)
 	if err != nil {
 		log.Fatalf("template renderer: %v", err)
 	}

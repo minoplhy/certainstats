@@ -10,6 +10,7 @@
 | `PUBLIC_PATH` | `/dashboard` | **DEPRECATED** Subpath location to mount the Public Dashboards. Use `PUBLIC_URL` instead. |
 | `DATA_DIR` | `./data` | Directory for database files (SQLite DB and TSDB). |
 | `ALLOWED_ORIGINS` | *none* | Comma-separated list of allowed origins. |
+| `WS_PROTOBUF` | `false` | Experimental browser Protobuf WebSockets. Only the exact value `true` enables it; all other values use JSON. Read once at startup; restart the server and reload open tabs after changing it. Compose forwards `.env` values; the application reads process environment only. |
 | `DEBUG` | `false` | Enable verbose trace logging. |
 | `UPDATE_EVERY` | `60` | Metric sweep frequency (seconds). |
 | `BESZEL_EVERY` | `60` | Beszel-agent metrics sweep frequency (syncs to `UPDATE_EVERY` by default). |

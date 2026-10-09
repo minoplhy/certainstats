@@ -1,0 +1,1602 @@
+[
+  {
+    "name": "full",
+    "payload": "CsMCCsACCg1wcml2YXRlLWFnZW50Eq4CCgsI3/Gg1gYQlZrvOhABGAAiCQkAAAAAAAAAACoJCQAAAAAAAARAMgkJAAAAAAAA4D86BQiVmu86QgIIAEoCCCpSCwj///////////8BWiwKKgoOL/Cfkr4vPHNjcmlwdD4SAggAGgsI////////////ASICCHsqAwjIA2IaChgAAAAAAAAAAAAAAAAAAOA/MzMzMzMz8z9qEAoOCgNDUFURAAAAAABARUByCQkAAAAAAAKQQHoJCQAAAAAAAKBAggEJCQAAAAAAApBAigEJCQAAAAAAAKBAkgEJCZqZmZmZmShAmgEJCc3MzMzMzEZAoAHSCaoBJwjSCRIFTGludXgaA0NQVSAIKP///////////wE4////////////AboBDXByaXZhdGUtYWdlbnQ=",
+    "expected": {
+      "private-agent": {
+        "agent_id": "private-agent",
+        "available": true,
+        "cpu_iowait_percent": 2.5,
+        "cpu_steal_percent": 0.5,
+        "cpu_usage_percent": 0,
+        "disk_read_bps": 12.3,
+        "disk_total_bytes": 18446744073709552000,
+        "disk_used_bytes": 42,
+        "disk_write_bps": 45.6,
+        "disks": [
+          {
+            "path": "/💾/\u003cscript\u003e",
+            "read_bytes": 123,
+            "total_bytes": 18446744073709552000,
+            "used_bytes": 0,
+            "write_bytes": 456
+          }
+        ],
+        "is_online": false,
+        "load_avg": [
+          0,
+          0.5,
+          1.2
+        ],
+        "metadata": {
+          "CpuCores": 8,
+          "CpuModel": "CPU",
+          "DiskSize": 18446744073709552000,
+          "LinuxVersion": "Linux",
+          "RamSize": 18446744073709552000,
+          "SwapSize": 0,
+          "Uptime": 1234
+        },
+        "ram_swap_used_bytes": 0,
+        "ram_used_bytes": 123456789,
+        "rx_bps": 1024.5,
+        "rx_bytes": 1024.5,
+        "temperatures": {
+          "CPU": 42.5
+        },
+        "timestamp": "2026-10-09T00:44:15.123456789Z",
+        "tx_bps": 2048,
+        "tx_bytes": 2048,
+        "uptime": 1234
+      }
+    },
+    "json_bytes": 785,
+    "protobuf_bytes": 326
+  },
+  {
+    "name": "public",
+    "payload": "CkgKRgoMcHVibGljLWFnZW50EjYKCwjf8aDWBhCVmu86GAAiCQkAAAAAAAAAAEoCCCpaFgoUCg4v8J+Svi88c2NyaXB0PhICCAA=",
+    "expected": {
+      "public-agent": {
+        "cpu_usage_percent": 0,
+        "disk_used_bytes": 42,
+        "disks": [
+          {
+            "path": "/💾/\u003cscript\u003e",
+            "used_bytes": 0
+          }
+        ],
+        "is_online": false,
+        "timestamp": "2026-10-09T00:44:15.123456789Z"
+      }
+    },
+    "json_bytes": 216,
+    "protobuf_bytes": 74
+  },
+  {
+    "name": "missing",
+    "payload": "CiYKJAoMcHVibGljLWFnZW50EhQKCwjf8aDWBhCVmu86IgByAIIBAA==",
+    "expected": {
+      "public-agent": {
+        "cpu_usage_percent": null,
+        "rx_bps": null,
+        "rx_bytes": null,
+        "timestamp": "2026-10-09T00:44:15.123456789Z"
+      }
+    },
+    "json_bytes": 149,
+    "protobuf_bytes": 40
+  },
+  {
+    "name": "unavailable",
+    "payload": "ChYKFAoMcHVibGljLWFnZW50EgQQABgA",
+    "expected": {
+      "public-agent": {
+        "available": false,
+        "is_online": false
+      }
+    },
+    "json_bytes": 85,
+    "protobuf_bytes": 24
+  },
+  {
+    "name": "empty",
+    "payload": "CgA=",
+    "expected": {},
+    "json_bytes": 33,
+    "protobuf_bytes": 2
+  },
+  {
+    "name": "empty_collections",
+    "payload": "ChgKFgoMcHVibGljLWFnZW50EgZaAGIAagA=",
+    "expected": {
+      "public-agent": {
+        "disks": [],
+        "load_avg": [],
+        "temperatures": {}
+      }
+    },
+    "json_bytes": 92,
+    "protobuf_bytes": 26
+  },
+  {
+    "name": "many_agents",
+    "payload": "CsBPCrsCCghhZ2VudC0wMBKuAgoLCN/xoNYGEJWa7zoQARgAIgkJAAAAAAAAAAAqCQkAAAAAAAAEQDIJCQAAAAAAAOA/OgUIlZrvOkICCABKAggqUgsI////////////AVosCioKDi/wn5K+LzxzY3JpcHQ+EgIIABoLCP///////////wEiAgh7KgMIyANiGgoYAAAAAAAAAAAAAAAAAADgPzMzMzMzM/M/ahAKDgoDQ1BVEQAAAAAAQEVAcgkJAAAAAAACkEB6CQkAAAAAAACgQIIBCQkAAAAAAAKQQIoBCQkAAAAAAACgQJIBCQmamZmZmZkoQJoBCQnNzMzMzMxGQKAB0gmqAScI0gkSBUxpbnV4GgNDUFUgCCj///////////8BOP///////////wG6AQ1wcml2YXRlLWFnZW50CrsCCghhZ2VudC0wMRKuAgoLCN/xoNYGEJWa7zoQARgAIgkJAAAAAAAAAAAqCQkAAAAAAAAEQDIJCQAAAAAAAOA/OgUIlZrvOkICCABKAggqUgsI////////////AVosCioKDi/wn5K+LzxzY3JpcHQ+EgIIABoLCP///////////wEiAgh7KgMIyANiGgoYAAAAAAAAAAAAAAAAAADgPzMzMzMzM/M/ahAKDgoDQ1BVEQAAAAAAQEVAcgkJAAAAAAACkEB6CQkAAAAAAACgQIIBCQkAAAAAAAKQQIoBCQkAAAAAAACgQJIBCQmamZmZmZkoQJoBCQnNzMzMzMxGQKAB0gmqAScI0gkSBUxpbnV4GgNDUFUgCCj///////////8BOP///////////wG6AQ1wcml2YXRlLWFnZW50CrsCCghhZ2VudC0wMhKuAgoLCN/xoNYGEJWa7zoQARgAIgkJAAAAAAAAAAAqCQkAAAAAAAAEQDIJCQAAAAAAAOA/OgUIlZrvOkICCABKAggqUgsI////////////AVosCioKDi/wn5K+LzxzY3JpcHQ+EgIIABoLCP///////////wEiAgh7KgMIyANiGgoYAAAAAAAAAAAAAAAAAADgPzMzMzMzM/M/ahAKDgoDQ1BVEQAAAAAAQEVAcgkJAAAAAAACkEB6CQkAAAAAAACgQIIBCQkAAAAAAAKQQIoBCQkAAAAAAACgQJIBCQmamZmZmZkoQJoBCQnNzMzMzMxGQKAB0gmqAScI0gkSBUxpbnV4GgNDUFUgCCj///////////8BOP///////////wG6AQ1wcml2YXRlLWFnZW50CrsCCghhZ2VudC0wMxKuAgoLCN/xoNYGEJWa7zoQARgAIgkJAAAAAAAAAAAqCQkAAAAAAAAEQDIJCQAAAAAAAOA/OgUIlZrvOkICCABKAggqUgsI////////////AVosCioKDi/wn5K+LzxzY3JpcHQ+EgIIABoLCP///////////wEiAgh7KgMIyANiGgoYAAAAAAAAAAAAAAAAAADgPzMzMzMzM/M/ahAKDgoDQ1BVEQAAAAAAQEVAcgkJAAAAAAACkEB6CQkAAAAAAACgQIIBCQkAAAAAAAKQQIoBCQkAAAAAAACgQJIBCQmamZmZmZkoQJoBCQnNzMzMzMxGQKAB0gmqAScI0gkSBUxpbnV4GgNDUFUgCCj///////////8BOP///////////wG6AQ1wcml2YXRlLWFnZW50CrsCCghhZ2VudC0wNBKuAgoLCN/xoNYGEJWa7zoQARgAIgkJAAAAAAAAAAAqCQkAAAAAAAAEQDIJCQAAAAAAAOA/OgUIlZrvOkICCABKAggqUgsI////////////AVosCioKDi/wn5K+LzxzY3JpcHQ+EgIIABoLCP///////////wEiAgh7KgMIyANiGgoYAAAAAAAAAAAAAAAAAADgPzMzMzMzM/M/ahAKDgoDQ1BVEQAAAAAAQEVAcgkJAAAAAAACkEB6CQkAAAAAAACgQIIBCQkAAAAAAAKQQIoBCQkAAAAAAACgQJIBCQmamZmZmZkoQJoBCQnNzMzMzMxGQKAB0gmqAScI0gkSBUxpbnV4GgNDUFUgCCj///////////8BOP///////////wG6AQ1wcml2YXRlLWFnZW50CrsCCghhZ2VudC0wNRKuAgoLCN/xoNYGEJWa7zoQARgAIgkJAAAAAAAAAAAqCQkAAAAAAAAEQDIJCQAAAAAAAOA/OgUIlZrvOkICCABKAggqUgsI////////////AVosCioKDi/wn5K+LzxzY3JpcHQ+EgIIABoLCP///////////wEiAgh7KgMIyANiGgoYAAAAAAAAAAAAAAAAAADgPzMzMzMzM/M/ahAKDgoDQ1BVEQAAAAAAQEVAcgkJAAAAAAACkEB6CQkAAAAAAACgQIIBCQkAAAAAAAKQQIoBCQkAAAAAAACgQJIBCQmamZmZmZkoQJoBCQnNzMzMzMxGQKAB0gmqAScI0gkSBUxpbnV4GgNDUFUgCCj///////////8BOP///////////wG6AQ1wcml2YXRlLWFnZW50CrsCCghhZ2VudC0wNhKuAgoLCN/xoNYGEJWa7zoQARgAIgkJAAAAAAAAAAAqCQkAAAAAAAAEQDIJCQAAAAAAAOA/OgUIlZrvOkICCABKAggqUgsI////////////AVosCioKDi/wn5K+LzxzY3JpcHQ+EgIIABoLCP///////////wEiAgh7KgMIyANiGgoYAAAAAAAAAAAAAAAAAADgPzMzMzMzM/M/ahAKDgoDQ1BVEQAAAAAAQEVAcgkJAAAAAAACkEB6CQkAAAAAAACgQIIBCQkAAAAAAAKQQIoBCQkAAAAAAACgQJIBCQmamZmZmZkoQJoBCQnNzMzMzMxGQKAB0gmqAScI0gkSBUxpbnV4GgNDUFUgCCj///////////8BOP///////////wG6AQ1wcml2YXRlLWFnZW50CrsCCghhZ2VudC0wNxKuAgoLCN/xoNYGEJWa7zoQARgAIgkJAAAAAAAAAAAqCQkAAAAAAAAEQDIJCQAAAAAAAOA/OgUIlZrvOkICCABKAggqUgsI////////////AVosCioKDi/wn5K+LzxzY3JpcHQ+EgIIABoLCP///////////wEiAgh7KgMIyANiGgoYAAAAAAAAAAAAAAAAAADgPzMzMzMzM/M/ahAKDgoDQ1BVEQAAAAAAQEVAcgkJAAAAAAACkEB6CQkAAAAAAACgQIIBCQkAAAAAAAKQQIoBCQkAAAAAAACgQJIBCQmamZmZmZkoQJoBCQnNzMzMzMxGQKAB0gmqAScI0gkSBUxpbnV4GgNDUFUgCCj///////////8BOP///////////wG6AQ1wcml2YXRlLWFnZW50CrsCCghhZ2VudC0wOBKuAgoLCN/xoNYGEJWa7zoQARgAIgkJAAAAAAAAAAAqCQkAAAAAAAAEQDIJCQAAAAAAAOA/OgUIlZrvOkICCABKAggqUgsI////////////AVosCioKDi/wn5K+LzxzY3JpcHQ+EgIIABoLCP///////////wEiAgh7KgMIyANiGgoYAAAAAAAAAAAAAAAAAADgPzMzMzMzM/M/ahAKDgoDQ1BVEQAAAAAAQEVAcgkJAAAAAAACkEB6CQkAAAAAAACgQIIBCQkAAAAAAAKQQIoBCQkAAAAAAACgQJIBCQmamZmZmZkoQJoBCQnNzMzMzMxGQKAB0gmqAScI0gkSBUxpbnV4GgNDUFUgCCj///////////8BOP///////////wG6AQ1wcml2YXRlLWFnZW50CrsCCghhZ2VudC0wORKuAgoLCN/xoNYGEJWa7zoQARgAIgkJAAAAAAAAAAAqCQkAAAAAAAAEQDIJCQAAAAAAAOA/OgUIlZrvOkICCABKAggqUgsI////////////AVosCioKDi/wn5K+LzxzY3JpcHQ+EgIIABoLCP///////////wEiAgh7KgMIyANiGgoYAAAAAAAAAAAAAAAAAADgPzMzMzMzM/M/ahAKDgoDQ1BVEQAAAAAAQEVAcgkJAAAAAAACkEB6CQkAAAAAAACgQIIBCQkAAAAAAAKQQIoBCQkAAAAAAACgQJIBCQmamZmZmZkoQJoBCQnNzMzMzMxGQKAB0gmqAScI0gkSBUxpbnV4GgNDUFUgCCj///////////8BOP///////////wG6AQ1wcml2YXRlLWFnZW50CrsCCghhZ2VudC0xMBKuAgoLCN/xoNYGEJWa7zoQARgAIgkJAAAAAAAAAAAqCQkAAAAAAAAEQDIJCQAAAAAAAOA/OgUIlZrvOkICCABKAggqUgsI////////////AVosCioKDi/wn5K+LzxzY3JpcHQ+EgIIABoLCP///////////wEiAgh7KgMIyANiGgoYAAAAAAAAAAAAAAAAAADgPzMzMzMzM/M/ahAKDgoDQ1BVEQAAAAAAQEVAcgkJAAAAAAACkEB6CQkAAAAAAACgQIIBCQkAAAAAAAKQQIoBCQkAAAAAAACgQJIBCQmamZmZmZkoQJoBCQnNzMzMzMxGQKAB0gmqAScI0gkSBUxpbnV4GgNDUFUgCCj///////////8BOP///////////wG6AQ1wcml2YXRlLWFnZW50CrsCCghhZ2VudC0xMRKuAgoLCN/xoNYGEJWa7zoQARgAIgkJAAAAAAAAAAAqCQkAAAAAAAAEQDIJCQAAAAAAAOA/OgUIlZrvOkICCABKAggqUgsI////////////AVosCioKDi/wn5K+LzxzY3JpcHQ+EgIIABoLCP///////////wEiAgh7KgMIyANiGgoYAAAAAAAAAAAAAAAAAADgPzMzMzMzM/M/ahAKDgoDQ1BVEQAAAAAAQEVAcgkJAAAAAAACkEB6CQkAAAAAAACgQIIBCQkAAAAAAAKQQIoBCQkAAAAAAACgQJIBCQmamZmZmZkoQJoBCQnNzMzMzMxGQKAB0gmqAScI0gkSBUxpbnV4GgNDUFUgCCj///////////8BOP///////////wG6AQ1wcml2YXRlLWFnZW50CrsCCghhZ2VudC0xMhKuAgoLCN/xoNYGEJWa7zoQARgAIgkJAAAAAAAAAAAqCQkAAAAAAAAEQDIJCQAAAAAAAOA/OgUIlZrvOkICCABKAggqUgsI////////////AVosCioKDi/wn5K+LzxzY3JpcHQ+EgIIABoLCP///////////wEiAgh7KgMIyANiGgoYAAAAAAAAAAAAAAAAAADgPzMzMzMzM/M/ahAKDgoDQ1BVEQAAAAAAQEVAcgkJAAAAAAACkEB6CQkAAAAAAACgQIIBCQkAAAAAAAKQQIoBCQkAAAAAAACgQJIBCQmamZmZmZkoQJoBCQnNzMzMzMxGQKAB0gmqAScI0gkSBUxpbnV4GgNDUFUgCCj///////////8BOP///////////wG6AQ1wcml2YXRlLWFnZW50CrsCCghhZ2VudC0xMxKuAgoLCN/xoNYGEJWa7zoQARgAIgkJAAAAAAAAAAAqCQkAAAAAAAAEQDIJCQAAAAAAAOA/OgUIlZrvOkICCABKAggqUgsI////////////AVosCioKDi/wn5K+LzxzY3JpcHQ+EgIIABoLCP///////////wEiAgh7KgMIyANiGgoYAAAAAAAAAAAAAAAAAADgPzMzMzMzM/M/ahAKDgoDQ1BVEQAAAAAAQEVAcgkJAAAAAAACkEB6CQkAAAAAAACgQIIBCQkAAAAAAAKQQIoBCQkAAAAAAACgQJIBCQmamZmZmZkoQJoBCQnNzMzMzMxGQKAB0gmqAScI0gkSBUxpbnV4GgNDUFUgCCj///////////8BOP///////////wG6AQ1wcml2YXRlLWFnZW50CrsCCghhZ2VudC0xNBKuAgoLCN/xoNYGEJWa7zoQARgAIgkJAAAAAAAAAAAqCQkAAAAAAAAEQDIJCQAAAAAAAOA/OgUIlZrvOkICCABKAggqUgsI////////////AVosCioKDi/wn5K+LzxzY3JpcHQ+EgIIABoLCP///////////wEiAgh7KgMIyANiGgoYAAAAAAAAAAAAAAAAAADgPzMzMzMzM/M/ahAKDgoDQ1BVEQAAAAAAQEVAcgkJAAAAAAACkEB6CQkAAAAAAACgQIIBCQkAAAAAAAKQQIoBCQkAAAAAAACgQJIBCQmamZmZmZkoQJoBCQnNzMzMzMxGQKAB0gmqAScI0gkSBUxpbnV4GgNDUFUgCCj///////////8BOP///////////wG6AQ1wcml2YXRlLWFnZW50CrsCCghhZ2VudC0xNRKuAgoLCN/xoNYGEJWa7zoQARgAIgkJAAAAAAAAAAAqCQkAAAAAAAAEQDIJCQAAAAAAAOA/OgUIlZrvOkICCABKAggqUgsI////////////AVosCioKDi/wn5K+LzxzY3JpcHQ+EgIIABoLCP///////////wEiAgh7KgMIyANiGgoYAAAAAAAAAAAAAAAAAADgPzMzMzMzM/M/ahAKDgoDQ1BVEQAAAAAAQEVAcgkJAAAAAAACkEB6CQkAAAAAAACgQIIBCQkAAAAAAAKQQIoBCQkAAAAAAACgQJIBCQmamZmZmZkoQJoBCQnNzMzMzMxGQKAB0gmqAScI0gkSBUxpbnV4GgNDUFUgCCj///////////8BOP///////////wG6AQ1wcml2YXRlLWFnZW50CrsCCghhZ2VudC0xNhKuAgoLCN/xoNYGEJWa7zoQARgAIgkJAAAAAAAAAAAqCQkAAAAAAAAEQDIJCQAAAAAAAOA/OgUIlZrvOkICCABKAggqUgsI////////////AVosCioKDi/wn5K+LzxzY3JpcHQ+EgIIABoLCP///////////wEiAgh7KgMIyANiGgoYAAAAAAAAAAAAAAAAAADgPzMzMzMzM/M/ahAKDgoDQ1BVEQAAAAAAQEVAcgkJAAAAAAACkEB6CQkAAAAAAACgQIIBCQkAAAAAAAKQQIoBCQkAAAAAAACgQJIBCQmamZmZmZkoQJoBCQnNzMzMzMxGQKAB0gmqAScI0gkSBUxpbnV4GgNDUFUgCCj///////////8BOP///////////wG6AQ1wcml2YXRlLWFnZW50CrsCCghhZ2VudC0xNxKuAgoLCN/xoNYGEJWa7zoQARgAIgkJAAAAAAAAAAAqCQkAAAAAAAAEQDIJCQAAAAAAAOA/OgUIlZrvOkICCABKAggqUgsI////////////AVosCioKDi/wn5K+LzxzY3JpcHQ+EgIIABoLCP///////////wEiAgh7KgMIyANiGgoYAAAAAAAAAAAAAAAAAADgPzMzMzMzM/M/ahAKDgoDQ1BVEQAAAAAAQEVAcgkJAAAAAAACkEB6CQkAAAAAAACgQIIBCQkAAAAAAAKQQIoBCQkAAAAAAACgQJIBCQmamZmZmZkoQJoBCQnNzMzMzMxGQKAB0gmqAScI0gkSBUxpbnV4GgNDUFUgCCj///////////8BOP///////////wG6AQ1wcml2YXRlLWFnZW50CrsCCghhZ2VudC0xOBKuAgoLCN/xoNYGEJWa7zoQARgAIgkJAAAAAAAAAAAqCQkAAAAAAAAEQDIJCQAAAAAAAOA/OgUIlZrvOkICCABKAggqUgsI////////////AVosCioKDi/wn5K+LzxzY3JpcHQ+EgIIABoLCP///////////wEiAgh7KgMIyANiGgoYAAAAAAAAAAAAAAAAAADgPzMzMzMzM/M/ahAKDgoDQ1BVEQAAAAAAQEVAcgkJAAAAAAACkEB6CQkAAAAAAACgQIIBCQkAAAAAAAKQQIoBCQkAAAAAAACgQJIBCQmamZmZmZkoQJoBCQnNzMzMzMxGQKAB0gmqAScI0gkSBUxpbnV4GgNDUFUgCCj///////////8BOP///////////wG6AQ1wcml2YXRlLWFnZW50CrsCCghhZ2VudC0xORKuAgoLCN/xoNYGEJWa7zoQARgAIgkJAAAAAAAAAAAqCQkAAAAAAAAEQDIJCQAAAAAAAOA/OgUIlZrvOkICCABKAggqUgsI////////////AVosCioKDi/wn5K+LzxzY3JpcHQ+EgIIABoLCP///////////wEiAgh7KgMIyANiGgoYAAAAAAAAAAAAAAAAAADgPzMzMzMzM/M/ahAKDgoDQ1BVEQAAAAAAQEVAcgkJAAAAAAACkEB6CQkAAAAAAACgQIIBCQkAAAAAAAKQQIoBCQkAAAAAAACgQJIBCQmamZmZmZkoQJoBCQnNzMzMzMxGQKAB0gmqAScI0gkSBUxpbnV4GgNDUFUgCCj///////////8BOP///////////wG6AQ1wcml2YXRlLWFnZW50CrsCCghhZ2VudC0yMBKuAgoLCN/xoNYGEJWa7zoQARgAIgkJAAAAAAAAAAAqCQkAAAAAAAAEQDIJCQAAAAAAAOA/OgUIlZrvOkICCABKAggqUgsI////////////AVosCioKDi/wn5K+LzxzY3JpcHQ+EgIIABoLCP///////////wEiAgh7KgMIyANiGgoYAAAAAAAAAAAAAAAAAADgPzMzMzMzM/M/ahAKDgoDQ1BVEQAAAAAAQEVAcgkJAAAAAAACkEB6CQkAAAAAAACgQIIBCQkAAAAAAAKQQIoBCQkAAAAAAACgQJIBCQmamZmZmZkoQJoBCQnNzMzMzMxGQKAB0gmqAScI0gkSBUxpbnV4GgNDUFUgCCj///////////8BOP///////////wG6AQ1wcml2YXRlLWFnZW50CrsCCghhZ2VudC0yMRKuAgoLCN/xoNYGEJWa7zoQARgAIgkJAAAAAAAAAAAqCQkAAAAAAAAEQDIJCQAAAAAAAOA/OgUIlZrvOkICCABKAggqUgsI////////////AVosCioKDi/wn5K+LzxzY3JpcHQ+EgIIABoLCP///////////wEiAgh7KgMIyANiGgoYAAAAAAAAAAAAAAAAAADgPzMzMzMzM/M/ahAKDgoDQ1BVEQAAAAAAQEVAcgkJAAAAAAACkEB6CQkAAAAAAACgQIIBCQkAAAAAAAKQQIoBCQkAAAAAAACgQJIBCQmamZmZmZkoQJoBCQnNzMzMzMxGQKAB0gmqAScI0gkSBUxpbnV4GgNDUFUgCCj///////////8BOP///////////wG6AQ1wcml2YXRlLWFnZW50CrsCCghhZ2VudC0yMhKuAgoLCN/xoNYGEJWa7zoQARgAIgkJAAAAAAAAAAAqCQkAAAAAAAAEQDIJCQAAAAAAAOA/OgUIlZrvOkICCABKAggqUgsI////////////AVosCioKDi/wn5K+LzxzY3JpcHQ+EgIIABoLCP///////////wEiAgh7KgMIyANiGgoYAAAAAAAAAAAAAAAAAADgPzMzMzMzM/M/ahAKDgoDQ1BVEQAAAAAAQEVAcgkJAAAAAAACkEB6CQkAAAAAAACgQIIBCQkAAAAAAAKQQIoBCQkAAAAAAACgQJIBCQmamZmZmZkoQJoBCQnNzMzMzMxGQKAB0gmqAScI0gkSBUxpbnV4GgNDUFUgCCj///////////8BOP///////////wG6AQ1wcml2YXRlLWFnZW50CrsCCghhZ2VudC0yMxKuAgoLCN/xoNYGEJWa7zoQARgAIgkJAAAAAAAAAAAqCQkAAAAAAAAEQDIJCQAAAAAAAOA/OgUIlZrvOkICCABKAggqUgsI////////////AVosCioKDi/wn5K+LzxzY3JpcHQ+EgIIABoLCP///////////wEiAgh7KgMIyANiGgoYAAAAAAAAAAAAAAAAAADgPzMzMzMzM/M/ahAKDgoDQ1BVEQAAAAAAQEVAcgkJAAAAAAACkEB6CQkAAAAAAACgQIIBCQkAAAAAAAKQQIoBCQkAAAAAAACgQJIBCQmamZmZmZkoQJoBCQnNzMzMzMxGQKAB0gmqAScI0gkSBUxpbnV4GgNDUFUgCCj///////////8BOP///////////wG6AQ1wcml2YXRlLWFnZW50CrsCCghhZ2VudC0yNBKuAgoLCN/xoNYGEJWa7zoQARgAIgkJAAAAAAAAAAAqCQkAAAAAAAAEQDIJCQAAAAAAAOA/OgUIlZrvOkICCABKAggqUgsI////////////AVosCioKDi/wn5K+LzxzY3JpcHQ+EgIIABoLCP///////////wEiAgh7KgMIyANiGgoYAAAAAAAAAAAAAAAAAADgPzMzMzMzM/M/ahAKDgoDQ1BVEQAAAAAAQEVAcgkJAAAAAAACkEB6CQkAAAAAAACgQIIBCQkAAAAAAAKQQIoBCQkAAAAAAACgQJIBCQmamZmZmZkoQJoBCQnNzMzMzMxGQKAB0gmqAScI0gkSBUxpbnV4GgNDUFUgCCj///////////8BOP///////////wG6AQ1wcml2YXRlLWFnZW50CrsCCghhZ2VudC0yNRKuAgoLCN/xoNYGEJWa7zoQARgAIgkJAAAAAAAAAAAqCQkAAAAAAAAEQDIJCQAAAAAAAOA/OgUIlZrvOkICCABKAggqUgsI////////////AVosCioKDi/wn5K+LzxzY3JpcHQ+EgIIABoLCP///////////wEiAgh7KgMIyANiGgoYAAAAAAAAAAAAAAAAAADgPzMzMzMzM/M/ahAKDgoDQ1BVEQAAAAAAQEVAcgkJAAAAAAACkEB6CQkAAAAAAACgQIIBCQkAAAAAAAKQQIoBCQkAAAAAAACgQJIBCQmamZmZmZkoQJoBCQnNzMzMzMxGQKAB0gmqAScI0gkSBUxpbnV4GgNDUFUgCCj///////////8BOP///////////wG6AQ1wcml2YXRlLWFnZW50CrsCCghhZ2VudC0yNhKuAgoLCN/xoNYGEJWa7zoQARgAIgkJAAAAAAAAAAAqCQkAAAAAAAAEQDIJCQAAAAAAAOA/OgUIlZrvOkICCABKAggqUgsI////////////AVosCioKDi/wn5K+LzxzY3JpcHQ+EgIIABoLCP///////////wEiAgh7KgMIyANiGgoYAAAAAAAAAAAAAAAAAADgPzMzMzMzM/M/ahAKDgoDQ1BVEQAAAAAAQEVAcgkJAAAAAAACkEB6CQkAAAAAAACgQIIBCQkAAAAAAAKQQIoBCQkAAAAAAACgQJIBCQmamZmZmZkoQJoBCQnNzMzMzMxGQKAB0gmqAScI0gkSBUxpbnV4GgNDUFUgCCj///////////8BOP///////////wG6AQ1wcml2YXRlLWFnZW50CrsCCghhZ2VudC0yNxKuAgoLCN/xoNYGEJWa7zoQARgAIgkJAAAAAAAAAAAqCQkAAAAAAAAEQDIJCQAAAAAAAOA/OgUIlZrvOkICCABKAggqUgsI////////////AVosCioKDi/wn5K+LzxzY3JpcHQ+EgIIABoLCP///////////wEiAgh7KgMIyANiGgoYAAAAAAAAAAAAAAAAAADgPzMzMzMzM/M/ahAKDgoDQ1BVEQAAAAAAQEVAcgkJAAAAAAACkEB6CQkAAAAAAACgQIIBCQkAAAAAAAKQQIoBCQkAAAAAAACgQJIBCQmamZmZmZkoQJoBCQnNzMzMzMxGQKAB0gmqAScI0gkSBUxpbnV4GgNDUFUgCCj///////////8BOP///////////wG6AQ1wcml2YXRlLWFnZW50CrsCCghhZ2VudC0yOBKuAgoLCN/xoNYGEJWa7zoQARgAIgkJAAAAAAAAAAAqCQkAAAAAAAAEQDIJCQAAAAAAAOA/OgUIlZrvOkICCABKAggqUgsI////////////AVosCioKDi/wn5K+LzxzY3JpcHQ+EgIIABoLCP///////////wEiAgh7KgMIyANiGgoYAAAAAAAAAAAAAAAAAADgPzMzMzMzM/M/ahAKDgoDQ1BVEQAAAAAAQEVAcgkJAAAAAAACkEB6CQkAAAAAAACgQIIBCQkAAAAAAAKQQIoBCQkAAAAAAACgQJIBCQmamZmZmZkoQJoBCQnNzMzMzMxGQKAB0gmqAScI0gkSBUxpbnV4GgNDUFUgCCj///////////8BOP///////////wG6AQ1wcml2YXRlLWFnZW50CrsCCghhZ2VudC0yORKuAgoLCN/xoNYGEJWa7zoQARgAIgkJAAAAAAAAAAAqCQkAAAAAAAAEQDIJCQAAAAAAAOA/OgUIlZrvOkICCABKAggqUgsI////////////AVosCioKDi/wn5K+LzxzY3JpcHQ+EgIIABoLCP///////////wEiAgh7KgMIyANiGgoYAAAAAAAAAAAAAAAAAADgPzMzMzMzM/M/ahAKDgoDQ1BVEQAAAAAAQEVAcgkJAAAAAAACkEB6CQkAAAAAAACgQIIBCQkAAAAAAAKQQIoBCQkAAAAAAACgQJIBCQmamZmZmZkoQJoBCQnNzMzMzMxGQKAB0gmqAScI0gkSBUxpbnV4GgNDUFUgCCj///////////8BOP///////////wG6AQ1wcml2YXRlLWFnZW50CrsCCghhZ2VudC0zMBKuAgoLCN/xoNYGEJWa7zoQARgAIgkJAAAAAAAAAAAqCQkAAAAAAAAEQDIJCQAAAAAAAOA/OgUIlZrvOkICCABKAggqUgsI////////////AVosCioKDi/wn5K+LzxzY3JpcHQ+EgIIABoLCP///////////wEiAgh7KgMIyANiGgoYAAAAAAAAAAAAAAAAAADgPzMzMzMzM/M/ahAKDgoDQ1BVEQAAAAAAQEVAcgkJAAAAAAACkEB6CQkAAAAAAACgQIIBCQkAAAAAAAKQQIoBCQkAAAAAAACgQJIBCQmamZmZmZkoQJoBCQnNzMzMzMxGQKAB0gmqAScI0gkSBUxpbnV4GgNDUFUgCCj///////////8BOP///////////wG6AQ1wcml2YXRlLWFnZW50CrsCCghhZ2VudC0zMRKuAgoLCN/xoNYGEJWa7zoQARgAIgkJAAAAAAAAAAAqCQkAAAAAAAAEQDIJCQAAAAAAAOA/OgUIlZrvOkICCABKAggqUgsI////////////AVosCioKDi/wn5K+LzxzY3JpcHQ+EgIIABoLCP///////////wEiAgh7KgMIyANiGgoYAAAAAAAAAAAAAAAAAADgPzMzMzMzM/M/ahAKDgoDQ1BVEQAAAAAAQEVAcgkJAAAAAAACkEB6CQkAAAAAAACgQIIBCQkAAAAAAAKQQIoBCQkAAAAAAACgQJIBCQmamZmZmZkoQJoBCQnNzMzMzMxGQKAB0gmqAScI0gkSBUxpbnV4GgNDUFUgCCj///////////8BOP///////////wG6AQ1wcml2YXRlLWFnZW50",
+    "expected": {
+      "agent-00": {
+        "agent_id": "private-agent",
+        "available": true,
+        "cpu_iowait_percent": 2.5,
+        "cpu_steal_percent": 0.5,
+        "cpu_usage_percent": 0,
+        "disk_read_bps": 12.3,
+        "disk_total_bytes": 18446744073709552000,
+        "disk_used_bytes": 42,
+        "disk_write_bps": 45.6,
+        "disks": [
+          {
+            "path": "/💾/\u003cscript\u003e",
+            "read_bytes": 123,
+            "total_bytes": 18446744073709552000,
+            "used_bytes": 0,
+            "write_bytes": 456
+          }
+        ],
+        "is_online": false,
+        "load_avg": [
+          0,
+          0.5,
+          1.2
+        ],
+        "metadata": {
+          "CpuCores": 8,
+          "CpuModel": "CPU",
+          "DiskSize": 18446744073709552000,
+          "LinuxVersion": "Linux",
+          "RamSize": 18446744073709552000,
+          "SwapSize": 0,
+          "Uptime": 1234
+        },
+        "ram_swap_used_bytes": 0,
+        "ram_used_bytes": 123456789,
+        "rx_bps": 1024.5,
+        "rx_bytes": 1024.5,
+        "temperatures": {
+          "CPU": 42.5
+        },
+        "timestamp": "2026-10-09T00:44:15.123456789Z",
+        "tx_bps": 2048,
+        "tx_bytes": 2048,
+        "uptime": 1234
+      },
+      "agent-01": {
+        "agent_id": "private-agent",
+        "available": true,
+        "cpu_iowait_percent": 2.5,
+        "cpu_steal_percent": 0.5,
+        "cpu_usage_percent": 0,
+        "disk_read_bps": 12.3,
+        "disk_total_bytes": 18446744073709552000,
+        "disk_used_bytes": 42,
+        "disk_write_bps": 45.6,
+        "disks": [
+          {
+            "path": "/💾/\u003cscript\u003e",
+            "read_bytes": 123,
+            "total_bytes": 18446744073709552000,
+            "used_bytes": 0,
+            "write_bytes": 456
+          }
+        ],
+        "is_online": false,
+        "load_avg": [
+          0,
+          0.5,
+          1.2
+        ],
+        "metadata": {
+          "CpuCores": 8,
+          "CpuModel": "CPU",
+          "DiskSize": 18446744073709552000,
+          "LinuxVersion": "Linux",
+          "RamSize": 18446744073709552000,
+          "SwapSize": 0,
+          "Uptime": 1234
+        },
+        "ram_swap_used_bytes": 0,
+        "ram_used_bytes": 123456789,
+        "rx_bps": 1024.5,
+        "rx_bytes": 1024.5,
+        "temperatures": {
+          "CPU": 42.5
+        },
+        "timestamp": "2026-10-09T00:44:15.123456789Z",
+        "tx_bps": 2048,
+        "tx_bytes": 2048,
+        "uptime": 1234
+      },
+      "agent-02": {
+        "agent_id": "private-agent",
+        "available": true,
+        "cpu_iowait_percent": 2.5,
+        "cpu_steal_percent": 0.5,
+        "cpu_usage_percent": 0,
+        "disk_read_bps": 12.3,
+        "disk_total_bytes": 18446744073709552000,
+        "disk_used_bytes": 42,
+        "disk_write_bps": 45.6,
+        "disks": [
+          {
+            "path": "/💾/\u003cscript\u003e",
+            "read_bytes": 123,
+            "total_bytes": 18446744073709552000,
+            "used_bytes": 0,
+            "write_bytes": 456
+          }
+        ],
+        "is_online": false,
+        "load_avg": [
+          0,
+          0.5,
+          1.2
+        ],
+        "metadata": {
+          "CpuCores": 8,
+          "CpuModel": "CPU",
+          "DiskSize": 18446744073709552000,
+          "LinuxVersion": "Linux",
+          "RamSize": 18446744073709552000,
+          "SwapSize": 0,
+          "Uptime": 1234
+        },
+        "ram_swap_used_bytes": 0,
+        "ram_used_bytes": 123456789,
+        "rx_bps": 1024.5,
+        "rx_bytes": 1024.5,
+        "temperatures": {
+          "CPU": 42.5
+        },
+        "timestamp": "2026-10-09T00:44:15.123456789Z",
+        "tx_bps": 2048,
+        "tx_bytes": 2048,
+        "uptime": 1234
+      },
+      "agent-03": {
+        "agent_id": "private-agent",
+        "available": true,
+        "cpu_iowait_percent": 2.5,
+        "cpu_steal_percent": 0.5,
+        "cpu_usage_percent": 0,
+        "disk_read_bps": 12.3,
+        "disk_total_bytes": 18446744073709552000,
+        "disk_used_bytes": 42,
+        "disk_write_bps": 45.6,
+        "disks": [
+          {
+            "path": "/💾/\u003cscript\u003e",
+            "read_bytes": 123,
+            "total_bytes": 18446744073709552000,
+            "used_bytes": 0,
+            "write_bytes": 456
+          }
+        ],
+        "is_online": false,
+        "load_avg": [
+          0,
+          0.5,
+          1.2
+        ],
+        "metadata": {
+          "CpuCores": 8,
+          "CpuModel": "CPU",
+          "DiskSize": 18446744073709552000,
+          "LinuxVersion": "Linux",
+          "RamSize": 18446744073709552000,
+          "SwapSize": 0,
+          "Uptime": 1234
+        },
+        "ram_swap_used_bytes": 0,
+        "ram_used_bytes": 123456789,
+        "rx_bps": 1024.5,
+        "rx_bytes": 1024.5,
+        "temperatures": {
+          "CPU": 42.5
+        },
+        "timestamp": "2026-10-09T00:44:15.123456789Z",
+        "tx_bps": 2048,
+        "tx_bytes": 2048,
+        "uptime": 1234
+      },
+      "agent-04": {
+        "agent_id": "private-agent",
+        "available": true,
+        "cpu_iowait_percent": 2.5,
+        "cpu_steal_percent": 0.5,
+        "cpu_usage_percent": 0,
+        "disk_read_bps": 12.3,
+        "disk_total_bytes": 18446744073709552000,
+        "disk_used_bytes": 42,
+        "disk_write_bps": 45.6,
+        "disks": [
+          {
+            "path": "/💾/\u003cscript\u003e",
+            "read_bytes": 123,
+            "total_bytes": 18446744073709552000,
+            "used_bytes": 0,
+            "write_bytes": 456
+          }
+        ],
+        "is_online": false,
+        "load_avg": [
+          0,
+          0.5,
+          1.2
+        ],
+        "metadata": {
+          "CpuCores": 8,
+          "CpuModel": "CPU",
+          "DiskSize": 18446744073709552000,
+          "LinuxVersion": "Linux",
+          "RamSize": 18446744073709552000,
+          "SwapSize": 0,
+          "Uptime": 1234
+        },
+        "ram_swap_used_bytes": 0,
+        "ram_used_bytes": 123456789,
+        "rx_bps": 1024.5,
+        "rx_bytes": 1024.5,
+        "temperatures": {
+          "CPU": 42.5
+        },
+        "timestamp": "2026-10-09T00:44:15.123456789Z",
+        "tx_bps": 2048,
+        "tx_bytes": 2048,
+        "uptime": 1234
+      },
+      "agent-05": {
+        "agent_id": "private-agent",
+        "available": true,
+        "cpu_iowait_percent": 2.5,
+        "cpu_steal_percent": 0.5,
+        "cpu_usage_percent": 0,
+        "disk_read_bps": 12.3,
+        "disk_total_bytes": 18446744073709552000,
+        "disk_used_bytes": 42,
+        "disk_write_bps": 45.6,
+        "disks": [
+          {
+            "path": "/💾/\u003cscript\u003e",
+            "read_bytes": 123,
+            "total_bytes": 18446744073709552000,
+            "used_bytes": 0,
+            "write_bytes": 456
+          }
+        ],
+        "is_online": false,
+        "load_avg": [
+          0,
+          0.5,
+          1.2
+        ],
+        "metadata": {
+          "CpuCores": 8,
+          "CpuModel": "CPU",
+          "DiskSize": 18446744073709552000,
+          "LinuxVersion": "Linux",
+          "RamSize": 18446744073709552000,
+          "SwapSize": 0,
+          "Uptime": 1234
+        },
+        "ram_swap_used_bytes": 0,
+        "ram_used_bytes": 123456789,
+        "rx_bps": 1024.5,
+        "rx_bytes": 1024.5,
+        "temperatures": {
+          "CPU": 42.5
+        },
+        "timestamp": "2026-10-09T00:44:15.123456789Z",
+        "tx_bps": 2048,
+        "tx_bytes": 2048,
+        "uptime": 1234
+      },
+      "agent-06": {
+        "agent_id": "private-agent",
+        "available": true,
+        "cpu_iowait_percent": 2.5,
+        "cpu_steal_percent": 0.5,
+        "cpu_usage_percent": 0,
+        "disk_read_bps": 12.3,
+        "disk_total_bytes": 18446744073709552000,
+        "disk_used_bytes": 42,
+        "disk_write_bps": 45.6,
+        "disks": [
+          {
+            "path": "/💾/\u003cscript\u003e",
+            "read_bytes": 123,
+            "total_bytes": 18446744073709552000,
+            "used_bytes": 0,
+            "write_bytes": 456
+          }
+        ],
+        "is_online": false,
+        "load_avg": [
+          0,
+          0.5,
+          1.2
+        ],
+        "metadata": {
+          "CpuCores": 8,
+          "CpuModel": "CPU",
+          "DiskSize": 18446744073709552000,
+          "LinuxVersion": "Linux",
+          "RamSize": 18446744073709552000,
+          "SwapSize": 0,
+          "Uptime": 1234
+        },
+        "ram_swap_used_bytes": 0,
+        "ram_used_bytes": 123456789,
+        "rx_bps": 1024.5,
+        "rx_bytes": 1024.5,
+        "temperatures": {
+          "CPU": 42.5
+        },
+        "timestamp": "2026-10-09T00:44:15.123456789Z",
+        "tx_bps": 2048,
+        "tx_bytes": 2048,
+        "uptime": 1234
+      },
+      "agent-07": {
+        "agent_id": "private-agent",
+        "available": true,
+        "cpu_iowait_percent": 2.5,
+        "cpu_steal_percent": 0.5,
+        "cpu_usage_percent": 0,
+        "disk_read_bps": 12.3,
+        "disk_total_bytes": 18446744073709552000,
+        "disk_used_bytes": 42,
+        "disk_write_bps": 45.6,
+        "disks": [
+          {
+            "path": "/💾/\u003cscript\u003e",
+            "read_bytes": 123,
+            "total_bytes": 18446744073709552000,
+            "used_bytes": 0,
+            "write_bytes": 456
+          }
+        ],
+        "is_online": false,
+        "load_avg": [
+          0,
+          0.5,
+          1.2
+        ],
+        "metadata": {
+          "CpuCores": 8,
+          "CpuModel": "CPU",
+          "DiskSize": 18446744073709552000,
+          "LinuxVersion": "Linux",
+          "RamSize": 18446744073709552000,
+          "SwapSize": 0,
+          "Uptime": 1234
+        },
+        "ram_swap_used_bytes": 0,
+        "ram_used_bytes": 123456789,
+        "rx_bps": 1024.5,
+        "rx_bytes": 1024.5,
+        "temperatures": {
+          "CPU": 42.5
+        },
+        "timestamp": "2026-10-09T00:44:15.123456789Z",
+        "tx_bps": 2048,
+        "tx_bytes": 2048,
+        "uptime": 1234
+      },
+      "agent-08": {
+        "agent_id": "private-agent",
+        "available": true,
+        "cpu_iowait_percent": 2.5,
+        "cpu_steal_percent": 0.5,
+        "cpu_usage_percent": 0,
+        "disk_read_bps": 12.3,
+        "disk_total_bytes": 18446744073709552000,
+        "disk_used_bytes": 42,
+        "disk_write_bps": 45.6,
+        "disks": [
+          {
+            "path": "/💾/\u003cscript\u003e",
+            "read_bytes": 123,
+            "total_bytes": 18446744073709552000,
+            "used_bytes": 0,
+            "write_bytes": 456
+          }
+        ],
+        "is_online": false,
+        "load_avg": [
+          0,
+          0.5,
+          1.2
+        ],
+        "metadata": {
+          "CpuCores": 8,
+          "CpuModel": "CPU",
+          "DiskSize": 18446744073709552000,
+          "LinuxVersion": "Linux",
+          "RamSize": 18446744073709552000,
+          "SwapSize": 0,
+          "Uptime": 1234
+        },
+        "ram_swap_used_bytes": 0,
+        "ram_used_bytes": 123456789,
+        "rx_bps": 1024.5,
+        "rx_bytes": 1024.5,
+        "temperatures": {
+          "CPU": 42.5
+        },
+        "timestamp": "2026-10-09T00:44:15.123456789Z",
+        "tx_bps": 2048,
+        "tx_bytes": 2048,
+        "uptime": 1234
+      },
+      "agent-09": {
+        "agent_id": "private-agent",
+        "available": true,
+        "cpu_iowait_percent": 2.5,
+        "cpu_steal_percent": 0.5,
+        "cpu_usage_percent": 0,
+        "disk_read_bps": 12.3,
+        "disk_total_bytes": 18446744073709552000,
+        "disk_used_bytes": 42,
+        "disk_write_bps": 45.6,
+        "disks": [
+          {
+            "path": "/💾/\u003cscript\u003e",
+            "read_bytes": 123,
+            "total_bytes": 18446744073709552000,
+            "used_bytes": 0,
+            "write_bytes": 456
+          }
+        ],
+        "is_online": false,
+        "load_avg": [
+          0,
+          0.5,
+          1.2
+        ],
+        "metadata": {
+          "CpuCores": 8,
+          "CpuModel": "CPU",
+          "DiskSize": 18446744073709552000,
+          "LinuxVersion": "Linux",
+          "RamSize": 18446744073709552000,
+          "SwapSize": 0,
+          "Uptime": 1234
+        },
+        "ram_swap_used_bytes": 0,
+        "ram_used_bytes": 123456789,
+        "rx_bps": 1024.5,
+        "rx_bytes": 1024.5,
+        "temperatures": {
+          "CPU": 42.5
+        },
+        "timestamp": "2026-10-09T00:44:15.123456789Z",
+        "tx_bps": 2048,
+        "tx_bytes": 2048,
+        "uptime": 1234
+      },
+      "agent-10": {
+        "agent_id": "private-agent",
+        "available": true,
+        "cpu_iowait_percent": 2.5,
+        "cpu_steal_percent": 0.5,
+        "cpu_usage_percent": 0,
+        "disk_read_bps": 12.3,
+        "disk_total_bytes": 18446744073709552000,
+        "disk_used_bytes": 42,
+        "disk_write_bps": 45.6,
+        "disks": [
+          {
+            "path": "/💾/\u003cscript\u003e",
+            "read_bytes": 123,
+            "total_bytes": 18446744073709552000,
+            "used_bytes": 0,
+            "write_bytes": 456
+          }
+        ],
+        "is_online": false,
+        "load_avg": [
+          0,
+          0.5,
+          1.2
+        ],
+        "metadata": {
+          "CpuCores": 8,
+          "CpuModel": "CPU",
+          "DiskSize": 18446744073709552000,
+          "LinuxVersion": "Linux",
+          "RamSize": 18446744073709552000,
+          "SwapSize": 0,
+          "Uptime": 1234
+        },
+        "ram_swap_used_bytes": 0,
+        "ram_used_bytes": 123456789,
+        "rx_bps": 1024.5,
+        "rx_bytes": 1024.5,
+        "temperatures": {
+          "CPU": 42.5
+        },
+        "timestamp": "2026-10-09T00:44:15.123456789Z",
+        "tx_bps": 2048,
+        "tx_bytes": 2048,
+        "uptime": 1234
+      },
+      "agent-11": {
+        "agent_id": "private-agent",
+        "available": true,
+        "cpu_iowait_percent": 2.5,
+        "cpu_steal_percent": 0.5,
+        "cpu_usage_percent": 0,
+        "disk_read_bps": 12.3,
+        "disk_total_bytes": 18446744073709552000,
+        "disk_used_bytes": 42,
+        "disk_write_bps": 45.6,
+        "disks": [
+          {
+            "path": "/💾/\u003cscript\u003e",
+            "read_bytes": 123,
+            "total_bytes": 18446744073709552000,
+            "used_bytes": 0,
+            "write_bytes": 456
+          }
+        ],
+        "is_online": false,
+        "load_avg": [
+          0,
+          0.5,
+          1.2
+        ],
+        "metadata": {
+          "CpuCores": 8,
+          "CpuModel": "CPU",
+          "DiskSize": 18446744073709552000,
+          "LinuxVersion": "Linux",
+          "RamSize": 18446744073709552000,
+          "SwapSize": 0,
+          "Uptime": 1234
+        },
+        "ram_swap_used_bytes": 0,
+        "ram_used_bytes": 123456789,
+        "rx_bps": 1024.5,
+        "rx_bytes": 1024.5,
+        "temperatures": {
+          "CPU": 42.5
+        },
+        "timestamp": "2026-10-09T00:44:15.123456789Z",
+        "tx_bps": 2048,
+        "tx_bytes": 2048,
+        "uptime": 1234
+      },
+      "agent-12": {
+        "agent_id": "private-agent",
+        "available": true,
+        "cpu_iowait_percent": 2.5,
+        "cpu_steal_percent": 0.5,
+        "cpu_usage_percent": 0,
+        "disk_read_bps": 12.3,
+        "disk_total_bytes": 18446744073709552000,
+        "disk_used_bytes": 42,
+        "disk_write_bps": 45.6,
+        "disks": [
+          {
+            "path": "/💾/\u003cscript\u003e",
+            "read_bytes": 123,
+            "total_bytes": 18446744073709552000,
+            "used_bytes": 0,
+            "write_bytes": 456
+          }
+        ],
+        "is_online": false,
+        "load_avg": [
+          0,
+          0.5,
+          1.2
+        ],
+        "metadata": {
+          "CpuCores": 8,
+          "CpuModel": "CPU",
+          "DiskSize": 18446744073709552000,
+          "LinuxVersion": "Linux",
+          "RamSize": 18446744073709552000,
+          "SwapSize": 0,
+          "Uptime": 1234
+        },
+        "ram_swap_used_bytes": 0,
+        "ram_used_bytes": 123456789,
+        "rx_bps": 1024.5,
+        "rx_bytes": 1024.5,
+        "temperatures": {
+          "CPU": 42.5
+        },
+        "timestamp": "2026-10-09T00:44:15.123456789Z",
+        "tx_bps": 2048,
+        "tx_bytes": 2048,
+        "uptime": 1234
+      },
+      "agent-13": {
+        "agent_id": "private-agent",
+        "available": true,
+        "cpu_iowait_percent": 2.5,
+        "cpu_steal_percent": 0.5,
+        "cpu_usage_percent": 0,
+        "disk_read_bps": 12.3,
+        "disk_total_bytes": 18446744073709552000,
+        "disk_used_bytes": 42,
+        "disk_write_bps": 45.6,
+        "disks": [
+          {
+            "path": "/💾/\u003cscript\u003e",
+            "read_bytes": 123,
+            "total_bytes": 18446744073709552000,
+            "used_bytes": 0,
+            "write_bytes": 456
+          }
+        ],
+        "is_online": false,
+        "load_avg": [
+          0,
+          0.5,
+          1.2
+        ],
+        "metadata": {
+          "CpuCores": 8,
+          "CpuModel": "CPU",
+          "DiskSize": 18446744073709552000,
+          "LinuxVersion": "Linux",
+          "RamSize": 18446744073709552000,
+          "SwapSize": 0,
+          "Uptime": 1234
+        },
+        "ram_swap_used_bytes": 0,
+        "ram_used_bytes": 123456789,
+        "rx_bps": 1024.5,
+        "rx_bytes": 1024.5,
+        "temperatures": {
+          "CPU": 42.5
+        },
+        "timestamp": "2026-10-09T00:44:15.123456789Z",
+        "tx_bps": 2048,
+        "tx_bytes": 2048,
+        "uptime": 1234
+      },
+      "agent-14": {
+        "agent_id": "private-agent",
+        "available": true,
+        "cpu_iowait_percent": 2.5,
+        "cpu_steal_percent": 0.5,
+        "cpu_usage_percent": 0,
+        "disk_read_bps": 12.3,
+        "disk_total_bytes": 18446744073709552000,
+        "disk_used_bytes": 42,
+        "disk_write_bps": 45.6,
+        "disks": [
+          {
+            "path": "/💾/\u003cscript\u003e",
+            "read_bytes": 123,
+            "total_bytes": 18446744073709552000,
+            "used_bytes": 0,
+            "write_bytes": 456
+          }
+        ],
+        "is_online": false,
+        "load_avg": [
+          0,
+          0.5,
+          1.2
+        ],
+        "metadata": {
+          "CpuCores": 8,
+          "CpuModel": "CPU",
+          "DiskSize": 18446744073709552000,
+          "LinuxVersion": "Linux",
+          "RamSize": 18446744073709552000,
+          "SwapSize": 0,
+          "Uptime": 1234
+        },
+        "ram_swap_used_bytes": 0,
+        "ram_used_bytes": 123456789,
+        "rx_bps": 1024.5,
+        "rx_bytes": 1024.5,
+        "temperatures": {
+          "CPU": 42.5
+        },
+        "timestamp": "2026-10-09T00:44:15.123456789Z",
+        "tx_bps": 2048,
+        "tx_bytes": 2048,
+        "uptime": 1234
+      },
+      "agent-15": {
+        "agent_id": "private-agent",
+        "available": true,
+        "cpu_iowait_percent": 2.5,
+        "cpu_steal_percent": 0.5,
+        "cpu_usage_percent": 0,
+        "disk_read_bps": 12.3,
+        "disk_total_bytes": 18446744073709552000,
+        "disk_used_bytes": 42,
+        "disk_write_bps": 45.6,
+        "disks": [
+          {
+            "path": "/💾/\u003cscript\u003e",
+            "read_bytes": 123,
+            "total_bytes": 18446744073709552000,
+            "used_bytes": 0,
+            "write_bytes": 456
+          }
+        ],
+        "is_online": false,
+        "load_avg": [
+          0,
+          0.5,
+          1.2
+        ],
+        "metadata": {
+          "CpuCores": 8,
+          "CpuModel": "CPU",
+          "DiskSize": 18446744073709552000,
+          "LinuxVersion": "Linux",
+          "RamSize": 18446744073709552000,
+          "SwapSize": 0,
+          "Uptime": 1234
+        },
+        "ram_swap_used_bytes": 0,
+        "ram_used_bytes": 123456789,
+        "rx_bps": 1024.5,
+        "rx_bytes": 1024.5,
+        "temperatures": {
+          "CPU": 42.5
+        },
+        "timestamp": "2026-10-09T00:44:15.123456789Z",
+        "tx_bps": 2048,
+        "tx_bytes": 2048,
+        "uptime": 1234
+      },
+      "agent-16": {
+        "agent_id": "private-agent",
+        "available": true,
+        "cpu_iowait_percent": 2.5,
+        "cpu_steal_percent": 0.5,
+        "cpu_usage_percent": 0,
+        "disk_read_bps": 12.3,
+        "disk_total_bytes": 18446744073709552000,
+        "disk_used_bytes": 42,
+        "disk_write_bps": 45.6,
+        "disks": [
+          {
+            "path": "/💾/\u003cscript\u003e",
+            "read_bytes": 123,
+            "total_bytes": 18446744073709552000,
+            "used_bytes": 0,
+            "write_bytes": 456
+          }
+        ],
+        "is_online": false,
+        "load_avg": [
+          0,
+          0.5,
+          1.2
+        ],
+        "metadata": {
+          "CpuCores": 8,
+          "CpuModel": "CPU",
+          "DiskSize": 18446744073709552000,
+          "LinuxVersion": "Linux",
+          "RamSize": 18446744073709552000,
+          "SwapSize": 0,
+          "Uptime": 1234
+        },
+        "ram_swap_used_bytes": 0,
+        "ram_used_bytes": 123456789,
+        "rx_bps": 1024.5,
+        "rx_bytes": 1024.5,
+        "temperatures": {
+          "CPU": 42.5
+        },
+        "timestamp": "2026-10-09T00:44:15.123456789Z",
+        "tx_bps": 2048,
+        "tx_bytes": 2048,
+        "uptime": 1234
+      },
+      "agent-17": {
+        "agent_id": "private-agent",
+        "available": true,
+        "cpu_iowait_percent": 2.5,
+        "cpu_steal_percent": 0.5,
+        "cpu_usage_percent": 0,
+        "disk_read_bps": 12.3,
+        "disk_total_bytes": 18446744073709552000,
+        "disk_used_bytes": 42,
+        "disk_write_bps": 45.6,
+        "disks": [
+          {
+            "path": "/💾/\u003cscript\u003e",
+            "read_bytes": 123,
+            "total_bytes": 18446744073709552000,
+            "used_bytes": 0,
+            "write_bytes": 456
+          }
+        ],
+        "is_online": false,
+        "load_avg": [
+          0,
+          0.5,
+          1.2
+        ],
+        "metadata": {
+          "CpuCores": 8,
+          "CpuModel": "CPU",
+          "DiskSize": 18446744073709552000,
+          "LinuxVersion": "Linux",
+          "RamSize": 18446744073709552000,
+          "SwapSize": 0,
+          "Uptime": 1234
+        },
+        "ram_swap_used_bytes": 0,
+        "ram_used_bytes": 123456789,
+        "rx_bps": 1024.5,
+        "rx_bytes": 1024.5,
+        "temperatures": {
+          "CPU": 42.5
+        },
+        "timestamp": "2026-10-09T00:44:15.123456789Z",
+        "tx_bps": 2048,
+        "tx_bytes": 2048,
+        "uptime": 1234
+      },
+      "agent-18": {
+        "agent_id": "private-agent",
+        "available": true,
+        "cpu_iowait_percent": 2.5,
+        "cpu_steal_percent": 0.5,
+        "cpu_usage_percent": 0,
+        "disk_read_bps": 12.3,
+        "disk_total_bytes": 18446744073709552000,
+        "disk_used_bytes": 42,
+        "disk_write_bps": 45.6,
+        "disks": [
+          {
+            "path": "/💾/\u003cscript\u003e",
+            "read_bytes": 123,
+            "total_bytes": 18446744073709552000,
+            "used_bytes": 0,
+            "write_bytes": 456
+          }
+        ],
+        "is_online": false,
+        "load_avg": [
+          0,
+          0.5,
+          1.2
+        ],
+        "metadata": {
+          "CpuCores": 8,
+          "CpuModel": "CPU",
+          "DiskSize": 18446744073709552000,
+          "LinuxVersion": "Linux",
+          "RamSize": 18446744073709552000,
+          "SwapSize": 0,
+          "Uptime": 1234
+        },
+        "ram_swap_used_bytes": 0,
+        "ram_used_bytes": 123456789,
+        "rx_bps": 1024.5,
+        "rx_bytes": 1024.5,
+        "temperatures": {
+          "CPU": 42.5
+        },
+        "timestamp": "2026-10-09T00:44:15.123456789Z",
+        "tx_bps": 2048,
+        "tx_bytes": 2048,
+        "uptime": 1234
+      },
+      "agent-19": {
+        "agent_id": "private-agent",
+        "available": true,
+        "cpu_iowait_percent": 2.5,
+        "cpu_steal_percent": 0.5,
+        "cpu_usage_percent": 0,
+        "disk_read_bps": 12.3,
+        "disk_total_bytes": 18446744073709552000,
+        "disk_used_bytes": 42,
+        "disk_write_bps": 45.6,
+        "disks": [
+          {
+            "path": "/💾/\u003cscript\u003e",
+            "read_bytes": 123,
+            "total_bytes": 18446744073709552000,
+            "used_bytes": 0,
+            "write_bytes": 456
+          }
+        ],
+        "is_online": false,
+        "load_avg": [
+          0,
+          0.5,
+          1.2
+        ],
+        "metadata": {
+          "CpuCores": 8,
+          "CpuModel": "CPU",
+          "DiskSize": 18446744073709552000,
+          "LinuxVersion": "Linux",
+          "RamSize": 18446744073709552000,
+          "SwapSize": 0,
+          "Uptime": 1234
+        },
+        "ram_swap_used_bytes": 0,
+        "ram_used_bytes": 123456789,
+        "rx_bps": 1024.5,
+        "rx_bytes": 1024.5,
+        "temperatures": {
+          "CPU": 42.5
+        },
+        "timestamp": "2026-10-09T00:44:15.123456789Z",
+        "tx_bps": 2048,
+        "tx_bytes": 2048,
+        "uptime": 1234
+      },
+      "agent-20": {
+        "agent_id": "private-agent",
+        "available": true,
+        "cpu_iowait_percent": 2.5,
+        "cpu_steal_percent": 0.5,
+        "cpu_usage_percent": 0,
+        "disk_read_bps": 12.3,
+        "disk_total_bytes": 18446744073709552000,
+        "disk_used_bytes": 42,
+        "disk_write_bps": 45.6,
+        "disks": [
+          {
+            "path": "/💾/\u003cscript\u003e",
+            "read_bytes": 123,
+            "total_bytes": 18446744073709552000,
+            "used_bytes": 0,
+            "write_bytes": 456
+          }
+        ],
+        "is_online": false,
+        "load_avg": [
+          0,
+          0.5,
+          1.2
+        ],
+        "metadata": {
+          "CpuCores": 8,
+          "CpuModel": "CPU",
+          "DiskSize": 18446744073709552000,
+          "LinuxVersion": "Linux",
+          "RamSize": 18446744073709552000,
+          "SwapSize": 0,
+          "Uptime": 1234
+        },
+        "ram_swap_used_bytes": 0,
+        "ram_used_bytes": 123456789,
+        "rx_bps": 1024.5,
+        "rx_bytes": 1024.5,
+        "temperatures": {
+          "CPU": 42.5
+        },
+        "timestamp": "2026-10-09T00:44:15.123456789Z",
+        "tx_bps": 2048,
+        "tx_bytes": 2048,
+        "uptime": 1234
+      },
+      "agent-21": {
+        "agent_id": "private-agent",
+        "available": true,
+        "cpu_iowait_percent": 2.5,
+        "cpu_steal_percent": 0.5,
+        "cpu_usage_percent": 0,
+        "disk_read_bps": 12.3,
+        "disk_total_bytes": 18446744073709552000,
+        "disk_used_bytes": 42,
+        "disk_write_bps": 45.6,
+        "disks": [
+          {
+            "path": "/💾/\u003cscript\u003e",
+            "read_bytes": 123,
+            "total_bytes": 18446744073709552000,
+            "used_bytes": 0,
+            "write_bytes": 456
+          }
+        ],
+        "is_online": false,
+        "load_avg": [
+          0,
+          0.5,
+          1.2
+        ],
+        "metadata": {
+          "CpuCores": 8,
+          "CpuModel": "CPU",
+          "DiskSize": 18446744073709552000,
+          "LinuxVersion": "Linux",
+          "RamSize": 18446744073709552000,
+          "SwapSize": 0,
+          "Uptime": 1234
+        },
+        "ram_swap_used_bytes": 0,
+        "ram_used_bytes": 123456789,
+        "rx_bps": 1024.5,
+        "rx_bytes": 1024.5,
+        "temperatures": {
+          "CPU": 42.5
+        },
+        "timestamp": "2026-10-09T00:44:15.123456789Z",
+        "tx_bps": 2048,
+        "tx_bytes": 2048,
+        "uptime": 1234
+      },
+      "agent-22": {
+        "agent_id": "private-agent",
+        "available": true,
+        "cpu_iowait_percent": 2.5,
+        "cpu_steal_percent": 0.5,
+        "cpu_usage_percent": 0,
+        "disk_read_bps": 12.3,
+        "disk_total_bytes": 18446744073709552000,
+        "disk_used_bytes": 42,
+        "disk_write_bps": 45.6,
+        "disks": [
+          {
+            "path": "/💾/\u003cscript\u003e",
+            "read_bytes": 123,
+            "total_bytes": 18446744073709552000,
+            "used_bytes": 0,
+            "write_bytes": 456
+          }
+        ],
+        "is_online": false,
+        "load_avg": [
+          0,
+          0.5,
+          1.2
+        ],
+        "metadata": {
+          "CpuCores": 8,
+          "CpuModel": "CPU",
+          "DiskSize": 18446744073709552000,
+          "LinuxVersion": "Linux",
+          "RamSize": 18446744073709552000,
+          "SwapSize": 0,
+          "Uptime": 1234
+        },
+        "ram_swap_used_bytes": 0,
+        "ram_used_bytes": 123456789,
+        "rx_bps": 1024.5,
+        "rx_bytes": 1024.5,
+        "temperatures": {
+          "CPU": 42.5
+        },
+        "timestamp": "2026-10-09T00:44:15.123456789Z",
+        "tx_bps": 2048,
+        "tx_bytes": 2048,
+        "uptime": 1234
+      },
+      "agent-23": {
+        "agent_id": "private-agent",
+        "available": true,
+        "cpu_iowait_percent": 2.5,
+        "cpu_steal_percent": 0.5,
+        "cpu_usage_percent": 0,
+        "disk_read_bps": 12.3,
+        "disk_total_bytes": 18446744073709552000,
+        "disk_used_bytes": 42,
+        "disk_write_bps": 45.6,
+        "disks": [
+          {
+            "path": "/💾/\u003cscript\u003e",
+            "read_bytes": 123,
+            "total_bytes": 18446744073709552000,
+            "used_bytes": 0,
+            "write_bytes": 456
+          }
+        ],
+        "is_online": false,
+        "load_avg": [
+          0,
+          0.5,
+          1.2
+        ],
+        "metadata": {
+          "CpuCores": 8,
+          "CpuModel": "CPU",
+          "DiskSize": 18446744073709552000,
+          "LinuxVersion": "Linux",
+          "RamSize": 18446744073709552000,
+          "SwapSize": 0,
+          "Uptime": 1234
+        },
+        "ram_swap_used_bytes": 0,
+        "ram_used_bytes": 123456789,
+        "rx_bps": 1024.5,
+        "rx_bytes": 1024.5,
+        "temperatures": {
+          "CPU": 42.5
+        },
+        "timestamp": "2026-10-09T00:44:15.123456789Z",
+        "tx_bps": 2048,
+        "tx_bytes": 2048,
+        "uptime": 1234
+      },
+      "agent-24": {
+        "agent_id": "private-agent",
+        "available": true,
+        "cpu_iowait_percent": 2.5,
+        "cpu_steal_percent": 0.5,
+        "cpu_usage_percent": 0,
+        "disk_read_bps": 12.3,
+        "disk_total_bytes": 18446744073709552000,
+        "disk_used_bytes": 42,
+        "disk_write_bps": 45.6,
+        "disks": [
+          {
+            "path": "/💾/\u003cscript\u003e",
+            "read_bytes": 123,
+            "total_bytes": 18446744073709552000,
+            "used_bytes": 0,
+            "write_bytes": 456
+          }
+        ],
+        "is_online": false,
+        "load_avg": [
+          0,
+          0.5,
+          1.2
+        ],
+        "metadata": {
+          "CpuCores": 8,
+          "CpuModel": "CPU",
+          "DiskSize": 18446744073709552000,
+          "LinuxVersion": "Linux",
+          "RamSize": 18446744073709552000,
+          "SwapSize": 0,
+          "Uptime": 1234
+        },
+        "ram_swap_used_bytes": 0,
+        "ram_used_bytes": 123456789,
+        "rx_bps": 1024.5,
+        "rx_bytes": 1024.5,
+        "temperatures": {
+          "CPU": 42.5
+        },
+        "timestamp": "2026-10-09T00:44:15.123456789Z",
+        "tx_bps": 2048,
+        "tx_bytes": 2048,
+        "uptime": 1234
+      },
+      "agent-25": {
+        "agent_id": "private-agent",
+        "available": true,
+        "cpu_iowait_percent": 2.5,
+        "cpu_steal_percent": 0.5,
+        "cpu_usage_percent": 0,
+        "disk_read_bps": 12.3,
+        "disk_total_bytes": 18446744073709552000,
+        "disk_used_bytes": 42,
+        "disk_write_bps": 45.6,
+        "disks": [
+          {
+            "path": "/💾/\u003cscript\u003e",
+            "read_bytes": 123,
+            "total_bytes": 18446744073709552000,
+            "used_bytes": 0,
+            "write_bytes": 456
+          }
+        ],
+        "is_online": false,
+        "load_avg": [
+          0,
+          0.5,
+          1.2
+        ],
+        "metadata": {
+          "CpuCores": 8,
+          "CpuModel": "CPU",
+          "DiskSize": 18446744073709552000,
+          "LinuxVersion": "Linux",
+          "RamSize": 18446744073709552000,
+          "SwapSize": 0,
+          "Uptime": 1234
+        },
+        "ram_swap_used_bytes": 0,
+        "ram_used_bytes": 123456789,
+        "rx_bps": 1024.5,
+        "rx_bytes": 1024.5,
+        "temperatures": {
+          "CPU": 42.5
+        },
+        "timestamp": "2026-10-09T00:44:15.123456789Z",
+        "tx_bps": 2048,
+        "tx_bytes": 2048,
+        "uptime": 1234
+      },
+      "agent-26": {
+        "agent_id": "private-agent",
+        "available": true,
+        "cpu_iowait_percent": 2.5,
+        "cpu_steal_percent": 0.5,
+        "cpu_usage_percent": 0,
+        "disk_read_bps": 12.3,
+        "disk_total_bytes": 18446744073709552000,
+        "disk_used_bytes": 42,
+        "disk_write_bps": 45.6,
+        "disks": [
+          {
+            "path": "/💾/\u003cscript\u003e",
+            "read_bytes": 123,
+            "total_bytes": 18446744073709552000,
+            "used_bytes": 0,
+            "write_bytes": 456
+          }
+        ],
+        "is_online": false,
+        "load_avg": [
+          0,
+          0.5,
+          1.2
+        ],
+        "metadata": {
+          "CpuCores": 8,
+          "CpuModel": "CPU",
+          "DiskSize": 18446744073709552000,
+          "LinuxVersion": "Linux",
+          "RamSize": 18446744073709552000,
+          "SwapSize": 0,
+          "Uptime": 1234
+        },
+        "ram_swap_used_bytes": 0,
+        "ram_used_bytes": 123456789,
+        "rx_bps": 1024.5,
+        "rx_bytes": 1024.5,
+        "temperatures": {
+          "CPU": 42.5
+        },
+        "timestamp": "2026-10-09T00:44:15.123456789Z",
+        "tx_bps": 2048,
+        "tx_bytes": 2048,
+        "uptime": 1234
+      },
+      "agent-27": {
+        "agent_id": "private-agent",
+        "available": true,
+        "cpu_iowait_percent": 2.5,
+        "cpu_steal_percent": 0.5,
+        "cpu_usage_percent": 0,
+        "disk_read_bps": 12.3,
+        "disk_total_bytes": 18446744073709552000,
+        "disk_used_bytes": 42,
+        "disk_write_bps": 45.6,
+        "disks": [
+          {
+            "path": "/💾/\u003cscript\u003e",
+            "read_bytes": 123,
+            "total_bytes": 18446744073709552000,
+            "used_bytes": 0,
+            "write_bytes": 456
+          }
+        ],
+        "is_online": false,
+        "load_avg": [
+          0,
+          0.5,
+          1.2
+        ],
+        "metadata": {
+          "CpuCores": 8,
+          "CpuModel": "CPU",
+          "DiskSize": 18446744073709552000,
+          "LinuxVersion": "Linux",
+          "RamSize": 18446744073709552000,
+          "SwapSize": 0,
+          "Uptime": 1234
+        },
+        "ram_swap_used_bytes": 0,
+        "ram_used_bytes": 123456789,
+        "rx_bps": 1024.5,
+        "rx_bytes": 1024.5,
+        "temperatures": {
+          "CPU": 42.5
+        },
+        "timestamp": "2026-10-09T00:44:15.123456789Z",
+        "tx_bps": 2048,
+        "tx_bytes": 2048,
+        "uptime": 1234
+      },
+      "agent-28": {
+        "agent_id": "private-agent",
+        "available": true,
+        "cpu_iowait_percent": 2.5,
+        "cpu_steal_percent": 0.5,
+        "cpu_usage_percent": 0,
+        "disk_read_bps": 12.3,
+        "disk_total_bytes": 18446744073709552000,
+        "disk_used_bytes": 42,
+        "disk_write_bps": 45.6,
+        "disks": [
+          {
+            "path": "/💾/\u003cscript\u003e",
+            "read_bytes": 123,
+            "total_bytes": 18446744073709552000,
+            "used_bytes": 0,
+            "write_bytes": 456
+          }
+        ],
+        "is_online": false,
+        "load_avg": [
+          0,
+          0.5,
+          1.2
+        ],
+        "metadata": {
+          "CpuCores": 8,
+          "CpuModel": "CPU",
+          "DiskSize": 18446744073709552000,
+          "LinuxVersion": "Linux",
+          "RamSize": 18446744073709552000,
+          "SwapSize": 0,
+          "Uptime": 1234
+        },
+        "ram_swap_used_bytes": 0,
+        "ram_used_bytes": 123456789,
+        "rx_bps": 1024.5,
+        "rx_bytes": 1024.5,
+        "temperatures": {
+          "CPU": 42.5
+        },
+        "timestamp": "2026-10-09T00:44:15.123456789Z",
+        "tx_bps": 2048,
+        "tx_bytes": 2048,
+        "uptime": 1234
+      },
+      "agent-29": {
+        "agent_id": "private-agent",
+        "available": true,
+        "cpu_iowait_percent": 2.5,
+        "cpu_steal_percent": 0.5,
+        "cpu_usage_percent": 0,
+        "disk_read_bps": 12.3,
+        "disk_total_bytes": 18446744073709552000,
+        "disk_used_bytes": 42,
+        "disk_write_bps": 45.6,
+        "disks": [
+          {
+            "path": "/💾/\u003cscript\u003e",
+            "read_bytes": 123,
+            "total_bytes": 18446744073709552000,
+            "used_bytes": 0,
+            "write_bytes": 456
+          }
+        ],
+        "is_online": false,
+        "load_avg": [
+          0,
+          0.5,
+          1.2
+        ],
+        "metadata": {
+          "CpuCores": 8,
+          "CpuModel": "CPU",
+          "DiskSize": 18446744073709552000,
+          "LinuxVersion": "Linux",
+          "RamSize": 18446744073709552000,
+          "SwapSize": 0,
+          "Uptime": 1234
+        },
+        "ram_swap_used_bytes": 0,
+        "ram_used_bytes": 123456789,
+        "rx_bps": 1024.5,
+        "rx_bytes": 1024.5,
+        "temperatures": {
+          "CPU": 42.5
+        },
+        "timestamp": "2026-10-09T00:44:15.123456789Z",
+        "tx_bps": 2048,
+        "tx_bytes": 2048,
+        "uptime": 1234
+      },
+      "agent-30": {
+        "agent_id": "private-agent",
+        "available": true,
+        "cpu_iowait_percent": 2.5,
+        "cpu_steal_percent": 0.5,
+        "cpu_usage_percent": 0,
+        "disk_read_bps": 12.3,
+        "disk_total_bytes": 18446744073709552000,
+        "disk_used_bytes": 42,
+        "disk_write_bps": 45.6,
+        "disks": [
+          {
+            "path": "/💾/\u003cscript\u003e",
+            "read_bytes": 123,
+            "total_bytes": 18446744073709552000,
+            "used_bytes": 0,
+            "write_bytes": 456
+          }
+        ],
+        "is_online": false,
+        "load_avg": [
+          0,
+          0.5,
+          1.2
+        ],
+        "metadata": {
+          "CpuCores": 8,
+          "CpuModel": "CPU",
+          "DiskSize": 18446744073709552000,
+          "LinuxVersion": "Linux",
+          "RamSize": 18446744073709552000,
+          "SwapSize": 0,
+          "Uptime": 1234
+        },
+        "ram_swap_used_bytes": 0,
+        "ram_used_bytes": 123456789,
+        "rx_bps": 1024.5,
+        "rx_bytes": 1024.5,
+        "temperatures": {
+          "CPU": 42.5
+        },
+        "timestamp": "2026-10-09T00:44:15.123456789Z",
+        "tx_bps": 2048,
+        "tx_bytes": 2048,
+        "uptime": 1234
+      },
+      "agent-31": {
+        "agent_id": "private-agent",
+        "available": true,
+        "cpu_iowait_percent": 2.5,
+        "cpu_steal_percent": 0.5,
+        "cpu_usage_percent": 0,
+        "disk_read_bps": 12.3,
+        "disk_total_bytes": 18446744073709552000,
+        "disk_used_bytes": 42,
+        "disk_write_bps": 45.6,
+        "disks": [
+          {
+            "path": "/💾/\u003cscript\u003e",
+            "read_bytes": 123,
+            "total_bytes": 18446744073709552000,
+            "used_bytes": 0,
+            "write_bytes": 456
+          }
+        ],
+        "is_online": false,
+        "load_avg": [
+          0,
+          0.5,
+          1.2
+        ],
+        "metadata": {
+          "CpuCores": 8,
+          "CpuModel": "CPU",
+          "DiskSize": 18446744073709552000,
+          "LinuxVersion": "Linux",
+          "RamSize": 18446744073709552000,
+          "SwapSize": 0,
+          "Uptime": 1234
+        },
+        "ram_swap_used_bytes": 0,
+        "ram_used_bytes": 123456789,
+        "rx_bps": 1024.5,
+        "rx_bytes": 1024.5,
+        "temperatures": {
+          "CPU": 42.5
+        },
+        "timestamp": "2026-10-09T00:44:15.123456789Z",
+        "tx_bps": 2048,
+        "tx_bytes": 2048,
+        "uptime": 1234
+      }
+    },
+    "json_bytes": 23968,
+    "protobuf_bytes": 10179
+  }
+]

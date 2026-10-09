@@ -15,7 +15,12 @@
     }
     return originalFetch(input, options);
   };
-  document.addEventListener('keydown',event=>{if (event.key==='Enter' && event.target.matches('[data-click-action="handleAgentItemClick"], [data-click-action="handlePubItemClick"]')) {event.preventDefault();event.target.click();}});
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Enter' && event.target.matches('[data-click-action="handleAgentItemClick"], [data-click-action="handlePubItemClick"], [data-click-action="startInpageAgentNameEdit"]')) {
+      event.preventDefault();
+      event.target.click();
+    }
+  });
   document.addEventListener('DOMContentLoaded',()=>{for(const element of document.querySelectorAll('article[data-click-action], tr[data-click-action]')) {element.tabIndex=0;element.setAttribute('role','link');}});
   const permitted = new Set(['cancelInpageAgentNameEdit', 'cancelInpageExpandedNotesEdit', 'cancelInpageHeaderNoteEdit', 'confirmDeleteDashboard', 'deleteDashboard', 'closeAgentDetail', 'closePublicDetail', 'filterAgents', 'filterAgentsList', 'filterPublicMonitors', 'finishProvisioning', 'handleAgentItemClick', 'handleDestTypeChange', 'handleInpageHeaderNoteClick', 'handlePubItemClick', 'handleTriggerTypeChange', 'onAgentCheckboxChange', 'onAliasChange', 'resetToAlphabetical', 'saveInpageAgentName', 'saveInpageExpandedNotes', 'saveInpageHeaderInlineNote', 'selectProvisionDriver', 'setAgentViewMode', 'setPublicViewMode', 'showInpageReinstallModal', 'showInpageUninstallModal', 'startInpageAgentNameEdit', 'startInpageExpandedNotesEdit', 'submitProvisionAgent', 'toggleAllNodes', 'togglePill', 'toggleSelectAll']);
   for (const type of ['click', 'change', 'input', 'submit']) {
