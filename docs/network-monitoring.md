@@ -147,6 +147,7 @@ a false recovery notification.
 
 ## Verification
 
+Install browser test dependencies with `npm ci --prefix web --no-audit --no-fund`.
 Run `go test ./...` and `node --test web/tests/*.test.cjs`. Race checks cover the
 agent, network service, SQLite and WebSocket packages. To exercise a real Beszel
 agent against isolated local servers, set `BESZEL_TEST_AGENT_BINARY` to its binary

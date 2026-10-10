@@ -1,7 +1,7 @@
 const {test} = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
-const {JSDOM} = require('../../frontend-admin/node_modules/jsdom');
+const {JSDOM} = require('jsdom');
 function harness(blockStorage = false) {
   const dom = new JSDOM('<div id="one"></div><div id="two"></div>', {url: 'https://example.com', runScripts: 'outside-only'});
   const {window} = dom;

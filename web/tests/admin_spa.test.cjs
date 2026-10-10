@@ -1,7 +1,7 @@
 const {test} = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
-const {JSDOM} = require('../../frontend-admin/node_modules/jsdom');
+const {JSDOM} = require('jsdom');
 
 function shell(path = '/panel/') {
   const dom = new JSDOM(`<!doctype html><html><body>

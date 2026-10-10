@@ -1,0 +1,7 @@
+{
+  "name": "certainstats-browser-tests",
+  "private": true,
+  "devDependencies": {
+    "jsdom": "26.1.0"
+  }
+}

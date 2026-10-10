@@ -1,6 +1,6 @@
 # Security, telemetry, and rollout
 
-Production serves Go templates and vanilla JavaScript from `web/`. The React directories remain archives; they are neither built by release CI nor embedded by the normal `embed` tag. `archive && embed` explicitly opts into the old frontend packages. Active browser tests run with `node --test web/tests/*.test.cjs`.
+Production serves Go templates and vanilla JavaScript from `web/`. The React directories remain archives; they are neither built by release CI nor embedded by the normal `embed` tag. `archive && embed` explicitly opts into the old frontend packages. Install active browser test dependencies with `npm ci --prefix web --no-audit --no-fund`, then run `node --test web/tests/*.test.cjs`.
 
 ## Browser and public access
 

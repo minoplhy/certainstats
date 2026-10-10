@@ -70,6 +70,7 @@ bundle. To update them after an intentional protocol change:
 
 ```sh
 UPDATE_PROTOCOL_FIXTURES=1 go test ./internal/ws -run TestBrowserProtocolFixtures
+npm ci --prefix web --no-audit --no-fund
 node --test web/tests/*.test.cjs
 go test ./...
 go test -race ./internal/ws ./internal/routine

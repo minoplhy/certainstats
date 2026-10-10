@@ -4,15 +4,20 @@ import (
 	"bytes"
 	"compress/gzip"
 	"encoding/base64"
+	"net/url"
 	"testing"
 )
 
 func TestOpaqueSoftwareVersion(t *testing.T) {
 	var b bytes.Buffer
 	w := gzip.NewWriter(&b)
-	w.Write([]byte(`{"SID":"token","version":"build-2026.10","agent":"hetrixtools","time":"1"}`))
-	w.Close()
-	raw := []byte("j=" + base64.StdEncoding.EncodeToString(b.Bytes()))
+	if _, err := w.Write([]byte(`{"SID":"token","version":"build-2026.10","agent":"hetrixtools","time":"1"}`)); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+	raw := []byte(url.Values{"j": {base64.StdEncoding.EncodeToString(b.Bytes())}}.Encode())
 	p, e := (&HTStats{}).Parse(raw)
 	if e != nil {
 		t.Fatal(e)
