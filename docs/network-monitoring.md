@@ -62,7 +62,10 @@ Paths below are relative to the configured panel's `/api` prefix.
 
 | Method | Path | Behavior |
 | --- | --- | --- |
-| GET | `/network-monitors` | Paginated list; `agent_id`, `q`, `target`, `protocol`, `state`, `page`, `limit` |
+| GET | `/network-monitors` | Paginated list; `agent_id`, `q`, `target`, `target_exact`, `protocol`, `state`, `page`, `limit` |
+| GET | `/network-monitors/targets` | Alphabetical distinct target strings in `items`, restricted by owner, `agent_id`, `protocol` and `state`; independent of pagination and target search |
+| GET | `/network-monitors/group?target=…` | All current members for an exact target, plus an opaque revision |
+| PATCH | `/network-monitors/group` | Atomically edit shared configuration and selected probers |
 | POST | `/network-monitors` | Create for `agent_ids` with target, protocol, port, interval and optional DNS server |
 | GET | `/network-monitors/{id}` | Configuration, state, latest reading and sync status |
 | PATCH | `/network-monitors/{id}` | Edit configuration or change `enabled` |
@@ -108,6 +111,37 @@ list. Shared hostname/target substring, protocol, node and state filters control
 both views. `target` matches stored targets case-insensitively, including hostnames
 inside URLs; existing `q` still searches target or node. SQL wildcard characters in
 search text are treated literally. Protocol accepts `icmp`, `tcp`, `http` or `dns`.
+
+The Network page groups the current page's monitor rows by their stored target,
+including the full URL for HTTP checks. Each group shows its nodes and individual
+probe configurations, readings and controls. Groups follow the first matching row's
+ordering; pagination still counts monitors, so a target may appear on several pages.
+The Group dropdown selects one exact stored target across pages and filters both
+the list and graphs; All groups clears it. Node, protocol and state filters narrow
+the dropdown's options, while target search and the selected group do not. A
+selected group remains available even when it has no matching monitors.
+Groups start expanded and can be collapsed with their heading. Collapse choices
+survive refresh, filtering, pagination and SPA navigation until a full reload.
+Counts in group headings describe matching monitors on the current page.
+Node-detail lists remain flat and do not show the Group dropdown.
+
+Edit group loads all current probers for the target across nodes and pages,
+regardless of list filters. A group shares its target, protocol, port, DNS resolver,
+and interval. Existing targets supply those settings when adding new probers;
+individual writes that introduce conflicting settings or duplicate target/agent
+checks return 409. Individual probers can still be paused or removed independently.
+The group editor preserves their pause states by default, starts added probers
+active, and offers Pause all or Resume all. Removing a prober archives its check.
+
+Group PATCH accepts `original_target`, `revision`, `target`, `protocol`,
+`interval_seconds`, `agent_ids`, optional `port`/`dns_server`, and optional `enabled`
+for a group-wide pause/resume. At least one prober must remain. The revision comes
+from the group GET response (`items` and `revision`); stale writes return 409 and
+require reloading. Shared settings and membership commit together, then affected
+agents synchronize. Renaming into an existing target group is rejected. Schedule
+changes preserve history; changes to probe identity archive old checks and transfer
+alert membership to replacements. Inconsistent legacy groups return a clear 409
+rather than choosing settings implicitly. No data migration is required.
 
 Graphs automatically show the first ten matches in the list's stable ordering,
 independently of list pagination. Each series is fetched with its own history

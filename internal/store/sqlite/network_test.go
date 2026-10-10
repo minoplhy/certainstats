@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
 	"sync"
 	"testing"
 	"time"
@@ -91,6 +92,12 @@ func TestNetworkListFilters(t *testing.T) {
 		{"legacy node query", "owner", store.NetworkListFilter{Query: "Node"}, 4},
 		{"node filter", "owner", store.NetworkListFilter{AgentID: "other"}, 0},
 		{"owner isolation", "foreign", store.NetworkListFilter{Target: "example.com"}, 0},
+		{"exact target excludes URL matches", "owner", store.NetworkListFilter{TargetExact: "api.example.com"}, 1},
+		{"exact URL path", "owner", store.NetworkListFilter{TargetExact: "https://api.example.com/health"}, 1},
+		{"exact literal wildcards", "owner", store.NetworkListFilter{TargetExact: "https://api.example.com/health_100%25"}, 1},
+		{"exact target combines with search", "owner", store.NetworkListFilter{TargetExact: "api.example.com", Target: "health"}, 0},
+		{"exact target combines with protocol", "owner", store.NetworkListFilter{TargetExact: "api.example.com", Protocol: "http"}, 0},
+		{"exact target owner isolation", "foreign", store.NetworkListFilter{TargetExact: "api.example.com"}, 0},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			items, total, err := s.NetworkList(ctx, tc.user, tc.filter, 1, 1)
@@ -106,6 +113,61 @@ func TestNetworkListFilters(t *testing.T) {
 		})
 	}
 }
+func TestNetworkTargets(t *testing.T) {
+	s, initial := networkFixture(t)
+	ctx := context.Background()
+	create := func(target, protocol string, enabled bool) {
+		t.Helper()
+		if _, err := s.NetworkCreate(ctx, "owner", []string{"node"}, nm.Config{Target: target, Protocol: protocol, Port: 443}, enabled); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := s.AgentProvision(ctx, "second", "owner", "token2", "Second", "beszel"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.AgentUpdateRuntime(ctx, "second", "owner", agentmeta.Runtime{AgentVersion: agentmeta.String("0.21.0"), VersionSource: "test"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.NetworkCreate(ctx, "owner", []string{"second"}, initial[0].Config, true); err != nil {
+		t.Fatal(err)
+	}
+	create("https://example.com/health", "http", true)
+	create("https://example.com/login", "http", false)
+	for i := range 26 {
+		create(fmt.Sprintf("z%02d.example.com", i), "icmp", true)
+	}
+	for _, tc := range []struct {
+		name, user string
+		filter     store.NetworkListFilter
+		want       []string
+	}{
+		{"distinct sorted HTTP targets", "owner", store.NetworkListFilter{Protocol: "http"}, []string{"https://example.com/health", "https://example.com/login"}},
+		{"ignores target and search filters", "owner", store.NetworkListFilter{Protocol: "http", Target: "missing", TargetExact: "example.com", Query: "missing"}, []string{"https://example.com/health", "https://example.com/login"}},
+		{"paused targets", "owner", store.NetworkListFilter{State: nm.StatePaused}, []string{"https://example.com/login"}},
+		{"active targets", "owner", store.NetworkListFilter{Protocol: "http", State: nm.StateActive}, []string{"https://example.com/health"}},
+		{"missing node", "owner", store.NetworkListFilter{AgentID: "other"}, []string{}},
+		{"another owner", "foreign", store.NetworkListFilter{}, []string{}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := s.NetworkTargets(ctx, tc.user, tc.filter)
+			if err != nil || !reflect.DeepEqual(got, tc.want) {
+				t.Fatalf("targets=%v want=%v err=%v", got, tc.want, err)
+			}
+		})
+	}
+	targets, err := s.NetworkTargets(ctx, "owner", store.NetworkListFilter{AgentID: "node"})
+	if err != nil || len(targets) != 29 || targets[0] != "example.com" {
+		t.Fatalf("targets=%v err=%v", targets, err)
+	}
+	if err := s.NetworkArchive(ctx, "owner", initial[0].ID); err != nil {
+		t.Fatal(err)
+	}
+	targets, err = s.NetworkTargets(ctx, "owner", store.NetworkListFilter{State: nm.StateArchived})
+	if err != nil || !reflect.DeepEqual(targets, []string{"example.com"}) {
+		t.Fatalf("archived targets=%v err=%v", targets, err)
+	}
+}
+
 func TestNetworkArchiveAndReplacement(t *testing.T) {
 	s, items := networkFixture(t)
 	ctx := context.Background()

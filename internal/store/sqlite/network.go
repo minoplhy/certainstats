@@ -147,13 +147,7 @@ func (s *Store) NetworkGet(ctx context.Context, userID, monitorID string) (*nm.M
 	return m, nil
 }
 
-func (s *Store) NetworkList(ctx context.Context, userID string, filter store.NetworkListFilter, page, limit int) ([]nm.Monitor, int, error) {
-	page = max(page, 1)
-	if limit < 1 {
-		limit = nm.DefaultPageSize
-	}
-	limit = min(limit, nm.MaxPageSize)
-
+func networkListWhere(userID string, filter store.NetworkListFilter) (string, []any) {
 	where := `WHERE m.user_id = ?`
 	args := []any{userID}
 	if filter.AgentID != "" {
@@ -180,10 +174,43 @@ func (s *Store) NetworkList(ctx context.Context, userID string, filter store.Net
 		where += ` AND m.target LIKE ? ESCAPE '\'`
 		args = append(args, likePattern(filter.Target))
 	}
+	if filter.TargetExact != "" {
+		where += ` AND m.target = ?`
+		args = append(args, filter.TargetExact)
+	}
 	if filter.Protocol != "" {
 		where += ` AND m.protocol = ?`
 		args = append(args, filter.Protocol)
 	}
+	return where, args
+}
+
+func (s *Store) NetworkTargets(ctx context.Context, userID string, filter store.NetworkListFilter) ([]string, error) {
+	filter.Query, filter.Target, filter.TargetExact = "", "", ""
+	where, args := networkListWhere(userID, filter)
+	rows, err := s.db.QueryContext(ctx, `SELECT DISTINCT m.target FROM network_monitors m `+where+` ORDER BY m.target`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	targets := []string{}
+	for rows.Next() {
+		var target string
+		if err := rows.Scan(&target); err != nil {
+			return nil, err
+		}
+		targets = append(targets, target)
+	}
+	return targets, rows.Err()
+}
+
+func (s *Store) NetworkList(ctx context.Context, userID string, filter store.NetworkListFilter, page, limit int) ([]nm.Monitor, int, error) {
+	page = max(page, 1)
+	if limit < 1 {
+		limit = nm.DefaultPageSize
+	}
+	limit = min(limit, nm.MaxPageSize)
+	where, args := networkListWhere(userID, filter)
 
 	var total int
 	if err := s.db.QueryRowContext(ctx, `SELECT count(*) FROM network_monitors m `+where, args...).Scan(&total); err != nil {
@@ -306,6 +333,9 @@ func (s *Store) createMonitor(ctx context.Context, tx *sql.Tx, userID, agentID s
 		return nil, nm.Invalid("agent monitor limit reached")
 	}
 
+	if err := checkGroupPolicy(ctx, tx, userID, agentID, "", c); err != nil {
+		return nil, err
+	}
 	c.ID = nm.ID()
 	now := time.Now().UTC()
 	m := &nm.Monitor{
@@ -406,6 +436,9 @@ func (s *Store) NetworkUpdate(ctx context.Context, userID, monitorID string, c n
 		}
 	}
 
+	if err := checkGroupPolicy(ctx, tx, userID, m.AgentID, m.ID, c); err != nil {
+		return nil, err
+	}
 	identityChanged := m.Target != c.Target || m.Protocol != c.Protocol || m.Port != c.Port || m.Server != c.Server
 	if identityChanged {
 		err = replaceMonitor(ctx, tx, m, c, enabled)

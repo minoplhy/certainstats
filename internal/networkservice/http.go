@@ -71,38 +71,64 @@ func failure(w http.ResponseWriter, err error) {
 	}
 }
 
-func (s *Service) List(w http.ResponseWriter, r *http.Request) {
-	userID := requestUserID(r)
-	if userID == "" {
-		api.Error(w, http.StatusUnauthorized, "Unauthorized")
-		return
-	}
+func networkFilter(r *http.Request) (store.NetworkListFilter, error) {
 	query := r.URL.Query()
 
 	state := query.Get("state")
 	switch state {
 	case "", nm.StateActive, nm.StatePaused, nm.StateArchived, "all":
 	default:
-		api.Error(w, http.StatusBadRequest, "Invalid state")
-		return
+		return store.NetworkListFilter{}, nm.Invalid("Invalid state")
 	}
 	protocol := query.Get("protocol")
 	switch protocol {
 	case "", nm.ProtocolICMP, nm.ProtocolTCP, nm.ProtocolHTTP, nm.ProtocolDNS:
 	default:
-		api.Error(w, http.StatusBadRequest, "Invalid protocol")
-		return
+		return store.NetworkListFilter{}, nm.Invalid("Invalid protocol")
 	}
 
+	return store.NetworkListFilter{
+		AgentID:     query.Get("agent_id"),
+		Query:       query.Get("q"),
+		Target:      query.Get("target"),
+		TargetExact: query.Get("target_exact"),
+		Protocol:    protocol,
+		State:       state,
+	}, nil
+}
+
+func (s *Service) Targets(w http.ResponseWriter, r *http.Request) {
+	userID := requestUserID(r)
+	if userID == "" {
+		api.Error(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+	filter, err := networkFilter(r)
+	if err != nil {
+		failure(w, err)
+		return
+	}
+	targets, err := s.Store.NetworkTargets(r.Context(), userID, filter)
+	if err != nil {
+		api.Error(w, http.StatusInternalServerError, "Failed to load target groups")
+		return
+	}
+	api.JSON(w, http.StatusOK, map[string]any{"items": targets})
+}
+
+func (s *Service) List(w http.ResponseWriter, r *http.Request) {
+	userID := requestUserID(r)
+	if userID == "" {
+		api.Error(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+	filter, err := networkFilter(r)
+	if err != nil {
+		failure(w, err)
+		return
+	}
 	page := min(positiveQuery(r, "page", 1), maxPage)
 	limit := min(positiveQuery(r, "limit", nm.DefaultPageSize), nm.MaxPageSize)
-	filter := store.NetworkListFilter{
-		AgentID:  query.Get("agent_id"),
-		Query:    query.Get("q"),
-		Target:   query.Get("target"),
-		Protocol: protocol,
-		State:    state,
-	}
 	items, total, err := s.Store.NetworkList(r.Context(), userID, filter, page, limit)
 	if err != nil {
 		api.Error(w, http.StatusInternalServerError, "Failed to load monitors")

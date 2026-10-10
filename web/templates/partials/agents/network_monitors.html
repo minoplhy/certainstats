@@ -40,6 +40,12 @@
       <button type="button" class="toolbar-btn" aria-pressed="false" data-network-protocol-option="http">HTTP</button>
       <button type="button" class="toolbar-btn" aria-pressed="false" data-network-protocol-option="dns">DNS</button>
     </div>
+    <label data-network-group-filter>
+      <span class="sr-only">Group</span>
+      <select class="form-select network-toolbar-select" data-network-group>
+        <option value="">All groups</option>
+      </select>
+    </label>
     <label data-network-node-filter>
       <span class="sr-only">Node</span>
       <select class="form-select network-toolbar-select" data-network-node>
@@ -102,6 +108,7 @@
     <span class="muted mono" data-network-count></span>
   </div>
   <p class="network-status" role="status" aria-live="polite" data-network-message></p>
+  <p class="network-status" role="status" aria-live="polite" data-network-group-message></p>
   <div class="network-list" data-network-list></div>
   <div class="network-pagination">
     <button type="button" class="btn btn-secondary btn-sm" data-network-prev>Previous</button>
@@ -174,6 +181,14 @@
                 </label>
               </div>
             </div>
+            <label class="form-group" data-network-group-state hidden>
+              <span class="form-label">Prober state</span>
+              <select class="form-select" data-network-group-enabled>
+                <option value="">Keep current states</option>
+                <option value="true">Resume all</option>
+                <option value="false">Pause all</option>
+              </select>
+            </label>
             <label class="toggle-pill active" data-network-enabled-pill>
               <input name="enabled" type="checkbox" checked>
               <span>Active</span>

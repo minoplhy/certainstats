@@ -18,7 +18,7 @@
   const ATTENTION_STATES = ['offline', 'stale', 'unsupported', 'unknown'];
 
   const ROLES = [
-    'add', 'search', 'node', 'node-filter', 'state', 'refresh',
+    'group-state', 'group-enabled', 'add', 'search', 'node', 'node-filter', 'group', 'group-filter', 'group-message', 'state', 'refresh',
     'time-picker', 'chart-count', 'chart-message', 'latency', 'loss', 'legend',
     'count', 'message', 'list', 'prev', 'next', 'limit',
     'dialog', 'form', 'form-title', 'form-subtitle', 'form-message', 'protocol-hint', 'port', 'server',
@@ -180,6 +180,11 @@
     let rows = [];
     let agents = [];
     let editing = null;
+    let editingGroup = null;
+    let inheritedGroup = null;
+    let editorGeneration = 0;
+    let inheritancePending = false;
+
     let candidates = [];
     let historyData = null;
     let charts = [];
@@ -188,12 +193,14 @@
     // Rows are keyed by monitor ID so unchanged rows survive live re-renders.
     let rowElements = new Map();
     const expanded = new Set();
+    const collapsedGroups = new Set();
+    let groupTargets = [];
     // Targets seen in any listing, to label hero stats from the live snapshot.
     const targets = new Map();
     const sparklines = { cache: new Map(), pending: new Set(), controller: null };
     // Latest live snapshot, its membership signature, and the feed connection seen.
     const live = { snapshot: undefined, membership: undefined, generation: 0 };
-    const pending = { list: null, candidates: null, history: null };
+    const pending = { list: null, candidates: null, history: null, groups: null };
 
     const picker = telemetry.initCustomTimePicker(ui['time-picker'], {
       onApply(state) {
@@ -223,7 +230,11 @@
       } catch (e) {
         // Error pages may not be JSON; fall through to the generic message.
       }
-      if (!response.ok) throw new Error(body?.error || body?.message || 'Request failed');
+      if (!response.ok) {
+        const error = new Error(body?.error || body?.message || 'Request failed');
+        error.status = response.status;
+        throw error;
+      }
       return body;
     }
 
@@ -253,7 +264,7 @@
     }
 
     function hasFilters() {
-      return !!(ui.search.value.trim() || protocol || ui.state.value || (!nodeMode && ui.node.value));
+      return !!(ui.search.value.trim() || protocol || ui.state.value || (!nodeMode && (ui.node.value || ui.group.value)));
     }
 
     function filterParams() {
@@ -263,7 +274,42 @@
         protocol
       });
       if (agentFilter()) params.set('agent_id', agentFilter());
+      if (!nodeMode && ui.group.value) params.set('target_exact', ui.group.value);
       return params;
+    }
+
+    function renderGroupOptions() {
+      const selected = ui.group.value;
+      const all = el('option', '', 'All groups');
+      all.value = '';
+      ui.group.replaceChildren(all);
+      const options = new Set(groupTargets);
+      if (selected) options.add(selected);
+      for (const target of [...options].sort()) {
+        const option = el('option', '', target);
+        option.value = target;
+        ui.group.append(option);
+      }
+      ui.group.value = selected;
+    }
+
+    async function loadGroups() {
+      if (nodeMode || !visible()) return;
+      const controller = begin('groups');
+      const params = filterParams();
+      params.delete('target');
+      params.delete('target_exact');
+      try {
+        const data = await api('network-monitors/targets?' + params, { signal: controller.signal });
+        if (controller !== pending.groups || !visible()) return;
+        groupTargets = data.items;
+        renderGroupOptions();
+        ui['group-message'].textContent = '';
+      } catch (e) {
+        if (e.name !== 'AbortError' && controller === pending.groups && visible()) {
+          showError(ui['group-message'], e.message, loadGroups);
+        }
+      }
     }
 
     function rememberTargets(monitors) {
@@ -356,8 +402,15 @@
     // Updates the selected count and the submit label, e.g. "Add to 3 agents".
     function updateAgentSummary() {
       const selected = agentCheckboxes().filter(input => input.checked).length;
-      ui['agent-count'].textContent = editing ? '' : selected + ' selected';
-      ui.submit.textContent = editing ? 'Save changes' : selected > 1 ? 'Add to ' + selected + ' agents' : 'Add monitor';
+      ui['agent-count'].textContent = selected + ' selected';
+      if (editingGroup) {
+        const checked = new Set(agentCheckboxes().filter(input => input.checked).map(input => input.value));
+        const existing = new Set(editingGroup.items.map(m => m.agent_id));
+        const added = [...checked].filter(id => !existing.has(id)).length;
+        const removed = [...existing].filter(id => !checked.has(id)).length;
+        ui['agent-hint'].textContent = (existing.size - removed) + ' retained, ' + added + ' added, ' + removed + ' removed. Removed checks are archived with their history. New probers start active when keeping individual states.';
+      }
+      ui.submit.textContent = (editingGroup || editing) ? 'Save changes' : selected > 1 ? 'Add to ' + selected + ' agents' : 'Add monitor';
     }
 
     function renderAgentOptions() {
@@ -368,8 +421,8 @@
       group.replaceChildren();
 
       for (const agent of agents) {
-        if (nodeMode && agent.agent_id !== nodeId) continue;
-        if (editing && agent.agent_id !== editing.agent_id) continue;
+        if (nodeMode && !editingGroup && agent.agent_id !== nodeId) continue;
+        if (editing && !editingGroup && agent.agent_id !== editing.agent_id) continue;
         const capable = supports(agent, 'configure') && supports(agent, selectedProtocol) &&
           (!customServer || supports(agent, 'custom_dns_server'));
         const runtime = agent.extensions?.runtime;
@@ -379,10 +432,12 @@
         checkbox.type = 'checkbox';
         checkbox.name = 'agent_ids';
         checkbox.value = agent.agent_id;
-        checkbox.disabled = !capable || !!editing;
-        checkbox.checked = capable && (editing || nodeMode || checked.has(agent.agent_id));
+        const existing = editingGroup?.items.some(m => m.agent_id === agent.agent_id);
+        const duplicate = inheritedGroup?.items.some(m => m.agent_id === agent.agent_id);
+        checkbox.disabled = duplicate || (!capable && !existing) || (!!editing && !editingGroup);
+        checkbox.checked = !duplicate && ((existing && checked.has(agent.agent_id)) || (capable && ((editing && !editingGroup) || (!editingGroup && nodeMode) || checked.has(agent.agent_id))));
 
-        const pill = el('label', 'node-select-pill' + (checkbox.checked ? ' active' : '') + (capable ? '' : ' is-disabled'));
+        const pill = el('label', 'node-select-pill' + (checkbox.checked ? ' active' : '') + (checkbox.disabled ? ' is-disabled' : ''));
         if (reason) pill.title = reason;
         const text = el('span', 'node-select-text');
         text.append(
@@ -438,7 +493,14 @@
     }
 
     function openDialog(monitor) {
+      editingGroup = null;
+      inheritedGroup = null;
+      editorGeneration++;
+      inheritancePending = false;
       editing = monitor || null;
+      ui['group-state'].hidden = true;
+      ui['enabled-pill'].hidden = false;
+      lockInheritedSettings(false);
       form.reset();
       setFormMessage('');
       ui['form-title'].textContent = monitor ? 'Edit network monitor' : 'Add network monitor';
@@ -463,9 +525,82 @@
       form.elements.target.focus();
     }
 
+    function lockInheritedSettings(locked) {
+      for (const name of ['port', 'dns_server', 'interval_seconds']) form.elements[name].disabled = locked;
+      for (const option of formProtocolOptions) option.disabled = locked;
+      for (const preset of intervalPresets) preset.disabled = locked;
+    }
+
+    async function openGroupDialog(target) {
+      const generation = ++editorGeneration;
+      try {
+        const group = await api('network-monitors/group?target=' + encodeURIComponent(target));
+        await loadAgents();
+        if (generation !== editorGeneration || !visible()) return;
+        openDialog(group.items[0]);
+        editingGroup = group;
+        ui['form-title'].textContent = 'Edit target group';
+        ui['form-subtitle'].textContent = 'Shared settings apply to all ' + group.items.length + ' probers across every page. Identity changes start new history; old history stays archived.';
+        ui['agent-actions'].hidden = false;
+        ui['agent-hint'].textContent = 'Select probers to add. Uncheck probers to archive their checks and preserve their history.';
+        ui['group-state'].hidden = false;
+        ui['group-enabled'].value = '';
+        ui['enabled-pill'].hidden = true;
+        // Seed the membership selection before rendering the complete agent list.
+        editing = null;
+        renderAgentOptions();
+        for (const input of agentCheckboxes()) input.checked = group.items.some(m => m.agent_id === input.value);
+        renderAgentOptions();
+        updateAgentSummary();
+      } catch (e) {
+        if (generation === editorGeneration) showError(ui.message, e.message, () => openGroupDialog(target));
+      }
+    }
+
+    async function inheritTargetSettings() {
+      if (editingGroup || editing || !dialog.open) return;
+      let target = form.elements.target.value.trim();
+      if (form.elements.protocol.value === 'http' && !target.includes('://') && target) target = 'https://' + target;
+      target = target.includes('://') ? target.replace(/^(https?:\/\/)([^/?#]+)/i, (_, scheme, host) => scheme.toLowerCase() + host.toLowerCase()) : target.toLowerCase();
+      const generation = ++editorGeneration;
+      inheritedGroup = null;
+      inheritancePending = false;
+      lockInheritedSettings(false);
+      if (!target) return;
+      inheritancePending = true;
+      try {
+        // The target list determines existence without treating other failures as a missing group.
+        const targets = await api('network-monitors/targets');
+        if (generation !== editorGeneration || !dialog.open) return;
+        if (targets.items.includes(target)) {
+          const group = await api('network-monitors/group?target=' + encodeURIComponent(target));
+          if (generation !== editorGeneration || !dialog.open) return;
+          inheritedGroup = group;
+          const monitor = group.items[0];
+          form.elements.port.value = monitor.port || 443;
+          form.elements.dns_server.value = monitor.dns_server || '';
+          form.elements.interval_seconds.value = monitor.interval_seconds;
+          setFormProtocol(monitor.protocol);
+          syncIntervalPresets();
+          lockInheritedSettings(true);
+          ui['form-subtitle'].textContent = 'This target already has a group. New probers inherit its shared configuration. Use Edit group to change it.';
+        } else {
+          ui['form-subtitle'].textContent = 'Each selected agent probes the target from its own network.';
+          renderAgentOptions();
+        }
+        setFormMessage('');
+      } catch (e) {
+        if (generation === editorGeneration) setFormMessage(e.message + ' Retry by leaving the target field again.');
+      } finally {
+        if (generation === editorGeneration) inheritancePending = false;
+      }
+    }
+
     async function openAddDialog() {
+      const generation = ++editorGeneration;
       try {
         await loadAgents();
+        if (generation !== editorGeneration || !visible()) return;
         openDialog();
       } catch (e) {
         ui.message.textContent = e.message;
@@ -492,7 +627,14 @@
       };
       if (data.protocol === 'tcp') data.port = Number(form.elements.port.value);
       if (data.protocol === 'dns') data.dns_server = form.elements.dns_server.value;
-      if (!editing) data.agent_ids = agentCheckboxes().filter(input => input.checked).map(input => input.value);
+      if (!editing || editingGroup) data.agent_ids = agentCheckboxes().filter(input => input.checked).map(input => input.value);
+      if (inheritancePending) { setFormMessage('Wait for the target settings to load.'); return; }
+      if (editingGroup) {
+        data.original_target = editingGroup.items[0].target;
+        data.revision = editingGroup.revision;
+        delete data.enabled;
+        if (ui['group-enabled'].value) data.enabled = ui['group-enabled'].value === 'true';
+      }
       const problem = formProblem(data);
       if (problem) {
         setFormMessage(problem);
@@ -501,13 +643,31 @@
 
       ui.submit.disabled = true;
       try {
-        const path = editing ? 'network-monitors/' + encodeURIComponent(editing.monitor_id) : 'network-monitors';
-        await api(path, { method: editing ? 'PATCH' : 'POST', body: JSON.stringify(data) });
+        const path = editingGroup ? 'network-monitors/group' : editing ? 'network-monitors/' + encodeURIComponent(editing.monitor_id) : 'network-monitors';
+        const saved = await api(path, { method: editingGroup || editing ? 'PATCH' : 'POST', body: JSON.stringify(data) });
+        if (editingGroup) {
+          const oldTarget = editingGroup.items[0].target;
+          const newTarget = saved.items[0].target;
+          const wasSelected = ui.group.value === oldTarget;
+          if (collapsedGroups.delete(oldTarget)) collapsedGroups.add(newTarget);
+          if (newTarget !== oldTarget) {
+            groupTargets = groupTargets.filter(target => target !== oldTarget);
+            groupTargets.push(newTarget);
+            // Install the renamed option before restoring the selection.
+            renderGroupOptions();
+            if (wasSelected) ui.group.value = newTarget;
+          }
+          hiddenSeries.clear();
+          historyData = null;
+        }
         dialog.close();
         page = 1;
         refreshAll();
       } catch (e) {
         setFormMessage(e.message);
+        if (editingGroup && e.status === 409) {
+          ui['form-message'].append(button('Reload group', () => { dialog.close(); openGroupDialog(editingGroup.items[0].target); }, 'btn btn-secondary btn-sm'));
+        }
       } finally {
         ui.submit.disabled = false;
       }
@@ -529,9 +689,7 @@
 
     function listHeader() {
       const header = el('div', 'network-list-head');
-      const columns = nodeMode
-        ? ['Monitor', 'Response', '24h', 'Hourly loss', 'Last probe', 'State', '']
-        : ['Monitor', 'Node', 'Response', '24h', 'Hourly loss', 'Last probe', 'State', ''];
+      const columns = [nodeMode ? 'Monitor' : 'Node', 'Response', '24h', 'Hourly loss', 'Last probe', 'State', ''];
       for (const label of columns) header.append(el('span', '', label));
       header.setAttribute('aria-hidden', 'true');
       return header;
@@ -588,12 +746,11 @@
       const summary = el('summary', 'network-row-main');
       const identity = el('div', 'network-cell-monitor');
       const text = el('div', 'network-monitor-text');
-      const target = el('span', 'network-target mono', monitor.target);
-      target.title = monitor.target;
+      const target = el('span', 'network-target' + (nodeMode ? ' mono' : ''), nodeMode ? monitor.target : monitor.agent_name);
+      target.title = nodeMode ? monitor.target : monitor.agent_name + ' · ' + monitor.target;
       text.append(target, el('span', 'network-row-sub', probeLine(monitor)));
       identity.append(el('span', 'status-dot' + (state.dot ? ' ' + state.dot : '')), text);
       summary.append(identity);
-      if (!nodeMode) summary.append(el('span', 'network-cell-node', monitor.agent_name));
 
       summary.append(el('span', 'network-cell-response mono', latest && latest.success_count > 0 ? formatMs(latest.response_avg_ms) : '–'));
 
@@ -628,7 +785,7 @@
         actions.append(el('span', 'muted', 'Archived'));
       } else {
         actions.append(
-          rowAction('Edit', () => openDialog(monitor), 'Edit ' + monitor.target),
+          rowAction('Edit', () => openGroupDialog(monitor.target), 'Edit group ' + monitor.target),
           rowAction(monitor.enabled ? 'Pause' : 'Resume', () => mutate(monitor, 'PATCH', { enabled: !monitor.enabled }),
             (monitor.enabled ? 'Pause ' : 'Resume ') + monitor.target),
           rowAction('Delete', () => {
@@ -656,6 +813,9 @@
     function renderList() {
       const next = new Map();
       const elements = [];
+      const groups = new Map();
+      const groupCounts = new Map();
+      for (const monitor of rows) groupCounts.set(monitor.target, (groupCounts.get(monitor.target) || 0) + 1);
       const added = [];
       for (const monitor of rows) {
         const signature = JSON.stringify(monitor);
@@ -663,7 +823,33 @@
         const entry = previous && previous.signature === signature ? previous : { ...buildRow(monitor), signature };
         if (entry !== previous) added.push(monitor.monitor_id);
         next.set(monitor.monitor_id, entry);
-        elements.push(entry.element);
+        if (nodeMode) {
+          elements.push(entry.element);
+        } else {
+          let group = groups.get(monitor.target);
+          if (!group) {
+            group = el('details', 'network-target-group');
+            group.open = !collapsedGroups.has(monitor.target);
+            const summary = el('summary', 'network-target-heading');
+            const heading = el('h3', 'network-group-title');
+            const count = groupCounts.get(monitor.target);
+            heading.append(el('span', 'network-group-chevron', '›'), el('span', 'network-group-target mono', monitor.target),
+              el('span', 'network-group-count muted', count + (count === 1 ? ' monitor' : ' monitors')));
+            summary.append(heading);
+            if (!monitor.archived_at) summary.append(rowAction('Edit group', () => openGroupDialog(monitor.target), 'Edit group ' + monitor.target));
+            group.append(summary);
+            const currentGroup = group;
+            currentGroup.addEventListener('toggle', event => {
+              // Nested monitor details also emit toggle events.
+              if (event.target !== currentGroup || !currentGroup.isConnected) return;
+              if (currentGroup.open) collapsedGroups.delete(monitor.target);
+              else collapsedGroups.add(monitor.target);
+            });
+            groups.set(monitor.target, group);
+            elements.push(group);
+          }
+          group.append(entry.element);
+        }
       }
       rowElements = next;
 
@@ -894,6 +1080,7 @@
     function refreshAll() {
       refreshList();
       loadCandidates();
+      loadGroups();
     }
 
     function filtersChanged() {
@@ -915,6 +1102,8 @@
     }
 
     function suspend() {
+      editorGeneration++;
+      inheritancePending = false;
       abortRequests();
       clearTimeout(searchTimer);
       if (dialog.open) dialog.close();
@@ -931,7 +1120,10 @@
 
     on(ui.add, 'click', openAddDialog);
     for (const option of formProtocolOptions) {
-      on(option, 'click', () => setFormProtocol(option.dataset.networkFormProtocol));
+      on(option, 'click', () => {
+        setFormProtocol(option.dataset.networkFormProtocol);
+        if (form.elements.target.value.trim()) inheritTargetSettings();
+      });
     }
     for (const preset of intervalPresets) {
       on(preset, 'click', () => {
@@ -953,7 +1145,8 @@
     for (const option of protocolOptions) {
       on(option, 'click', () => selectProtocol(option.dataset.networkProtocolOption));
     }
-    for (const key of ['node', 'state']) on(ui[key], 'change', filtersChanged);
+    on(form.elements.target, 'change', inheritTargetSettings);
+    for (const key of ['node', 'state', 'group']) on(ui[key], 'change', filtersChanged);
     on(ui.limit, 'change', () => {
       page = 1;
       limit = Number(ui.limit.value);
@@ -971,10 +1164,12 @@
 
     if (parent) {
       if (ui['node-filter']) ui['node-filter'].hidden = true;
+      ui['group-filter'].hidden = true;
+      ui['group-message'].hidden = true;
       on(parent, 'toggle', visibilityChanged);
     }
     on(document, 'visibilitychange', visibilityChanged);
-    on(window, 'certainstats_feed_connected', refreshList);
+    on(window, 'certainstats_feed_connected', () => { refreshList(); loadGroups(); });
     on(window, 'certainstats_theme_change', redrawSparklines);
 
     const unsubscribe = telemetry.subscribeNetwork?.(snapshot => {
@@ -987,7 +1182,7 @@
       renderHero();
       renderList();
       // Added, removed or toggled monitors change the page; reconcile through HTTP.
-      if (changed) refreshList();
+      if (changed) { refreshList(); loadGroups(); }
     });
 
     const pollTimer = setInterval(() => {
@@ -995,7 +1190,7 @@
       const feed = telemetry.getNetworkFeedState?.();
       const stale = !feed?.connected || !feed.lastPulse || Date.now() - feed.lastPulse > STALE_PULSE_MS;
       // A reconnect may have missed membership changes.
-      if (stale || feed.generation !== live.generation) refreshList();
+      if (stale || feed.generation !== live.generation) { refreshList(); loadGroups(); }
       live.generation = feed?.generation || 0;
       loadCandidates();
     }, POLL_INTERVAL_MS);

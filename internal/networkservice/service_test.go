@@ -167,6 +167,7 @@ func TestHTTPContracts(t *testing.T) {
 		})
 	})
 	router.Get("/network-monitors", s.List)
+	router.Get("/network-monitors/targets", s.Targets)
 	router.Post("/network-monitors", s.Create)
 	router.Patch("/network-monitors/{id}", s.Update)
 	router.Get("/network-monitors/{id}/history", s.History)
@@ -196,6 +197,8 @@ func TestHTTPContracts(t *testing.T) {
 		{"target=EXAMPLE.COM&protocol=dns", 200, 0},
 		{"q=Node", 200, 1},
 		{"protocol=smtp", 400, 0},
+		{"target_exact=https%3A%2F%2Fexample.com&protocol=http", 200, 1},
+		{"target_exact=example.com", 200, 0},
 	} {
 		w = request("GET", "/network-monitors?"+tc.query, "")
 		if w.Code != tc.status {
@@ -213,6 +216,37 @@ func TestHTTPContracts(t *testing.T) {
 				t.Fatalf("%s: %s", tc.query, w.Body)
 			}
 		}
+	}
+	for _, tc := range []struct {
+		query  string
+		status int
+		count  int
+	}{
+		{"", 200, 1},
+		{"target=missing&target_exact=missing&q=missing", 200, 1},
+		{"agent_id=foreign", 200, 0},
+		{"protocol=dns", 200, 0},
+		{"protocol=smtp", 400, 0},
+		{"state=invalid", 400, 0},
+	} {
+		w = request("GET", "/network-monitors/targets?"+tc.query, "")
+		if w.Code != tc.status {
+			t.Fatalf("targets %s: %d %s", tc.query, w.Code, w.Body)
+		}
+		if w.Code == 200 {
+			var out struct{ Items []string }
+			if err := json.Unmarshal(w.Body.Bytes(), &out); err != nil {
+				t.Fatal(err)
+			}
+			if out.Items == nil || len(out.Items) != tc.count {
+				t.Fatalf("targets %s: %s", tc.query, w.Body)
+			}
+		}
+	}
+	w = httptest.NewRecorder()
+	s.Targets(w, httptest.NewRequest("GET", "/network-monitors/targets", nil))
+	if w.Code != http.StatusUnauthorized {
+		t.Fatal(w.Code, w.Body)
 	}
 	for _, body := range []string{`{"agent_ids":["node"],"target":"example.com","protocol":"http"}`, `{"agent_ids":["node"],"target":"example.com","protocol":"http","port":65536}`, `{"agent_ids":["node"],"target":"example.com","protocol":"http","unknown":true}`, `{"agent_ids":["node"],"target":"example.com","protocol":"http"} {}`} {
 		w = request("POST", "/network-monitors", body)

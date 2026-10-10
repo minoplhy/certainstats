@@ -324,6 +324,9 @@ func main() {
 
 			api.Route("/network-monitors", func(mon chi.Router) {
 				mon.Get("/", requireAuth(db, networkService.List))
+				mon.Get("/targets", requireAuth(db, networkService.Targets))
+				mon.Get("/group", requireAuth(db, networkService.Group))
+				mon.Patch("/group", requireAuth(db, networkService.EditGroup))
 				mon.Post("/", requireAuth(db, networkService.Create))
 				mon.Get("/{id}/history", requireAuth(db, networkService.History))
 				mon.Get("/{id}", requireAuth(db, networkService.Get))

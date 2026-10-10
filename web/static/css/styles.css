@@ -3770,6 +3770,8 @@ dialog.modal.modal-confirm {
 
 /* Network monitors — the Network view and node details. Hero, toolbar and badges reuse the hub classes. */
 .network-toolbar-select { width: auto; min-width: 140px; }
+.network-toolbar [data-network-group-filter] { min-width: 0; max-width: 100%; }
+.network-toolbar [data-network-group] { width: 240px; max-width: 100%; }
 .network-history { margin-bottom: 28px; }
 .network-history > .section-header { align-items: flex-end; }
 .network-history > .section-header > [data-network-time-picker] { min-width: 0; max-width: 100%; }
@@ -3790,12 +3792,22 @@ h1[tabindex="-1"]:focus, h2[tabindex="-1"]:focus { outline: none; }
 .network-chart-note { margin-top: 12px; }
 
 /* Monitor list: one dense row per monitor; columns shared by the header and rows. */
-.network-list { --network-columns: minmax(220px, 2.2fr) minmax(110px, 1fr) 88px 120px 128px 80px 150px 172px; border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); }
+.network-list { --network-columns: minmax(220px, 2.2fr) 88px 120px 128px 80px 150px 172px; border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); }
 .network-list.is-node { --network-columns: minmax(220px, 2.4fr) 88px 120px 128px 80px 150px 172px; }
 .network-list:has(> .empty-state), .network-list:has(> .network-empty) { border: none; background: none; }
 .network-list-head, .network-row-main { display: grid; grid-template-columns: var(--network-columns); gap: 14px; align-items: center; padding: 0 16px; }
 .network-list-head { position: sticky; top: 56px; z-index: 2; padding-top: 10px; padding-bottom: 10px; border-bottom: 1px solid var(--line); border-radius: var(--r) var(--r) 0 0; background: var(--surface); color: var(--muted); font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
 .network-row + .network-row { border-top: 1px solid var(--line); }
+.network-target-heading { padding: 12px 16px; background: var(--surface-2); cursor: pointer; list-style: none; }
+.network-target-heading::-webkit-details-marker { display: none; }
+.network-target-group[open] > .network-target-heading { border-bottom: 1px solid var(--line); }
+.network-target-heading:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; }
+.network-group-title { display: flex; align-items: center; gap: 10px; margin: 0; font-size: 13px; font-weight: 600; }
+.network-group-target { min-width: 0; overflow-wrap: anywhere; }
+.network-group-count { margin-left: auto; flex-shrink: 0; font-family: var(--font-body); font-size: 12px; font-weight: 400; }
+.network-group-chevron { flex-shrink: 0; transition: transform var(--ease); }
+.network-target-group[open] > .network-target-heading .network-group-chevron { transform: rotate(90deg); }
+.network-target-group + .network-target-group { border-top: 1px solid var(--line); }
 .network-row-main { min-height: 56px; padding-top: 8px; padding-bottom: 8px; font-size: 13px; list-style: none; cursor: pointer; }
 .network-row-main::-webkit-details-marker { display: none; }
 .network-row-main:hover, .network-row[open] > .network-row-main { background: var(--surface-2); }
@@ -3843,8 +3855,8 @@ h1[tabindex="-1"]:focus, h2[tabindex="-1"]:focus { outline: none; }
 .network-node-section > summary { cursor: pointer; padding: 8px 0; }
 .network-node-section[open] > summary { margin-bottom: 18px; }
 @media (max-width: 1100px) {
-  /* Without the sparkline: monitor, (node), response, loss, last probe, state, actions. */
-  .network-list { --network-columns: minmax(200px, 2fr) minmax(100px, 1fr) 80px 120px 72px 140px 160px; }
+  /* Without the sparkline: node or monitor, response, loss, last probe, state, actions. */
+  .network-list { --network-columns: minmax(200px, 2fr) 80px 120px 72px 140px 160px; }
   .network-list.is-node { --network-columns: minmax(200px, 2fr) 80px 120px 72px 140px 160px; }
   .network-list .network-spark, .network-list-head > :nth-last-child(5) { display: none; }
 }
@@ -3876,3 +3888,10 @@ h1[tabindex="-1"]:focus, h2[tabindex="-1"]:focus { outline: none; }
   .network-target-row [data-network-server] .form-input, .network-port-field .form-input { width: 100%; }
   .network-protocol-picker { width: 100%; }
 }
+
+.network-target-heading { display: flex; align-items: center; gap: 12px; }
+.network-target-heading > .network-group-title { flex: 1; min-width: 0; }
+.network-target-heading > button { flex-shrink: 0; }
+@media (max-width: 480px) { .network-target-heading { flex-wrap: wrap; } .network-target-heading > .network-group-title { flex-basis: 100%; } .network-target-heading > button { margin-left: auto; } }
+
+.network-dialog [data-network-group-state] { grid-column: 1 / -1; }
