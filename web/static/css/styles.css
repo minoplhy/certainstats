@@ -1110,12 +1110,26 @@ input[type="radio"] {
 }
 
 .table-node-sub {
+  display: flex;
+  gap: 4px;
+  min-width: 0;
   font-size: 12px;
   color: var(--muted);
   white-space: nowrap;
+  max-width: 260px;
+}
+
+/* Only the model name truncates; the core count always stays visible. */
+.cpu-model {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 260px;
+  white-space: nowrap;
+}
+
+.cpu-cores {
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .table-meter {
@@ -2761,10 +2775,11 @@ dialog.modal[open] {
 }
 
 .monitor-sub {
+  display: flex;
+  gap: 4px;
+  min-width: 0;
   font-size: 12px;
   color: var(--muted);
-  overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
   padding-left: 18px;
 }

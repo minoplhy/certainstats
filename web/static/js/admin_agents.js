@@ -62,6 +62,7 @@
     const isList = mode === 'list';
     if (gridContainer) gridContainer.hidden = isList;
     if (listContainer) listContainer.hidden = !isList;
+    if (!isList) redrawSparklines();
     if (btnGrid) { btnGrid.classList.toggle('active', !isList); btnGrid.setAttribute('aria-pressed', String(!isList)); }
     if (btnList) { btnList.classList.toggle('active', isList); btnList.setAttribute('aria-pressed', String(isList)); }
     try { localStorage.setItem('certainstats_view_mode', mode); } catch (e) {}
@@ -1056,10 +1057,14 @@
     });
     if (sparklineListenersReady) return;
     sparklineListenersReady = true;
-    const redraw = () => canvases.forEach(c => { if (c._sparkPoints) window.CertainStatsChart.drawSparkline(c, c._sparkPoints, { color: '--s1', max: 100 }); });
-    window.addEventListener('certainstats_theme_change', redraw);
+    window.addEventListener('certainstats_theme_change', redrawSparklines);
     let t;
-    window.addEventListener('resize', () => { clearTimeout(t); t = setTimeout(redraw, 150); });
+    window.addEventListener('resize', () => { clearTimeout(t); t = setTimeout(redrawSparklines, 150); });
+  }
+
+  // Canvases inside a hidden grid have no size, so sparklines fetched in list view are drawn once the grid is shown.
+  function redrawSparklines() {
+    document.querySelectorAll('canvas.agent-spark').forEach(c => { if (c._sparkPoints) window.CertainStatsChart.drawSparkline(c, c._sparkPoints, { color: '--s1', max: 100 }); });
   }
 
   // Moves focus to a view's heading after an SPA route change, for screen readers.

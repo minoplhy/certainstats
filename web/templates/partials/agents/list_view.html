@@ -19,7 +19,7 @@
             <span class="status-dot {{if .IsOnline}}online{{else}}offline{{end}}" id="td-dot-{{.AgentID}}"></span>
             <span class="table-node-text">
               <span class="table-node-name">{{.Nickname}}</span>
-              <span class="table-node-sub">{{if .CpuModel}}{{.CpuModel}} · {{.CpuCores}} vCPU{{else}}Waiting for first report{{end}}</span>
+              <span class="table-node-sub">{{if .CpuModel}}<span class="cpu-model" title="{{.CpuModel}}">{{.CpuModel}}</span><span class="cpu-cores">· {{.CpuCores}} vCPU</span>{{else}}Waiting for first report{{end}}</span>
             </span>
           </a>
         </td>

@@ -7,7 +7,7 @@
         {{if hasFeature $.AccessRules "is_online"}}<span class="status-dot {{if isOnline .IsOnline}}online{{else}}offline{{end}}" id="pub-td-dot-{{.PublicID}}"></span>{{end}}
         <span>{{.Name}}</span>
       </span>
-      {{if and (hasFeature $.AccessRules "cpu_model") .CpuModel}}<span class="monitor-sub">{{.CpuModel}}{{if and (hasFeature $.AccessRules "cpu_cores") .CpuCores}} · {{.CpuCores}} vCPU{{end}}</span>{{end}}
+      {{if and (hasFeature $.AccessRules "cpu_model") .CpuModel}}<span class="monitor-sub"><span class="cpu-model" title="{{.CpuModel}}">{{.CpuModel}}</span>{{if and (hasFeature $.AccessRules "cpu_cores") .CpuCores}}<span class="cpu-cores">· {{.CpuCores}} vCPU</span>{{end}}</span>{{end}}
     </span>
 
     <span class="monitor-metrics monitor-strip">
