@@ -8,7 +8,7 @@
           <span class="status-dot {{if .IsOnline}}online{{else}}offline{{end}}" id="dot-{{.AgentID}}"></span>
           <span>{{.Nickname}}</span>
         </a>
-        <span class="agent-card-sub">{{if .CpuModel}}{{.CpuModel}}{{else}}Waiting for first report{{end}} · {{.AgentType}}</span>
+        <span class="agent-card-sub">{{if .CpuModel}}<span class="cpu-model" title="{{.CpuModel}}">{{.CpuModel}}</span>{{else}}<span class="cpu-model">Waiting for first report</span>{{end}}<span class="sub-suffix">· {{.AgentType}}</span></span>
       </div>
       <span class="badge {{if .IsOnline}}badge-online{{else}}badge-offline{{end}}" id="badge-{{.AgentID}}">{{if .IsOnline}}Online{{else}}Offline{{end}}</span>
     </div>

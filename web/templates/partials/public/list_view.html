@@ -14,13 +14,13 @@
       {{if hasMetric $.AccessRules "agent_cpu_usage"}}
       <span class="monitor-metric">
         <span class="monitor-metric-head"><span>CPU</span><span class="mono" id="pub-td-cpu-{{.PublicID}}">–</span></span>
-        <span class="usage-bar-track" id="pub-td-track-cpu-{{.PublicID}}"><span class="usage-segment seg-cpu-usr" id="pub-td-seg-cpu-{{.PublicID}}"></span></span>
+        <span class="usage-bar-track" id="pub-td-track-cpu-{{.PublicID}}" data-tooltip-header="CPU" data-tooltip-rows='[]'><span class="usage-segment seg-cpu-usr" id="pub-td-seg-cpu-{{.PublicID}}"></span></span>
       </span>
       {{end}}
       {{if hasMetric $.AccessRules "agent_ram_used"}}
       <span class="monitor-metric">
         <span class="monitor-metric-head"><span>Memory</span><span class="mono" id="pub-td-ram-{{.PublicID}}">–</span></span>
-        <span class="usage-bar-track" id="pub-td-track-ram-{{.PublicID}}"><span class="usage-segment seg-ram-used" id="pub-td-seg-ram-{{.PublicID}}"></span></span>
+        <span class="usage-bar-track" id="pub-td-track-ram-{{.PublicID}}" data-tooltip-header="Memory" data-tooltip-rows='[]'><span class="usage-segment seg-ram-used" id="pub-td-seg-ram-{{.PublicID}}"></span></span>
       </span>
       {{end}}
       {{if or (hasMetric $.AccessRules "agent_rx_bytes") (hasMetric $.AccessRules "agent_tx_bytes")}}

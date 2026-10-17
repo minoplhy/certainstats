@@ -8,7 +8,7 @@
           {{if hasFeature $.AccessRules "is_online"}}<span class="status-dot {{if isOnline .IsOnline}}online{{else}}offline{{end}}" id="pub-dot-{{.PublicID}}"></span>{{end}}
           <span>{{.Name}}</span>
         </a>
-        {{if and (hasFeature $.AccessRules "cpu_model") .CpuModel}}<span class="agent-card-sub">{{.CpuModel}}</span>{{end}}
+        {{if and (hasFeature $.AccessRules "cpu_model") .CpuModel}}<span class="agent-card-sub"><span class="cpu-model" title="{{.CpuModel}}">{{.CpuModel}}</span></span>{{end}}
       </div>
       {{if hasFeature $.AccessRules "is_online"}}
       <span class="badge {{if isOnline .IsOnline}}badge-online{{else}}badge-offline{{end}}" id="pub-badge-{{.PublicID}}">{{if isOnline .IsOnline}}Online{{else}}Offline{{end}}</span>

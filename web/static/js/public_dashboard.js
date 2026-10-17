@@ -574,21 +574,15 @@
       }
 
       // Update Tooltips
-      const trackCpu = document.getElementById('pub-track-cpu-' + id);
-      if (trackCpu) {
-        const rows = [];
-        if (pubAllowedMetrics.includes('agent_cpu_usage')) rows.push({ label: 'Used', val: (snap.cpu_usage_percent == null ? "Unavailable" : snap.cpu_usage_percent.toFixed(1) + "%"), color: 'var(--s1)' });
-        if (pubAllowedMetrics.includes('agent_cpu_iowait')) rows.push({ label: 'IO wait', val: (snap.cpu_iowait_percent == null ? "Unavailable" : snap.cpu_iowait_percent.toFixed(1) + "%"), color: 'var(--s2)' });
-        if (pubAllowedMetrics.includes('agent_cpu_steal')) rows.push({ label: 'Steal', val: (snap.cpu_steal_percent == null ? "Unavailable" : snap.cpu_steal_percent.toFixed(1) + "%"), color: 'var(--s3)' });
-        trackCpu.setAttribute('data-tooltip-rows', JSON.stringify(rows));
-      }
-      const trackRam = document.getElementById('pub-track-ram-' + id);
-      if (trackRam) {
-        const rows = [];
-        if (pubAllowedMetrics.includes('agent_ram_used')) rows.push({ label: 'RAM used', val: window.CertainStatsChart.formatBytes(snap.ram_used_bytes), color: 'var(--s4)' });
-        if (pubAllowedMetrics.includes('agent_swap_used')) rows.push({ label: 'Swap used', val: window.CertainStatsChart.formatBytes(snap.ram_swap_used_bytes), color: 'var(--s5)' });
-        trackRam.setAttribute('data-tooltip-rows', JSON.stringify(rows));
-      }
+      const cpuRows = [];
+      if (pubAllowedMetrics.includes('agent_cpu_usage')) cpuRows.push({ label: 'Used', val: (snap.cpu_usage_percent == null ? "Unavailable" : snap.cpu_usage_percent.toFixed(1) + "%"), color: 'var(--s1)' });
+      if (pubAllowedMetrics.includes('agent_cpu_iowait')) cpuRows.push({ label: 'IO wait', val: (snap.cpu_iowait_percent == null ? "Unavailable" : snap.cpu_iowait_percent.toFixed(1) + "%"), color: 'var(--s2)' });
+      if (pubAllowedMetrics.includes('agent_cpu_steal')) cpuRows.push({ label: 'Steal', val: (snap.cpu_steal_percent == null ? "Unavailable" : snap.cpu_steal_percent.toFixed(1) + "%"), color: 'var(--s3)' });
+      ['pub-track-cpu-', 'pub-td-track-cpu-'].forEach(prefix => { const el = document.getElementById(prefix + id); if (el) el.setAttribute('data-tooltip-rows', JSON.stringify(cpuRows)); });
+      const ramRows = [];
+      if (pubAllowedMetrics.includes('agent_ram_used')) ramRows.push({ label: 'RAM used', val: window.CertainStatsChart.formatBytes(snap.ram_used_bytes), color: 'var(--s4)' });
+      if (pubAllowedMetrics.includes('agent_swap_used')) ramRows.push({ label: 'Swap used', val: window.CertainStatsChart.formatBytes(snap.ram_swap_used_bytes), color: 'var(--s5)' });
+      ['pub-track-ram-', 'pub-td-track-ram-'].forEach(prefix => { const el = document.getElementById(prefix + id); if (el) el.setAttribute('data-tooltip-rows', JSON.stringify(ramRows)); });
       const trackNet = document.getElementById('pub-track-net-' + id);
       if (trackNet) {
         const rows = [];

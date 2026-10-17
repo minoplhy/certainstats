@@ -814,21 +814,17 @@
       }
 
       // Update Tooltip attributes
-      const trackCpu = document.getElementById('track-cpu-' + id);
-      if (trackCpu) {
-        trackCpu.setAttribute('data-tooltip-rows', JSON.stringify([
-          { label: 'Used', val: (snap.cpu_usage_percent == null ? "Unavailable" : snap.cpu_usage_percent.toFixed(1) + "%"), color: 'var(--s1)' },
-          { label: 'IO wait', val: (snap.cpu_iowait_percent == null ? "Unavailable" : snap.cpu_iowait_percent.toFixed(1) + "%"), color: 'var(--s2)' },
-          { label: 'Steal', val: (snap.cpu_steal_percent == null ? "Unavailable" : snap.cpu_steal_percent.toFixed(1) + "%"), color: 'var(--s3)' }
-        ]));
-      }
-      const trackRam = document.getElementById('track-ram-' + id);
-      if (trackRam) {
-        trackRam.setAttribute('data-tooltip-rows', JSON.stringify([
-          { label: 'RAM used', val: window.CertainStatsChart.formatBytes(snap.ram_used_bytes), color: 'var(--s4)' },
-          { label: 'Swap used', val: window.CertainStatsChart.formatBytes(snap.ram_swap_used_bytes), color: 'var(--s5)' }
-        ]));
-      }
+      const cpuRows = JSON.stringify([
+        { label: 'Used', val: (snap.cpu_usage_percent == null ? "Unavailable" : snap.cpu_usage_percent.toFixed(1) + "%"), color: 'var(--s1)' },
+        { label: 'IO wait', val: (snap.cpu_iowait_percent == null ? "Unavailable" : snap.cpu_iowait_percent.toFixed(1) + "%"), color: 'var(--s2)' },
+        { label: 'Steal', val: (snap.cpu_steal_percent == null ? "Unavailable" : snap.cpu_steal_percent.toFixed(1) + "%"), color: 'var(--s3)' }
+      ]);
+      ['track-cpu-', 'td-track-cpu-'].forEach(prefix => { const el = document.getElementById(prefix + id); if (el) el.setAttribute('data-tooltip-rows', cpuRows); });
+      const ramRows = JSON.stringify([
+        { label: 'RAM used', val: window.CertainStatsChart.formatBytes(snap.ram_used_bytes), color: 'var(--s4)' },
+        { label: 'Swap used', val: window.CertainStatsChart.formatBytes(snap.ram_swap_used_bytes), color: 'var(--s5)' }
+      ]);
+      ['track-ram-', 'td-track-ram-'].forEach(prefix => { const el = document.getElementById(prefix + id); if (el) el.setAttribute('data-tooltip-rows', ramRows); });
       const trackNet = document.getElementById('track-net-' + id);
       if (trackNet) {
         trackNet.setAttribute('data-tooltip-rows', JSON.stringify([

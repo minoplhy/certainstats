@@ -1119,7 +1119,7 @@ input[type="radio"] {
   max-width: 260px;
 }
 
-/* Only the model name truncates; the core count always stays visible. */
+/* Only the model name truncates; the suffix after it (core count, driver) always stays visible. */
 .cpu-model {
   min-width: 0;
   overflow: hidden;
@@ -1127,7 +1127,8 @@ input[type="radio"] {
   white-space: nowrap;
 }
 
-.cpu-cores {
+.cpu-cores,
+.sub-suffix {
   flex-shrink: 0;
   white-space: nowrap;
 }
@@ -1699,6 +1700,12 @@ dialog.modal[open] {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.agent-card-sub {
+  display: flex;
+  gap: 4px;
+  min-width: 0;
 }
 
 .agent-metrics {
