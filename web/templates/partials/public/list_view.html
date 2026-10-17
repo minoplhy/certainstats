@@ -1,41 +1,57 @@
 {{define "public_list_view"}}
-<div id="public-list-container" class="status-list">
-  {{range .Agents}}
-  <a class="public-monitor-row{{if hasFeature $.AccessRules "is_online"}}{{if not (isOnline .IsOnline)}} is-offline{{end}}{{end}}" data-pub-id="{{.PublicID}}" data-name="{{.Name}}" href="{{$.PublicPath}}/{{$.Dashboard.Slug}}/{{.PublicID}}" data-click-action="handlePubItemClick" data-expr0="event" data-arg1="{{.PublicID}}">
-    <span class="monitor-name">
-      <span class="monitor-title">
-        {{if hasFeature $.AccessRules "is_online"}}<span class="status-dot {{if isOnline .IsOnline}}online{{else}}offline{{end}}" id="pub-td-dot-{{.PublicID}}"></span>{{end}}
-        <span>{{.Name}}</span>
-      </span>
-      {{if and (hasFeature $.AccessRules "cpu_model") .CpuModel}}<span class="monitor-sub"><span class="cpu-model" title="{{.CpuModel}}">{{.CpuModel}}</span>{{if and (hasFeature $.AccessRules "cpu_cores") .CpuCores}}<span class="cpu-cores">· {{.CpuCores}} vCPU</span>{{end}}</span>{{end}}
-    </span>
-
-    <span class="monitor-metrics monitor-strip">
-      {{if hasMetric $.AccessRules "agent_cpu_usage"}}
-      <span class="monitor-metric">
-        <span class="monitor-metric-head"><span>CPU</span><span class="mono" id="pub-td-cpu-{{.PublicID}}">–</span></span>
-        <span class="usage-bar-track" id="pub-td-track-cpu-{{.PublicID}}" data-tooltip-header="CPU" data-tooltip-rows='[]'><span class="usage-segment seg-cpu-usr" id="pub-td-seg-cpu-{{.PublicID}}"></span></span>
-      </span>
+<div id="public-list-container" class="table-responsive">
+  <table class="table">
+    <thead>
+      <tr>
+        <th>Node</th>
+        {{if hasMetric $.AccessRules "agent_cpu_usage"}}<th>CPU</th>{{end}}
+        {{if hasMetric $.AccessRules "agent_ram_used"}}<th>Memory</th>{{end}}
+        {{if hasMetric $.AccessRules "agent_disk_used"}}<th>Disk</th>{{end}}
+        {{if or (hasMetric $.AccessRules "agent_rx_bytes") (hasMetric $.AccessRules "agent_tx_bytes")}}<th>Network</th>{{end}}
+        {{if hasFeature $.AccessRules "uptime"}}<th>Uptime</th>{{end}}
+      </tr>
+    </thead>
+    <tbody>
+      {{range .Agents}}
+      <tr class="agent-row-item public-monitor-row{{if hasFeature $.AccessRules "is_online"}}{{if not (isOnline .IsOnline)}} is-offline{{end}}{{end}}" data-pub-id="{{.PublicID}}" data-name="{{.Name}}" data-click-action="handlePubItemClick" data-expr0="event" data-arg1="{{.PublicID}}">
+        <td>
+          <a href="{{$.PublicPath}}/{{$.Dashboard.Slug}}/{{.PublicID}}" class="table-node">
+            {{if hasFeature $.AccessRules "is_online"}}<span class="status-dot {{if isOnline .IsOnline}}online{{else}}offline{{end}}" id="pub-td-dot-{{.PublicID}}"></span>{{end}}
+            <span class="table-node-text">
+              <span class="table-node-name">{{.Name}}</span>
+              {{if and (hasFeature $.AccessRules "cpu_model") .CpuModel}}<span class="table-node-sub"><span class="cpu-model" title="{{.CpuModel}}">{{.CpuModel}}</span>{{if and (hasFeature $.AccessRules "cpu_cores") .CpuCores}}<span class="cpu-cores">· {{.CpuCores}} vCPU</span>{{end}}</span>{{end}}
+            </span>
+          </a>
+        </td>
+        {{if hasMetric $.AccessRules "agent_cpu_usage"}}
+        <td>
+          <div class="table-meter">
+            <div class="usage-bar-track" id="pub-td-track-cpu-{{.PublicID}}" data-tooltip-header="CPU" data-tooltip-rows='[]'><div class="usage-segment seg-cpu-usr" id="pub-td-seg-cpu-{{.PublicID}}"></div></div>
+            <span class="mono" id="pub-td-cpu-{{.PublicID}}">–</span>
+          </div>
+        </td>
+        {{end}}
+        {{if hasMetric $.AccessRules "agent_ram_used"}}
+        <td>
+          <div class="table-meter">
+            <div class="usage-bar-track" id="pub-td-track-ram-{{.PublicID}}" data-tooltip-header="Memory" data-tooltip-rows='[]'><div class="usage-segment seg-ram-used" id="pub-td-seg-ram-{{.PublicID}}"></div></div>
+            <span class="mono" id="pub-td-ram-{{.PublicID}}">–</span>
+          </div>
+        </td>
+        {{end}}
+        {{if hasMetric $.AccessRules "agent_disk_used"}}
+        <td>
+          <div class="table-meter">
+            <div class="usage-bar-track" id="pub-td-track-disk-{{.PublicID}}" data-tooltip-header="Disk" data-tooltip-rows='[]'><div class="usage-segment seg-disk" id="pub-td-seg-disk-{{.PublicID}}"></div></div>
+            <span class="mono" id="pub-td-disk-{{.PublicID}}">–</span>
+          </div>
+        </td>
+        {{end}}
+        {{if or (hasMetric $.AccessRules "agent_rx_bytes") (hasMetric $.AccessRules "agent_tx_bytes")}}<td class="mono" id="pub-td-net-{{.PublicID}}">–</td>{{end}}
+        {{if hasFeature $.AccessRules "uptime"}}<td class="mono" id="pub-td-uptime-{{.PublicID}}">{{formatUptime .Uptime}}</td>{{end}}
+      </tr>
       {{end}}
-      {{if hasMetric $.AccessRules "agent_ram_used"}}
-      <span class="monitor-metric">
-        <span class="monitor-metric-head"><span>Memory</span><span class="mono" id="pub-td-ram-{{.PublicID}}">–</span></span>
-        <span class="usage-bar-track" id="pub-td-track-ram-{{.PublicID}}" data-tooltip-header="Memory" data-tooltip-rows='[]'><span class="usage-segment seg-ram-used" id="pub-td-seg-ram-{{.PublicID}}"></span></span>
-      </span>
-      {{end}}
-      {{if or (hasMetric $.AccessRules "agent_rx_bytes") (hasMetric $.AccessRules "agent_tx_bytes")}}
-      <span class="monitor-metric">
-        <span class="monitor-metric-head"><span>Network</span></span>
-        <span class="mono monitor-net" id="pub-td-net-{{.PublicID}}">–</span>
-      </span>
-      {{end}}
-    </span>
-
-    <span class="monitor-side">
-      {{if hasFeature $.AccessRules "is_online"}}<span class="badge {{if isOnline .IsOnline}}badge-online{{else}}badge-offline{{end}}" id="pub-td-badge-{{.PublicID}}">{{if isOnline .IsOnline}}Online{{else}}Offline{{end}}</span>{{end}}
-      {{if hasFeature $.AccessRules "uptime"}}<span class="monitor-uptime mono" id="pub-td-uptime-{{.PublicID}}">{{formatUptime .Uptime}}</span>{{end}}
-    </span>
-  </a>
-  {{end}}
+    </tbody>
+  </table>
 </div>
 {{end}}

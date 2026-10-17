@@ -536,16 +536,31 @@
           segDisk.classList.toggle('is-high', diskPct >= 90);
         }
       }
+      if (pubAllowedMetrics.includes('agent_disk_used') && pubDiskUsed > 0) {
+        const tdDisk = document.getElementById('pub-td-disk-' + id);
+        const tdSegDisk = document.getElementById('pub-td-seg-disk-' + id);
+        if (tdDisk) tdDisk.textContent = pubDiskTotal ? Math.round(diskPct) + '%' : window.CertainStatsChart.formatBytes(pubDiskUsed);
+        if (tdSegDisk) {
+          tdSegDisk.style.width = Math.min(diskPct, 100) + '%';
+          tdSegDisk.classList.toggle('is-high', diskPct >= 90);
+        }
+      }
 
-      const pubTrackDisk = document.getElementById('pub-track-disk-' + id);
-      if (pubTrackDisk && snap.disks && snap.disks.length > 1 && pubAllowedMetrics.includes('agent_disk_used')) {
-        const rows = snap.disks.map(d => ({
-          label: d.path ? `Disk (${d.path})` : 'Disk',
-          val: window.CertainStatsChart.formatBytes(d.used_bytes) + (d.total_bytes ? ' / ' + window.CertainStatsChart.formatBytes(d.total_bytes) : ''),
-          color: 'var(--s1)'
-        }));
-        pubTrackDisk.setAttribute('data-tooltip-rows', JSON.stringify(rows));
-        pubTrackDisk.setAttribute('data-tooltip-header', 'Storage Partitions');
+      if (pubAllowedMetrics.includes('agent_disk_used') && pubDiskUsed > 0) {
+        const multi = snap.disks && snap.disks.length > 1;
+        const rows = JSON.stringify(multi
+          ? snap.disks.map(d => ({
+            label: d.path ? `Disk (${d.path})` : 'Disk',
+            val: window.CertainStatsChart.formatBytes(d.used_bytes) + (d.total_bytes ? ' / ' + window.CertainStatsChart.formatBytes(d.total_bytes) : ''),
+            color: 'var(--s1)'
+          }))
+          : [{ label: 'Used', val: window.CertainStatsChart.formatBytes(pubDiskUsed) + (pubDiskTotal ? ' / ' + window.CertainStatsChart.formatBytes(pubDiskTotal) : ''), color: 'var(--s1)' }]);
+        ['pub-track-disk-', 'pub-td-track-disk-'].forEach(prefix => {
+          const pubTrackDisk = document.getElementById(prefix + id);
+          if (!pubTrackDisk) return;
+          pubTrackDisk.setAttribute('data-tooltip-rows', rows);
+          pubTrackDisk.setAttribute('data-tooltip-header', multi ? 'Storage Partitions' : 'Disk');
+        });
       }
 
       // Update Network bar

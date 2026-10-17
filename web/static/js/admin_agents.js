@@ -105,6 +105,27 @@
     });
   }
 
+  // Page-config agents carry the version at the top level; /api/agents nests it under extensions.runtime.
+  function agentRuntime(agent) {
+    const runtime = agent.extensions?.runtime || {};
+    return {
+      agent_version: runtime.agent_version || agent.agent_version || '',
+      protocol_version: runtime.protocol_version || agent.protocol_version || ''
+    };
+  }
+
+  // Shows only the versions the driver actually reports; hidden when it reports none.
+  function renderAgentVersion(agent) {
+    const line = document.getElementById('detail-version-line');
+    if (!line) return;
+    const runtime = agentRuntime(agent);
+    const parts = [];
+    if (runtime.agent_version) parts.push('Agent software: ' + runtime.agent_version);
+    if (runtime.protocol_version) parts.push('Protocol: ' + runtime.protocol_version);
+    line.textContent = parts.join(' · ');
+    line.hidden = parts.length === 0;
+  }
+
   function isLongNote(note) {
     return !!(note && (note.length > 40 || note.includes('\n')));
   }
@@ -437,10 +458,7 @@
       }
 
       const elName = document.getElementById('detail-active-name'); if (elName) elName.textContent = agent.nickname || agent.agent_id;
-      const version = document.getElementById('detail-agent-version');
-      if (version) version.textContent = agent.extensions?.runtime?.agent_version || 'Unknown';
-      const protocolVersion = document.getElementById('detail-protocol-version');
-      if (protocolVersion) protocolVersion.textContent = agent.extensions?.runtime?.protocol_version || 'Unknown';
+      renderAgentVersion(agent);
       const elType = document.getElementById('detail-active-type'); if (elType) elType.textContent = agent.agent_type || 'beszel';
       const elCpu = document.getElementById('inpage-hw-cpu'); if (elCpu) elCpu.textContent = agent.cpu_cores || '-';
       const elRam = document.getElementById('inpage-hw-ram'); if (elRam) elRam.textContent = window.CertainStatsChart.formatBytes(agent.ram_size);
@@ -774,21 +792,32 @@
           }
         }
       }
+      const tdDisk = document.getElementById('td-disk-' + id);
+      const tdSegDisk = document.getElementById('td-seg-disk-' + id);
+      if (diskUsed > 0) {
+        if (tdDisk) tdDisk.textContent = diskTotal ? Math.round(diskPct) + '%' : window.CertainStatsChart.formatBytes(diskUsed);
+        if (tdSegDisk) {
+          tdSegDisk.style.width = Math.min(diskPct, 100) + '%';
+          tdSegDisk.classList.toggle('is-high', diskPct >= 90);
+        }
+      }
 
-      const trackDisk = document.getElementById('track-disk-' + id);
-      if (trackDisk && diskUsed > 0) {
-        trackDisk.setAttribute('data-tooltip-header', 'Disk');
-        trackDisk.setAttribute('data-tooltip-rows', JSON.stringify([{ label: 'Used', val: window.CertainStatsChart.formatBytes(diskUsed) + (diskTotal ? ' / ' + window.CertainStatsChart.formatBytes(diskTotal) : ''), color: 'var(--s1)' }]));
-      }
-      if (trackDisk && snap.disks && snap.disks.length > 1) {
-        const rows = snap.disks.map(d => ({
-          label: d.path ? `Disk (${d.path})` : 'Disk',
-          val: window.CertainStatsChart.formatBytes(d.used_bytes) + (d.total_bytes ? ' / ' + window.CertainStatsChart.formatBytes(d.total_bytes) : ''),
-          color: 'var(--s1)'
-        }));
-        trackDisk.setAttribute('data-tooltip-rows', JSON.stringify(rows));
-        trackDisk.setAttribute('data-tooltip-header', 'Storage Partitions');
-      }
+      ['track-disk-', 'td-track-disk-'].forEach(prefix => {
+        const trackDisk = document.getElementById(prefix + id);
+        if (trackDisk && diskUsed > 0) {
+          trackDisk.setAttribute('data-tooltip-header', 'Disk');
+          trackDisk.setAttribute('data-tooltip-rows', JSON.stringify([{ label: 'Used', val: window.CertainStatsChart.formatBytes(diskUsed) + (diskTotal ? ' / ' + window.CertainStatsChart.formatBytes(diskTotal) : ''), color: 'var(--s1)' }]));
+        }
+        if (trackDisk && snap.disks && snap.disks.length > 1) {
+          const rows = snap.disks.map(d => ({
+            label: d.path ? `Disk (${d.path})` : 'Disk',
+            val: window.CertainStatsChart.formatBytes(d.used_bytes) + (d.total_bytes ? ' / ' + window.CertainStatsChart.formatBytes(d.total_bytes) : ''),
+            color: 'var(--s1)'
+          }));
+          trackDisk.setAttribute('data-tooltip-rows', JSON.stringify(rows));
+          trackDisk.setAttribute('data-tooltip-header', 'Storage Partitions');
+        }
+      });
 
       // Update Network bar
       const segRx = document.getElementById('seg-net-rx-' + id);
@@ -931,6 +960,7 @@
             agentsData.push(existing);
           }
           existing.nickname = fa.nickname || existing.nickname;
+          if (fa.extensions) existing.extensions = fa.extensions;
           existing.cpu_model = fa.cpu_model || existing.cpu_model;
           existing.linux_version = fa.linux_version || existing.linux_version;
           existing.cpu_cores = fa.cpu_cores ?? existing.cpu_cores;
@@ -988,6 +1018,7 @@
 
           // Update in-page detail if currently viewed
           if (currentActiveAgentId === fa.agent_id) {
+            renderAgentVersion(existing);
             const elCpu = document.getElementById('inpage-hw-cpu');
             if (elCpu) elCpu.textContent = existing.cpu_cores || '-';
             const elRam = document.getElementById('inpage-hw-ram');

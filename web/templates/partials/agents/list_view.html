@@ -6,6 +6,7 @@
         <th>Node</th>
         <th>CPU</th>
         <th>Memory</th>
+        <th>Disk</th>
         <th>Network</th>
         <th>Driver</th>
         <th>Uptime</th>
@@ -33,6 +34,12 @@
           <div class="table-meter">
             <div class="usage-bar-track" id="td-track-ram-{{.AgentID}}" data-tooltip-header="Memory" data-tooltip-rows='[]'><div class="usage-segment seg-ram-used" id="td-seg-ram-{{.AgentID}}"></div></div>
             <span class="mono" id="td-ram-{{.AgentID}}">–</span>
+          </div>
+        </td>
+        <td>
+          <div class="table-meter">
+            <div class="usage-bar-track" id="td-track-disk-{{.AgentID}}"><div class="usage-segment seg-disk" id="td-seg-disk-{{.AgentID}}"></div></div>
+            <span class="mono" id="td-disk-{{.AgentID}}">–</span>
           </div>
         </td>
         <td class="mono" id="td-net-{{.AgentID}}">–</td>

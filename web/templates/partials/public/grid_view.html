@@ -44,7 +44,7 @@
         <span class="agent-metric-label">Disk</span>
         <span class="agent-metric-value" id="pub-pct-disk-{{.PublicID}}">–</span>
         <span class="agent-metric-sub" id="pub-val-disk-{{.PublicID}}">{{if and (hasFeature $.AccessRules "disk_size") .DiskSize}}of {{formatBytes .DiskSize}}{{else}}&nbsp;{{end}}</span>
-        <div class="usage-bar-track" id="pub-track-disk-{{.PublicID}}">
+        <div class="usage-bar-track" id="pub-track-disk-{{.PublicID}}" data-tooltip-header="Disk" data-tooltip-rows='[]'>
           <div class="usage-segment seg-disk" id="pub-seg-disk-{{.PublicID}}"></div>
         </div>
       </div>
