@@ -1,0 +1,10 @@
+{
+  "name": "certainstats-js-bundle",
+  "private": true,
+  "scripts": {
+    "build": "node build.cjs"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2"
+  }
+}

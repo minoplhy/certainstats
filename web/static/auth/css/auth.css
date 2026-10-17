@@ -1,0 +1,53 @@
+/* CertainStats sign-in and first-time setup styles. Loaded after shared/css/base.css on signed-out pages. */
+
+.auth-shell {
+  flex: 1;
+  display: grid;
+  place-items: center;
+  padding: 40px 16px;
+}
+
+.auth-card {
+  width: min(400px, 100%);
+  display: grid;
+  gap: 20px;
+}
+
+.auth-card .logo-mark {
+  width: 40px;
+  height: 40px;
+}
+
+.auth-title {
+  font-family: var(--font-head);
+  font-size: 26px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+}
+
+.auth-head {
+  display: grid;
+  gap: 6px;
+  justify-items: center;
+  text-align: center;
+}
+
+.auth-head .logo-mark {
+  margin-bottom: 6px;
+}
+
+.auth-form {
+  display: grid;
+  gap: 0;
+  padding: 24px;
+}
+
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-2);
+  cursor: pointer;
+  margin: 4px 0 18px;
+}

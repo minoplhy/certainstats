@@ -163,7 +163,7 @@ function harness(fetch, nodeMode = false, withHero = false) {
     createTextNode: text => ({textContent: text}),
     addEventListener() {}
   };
-  vm.runInNewContext(fs.readFileSync('web/static/js/network_monitors.js', 'utf8'), {
+  vm.runInNewContext(fs.readFileSync('web/static/admin/js/network_monitors.js', 'utf8'), {
     window, document, fetch, AbortController, URLSearchParams, Date, Number, Math, Map, Set, Promise,
     setInterval: handler => { callbacks.interval = handler; return 1; },
     clearInterval() {},

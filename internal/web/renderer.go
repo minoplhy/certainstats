@@ -228,8 +228,12 @@ func NewRenderer(protobuf bool) (*TemplateRenderer, error) {
 
 	for _, page := range pages {
 		baseLayout := "layout/base.html"
-		if page == "public_dashboard.html" {
+		switch page {
+		case "public_dashboard.html":
 			baseLayout = "layout/public_base.html"
+		case "setup.html", "login.html":
+			// Signed-out pages may only load shared and auth assets; admin assets need a session.
+			baseLayout = "layout/auth_base.html"
 		}
 
 		patterns := append([]string{baseLayout, page}, partialFiles...)

@@ -46,7 +46,10 @@ jobs:
           unzip -q "$RUNNER_TEMP/protoc.zip" -d "$RUNNER_TEMP/protoc"
           echo "$RUNNER_TEMP/protoc/bin" >> "$GITHUB_PATH"
       - run: npm ci --prefix tools/browser-protocol --no-audit --no-fund
+      - run: npm ci --prefix tools/js-bundle --no-audit --no-fund
       - run: npm ci --prefix web --no-audit --no-fund
       - name: Verify generated protocol artifacts
         run: node tools/browser-protocol/generate.cjs --check
+      - name: Verify generated JavaScript bundles
+        run: node tools/js-bundle/build.cjs --check
       - run: node --test web/tests/*.test.cjs

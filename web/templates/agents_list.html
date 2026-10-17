@@ -33,9 +33,8 @@
   {{template "network_monitors_component" .}}
 </div>
 
-<script src="{{.StaticPath}}/{{asset "js/incident_history.js"}}" integrity="{{integrity "js/incident_history.js"}}"></script>
-<script src="{{.StaticPath}}/{{asset "js/network_monitors.js"}}" integrity="{{integrity "js/network_monitors.js"}}"></script>
-<script src="{{.StaticPath}}/{{asset "js/admin_agents.js"}}" integrity="{{integrity "js/admin_agents.js"}}"></script>
+<script src="{{.StaticPath}}/{{asset "admin/js/incident_history.js"}}" integrity="{{integrity "admin/js/incident_history.js"}}"></script>
+<script src="{{.StaticPath}}/{{asset "admin/js/network_monitors.js"}}" integrity="{{integrity "admin/js/network_monitors.js"}}"></script>
 <script type="application/json" id="page-config" data-module="CertainStatsAdminAgents">{{bootstrap .}}</script>
-<script src="{{.StaticPath}}/{{asset "js/bootstrap.js"}}" integrity="{{integrity "js/bootstrap.js"}}"></script>
+<script src="{{.StaticPath}}/{{asset "admin/js/admin_agents.js"}}" integrity="{{integrity "admin/js/admin_agents.js"}}"></script>
 {{end}}

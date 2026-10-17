@@ -84,17 +84,11 @@ To ensure clean separation of concerns, CSP (Content Security Policy) readiness,
 1. **Zero `<script>` Tags in Partial Templates**:
    - **Never place `<script>` or `<style>` tags inside any partial template** (e.g. `web/templates/partials/agents/`, `web/templates/partials/dashboards/`, `web/templates/partials/common/`).
    - Partials must contain **pure HTML markup only**.
-2. **Page Templates: Single Bootstrap Call Only**:
-   - Top-level page templates (e.g. `agents_list.html`, `public_dashboard.html`) may only contain a single top-level `<script>` block at the end of the content body invoking a single `.init({ ... })` module function.
-   - This bootstrap call must only pass server-rendered JSON configuration and metadata into the module:
+2. **Page Templates: Inert Configuration, Self-Initialising Script**:
+   - Top-level page templates (e.g. `agents_list.html`, `public_dashboard.html`) pass server-rendered data only as inert JSON in `#page-config`, placed right before the page's own script. The script reads it and initialises itself; there is no inline code and no shared dispatcher:
      ```html
-     <script src="{{.StaticPath}}/{{asset "js/admin_agents.js"}}" integrity="{{integrity "js/admin_agents.js"}}"></script>
-     <script>
-       window.CertainStatsAdminAgents.init({
-         panelPath: '{{.PanelPath}}',
-         agents: [ /* JSON serialization */ ]
-       });
-     </script>
+     <script type="application/json" id="page-config" data-module="CertainStatsAdminAgents">{{bootstrap .}}</script>
+     <script src="{{.StaticPath}}/{{asset "admin/js/admin_agents.js"}}" integrity="{{integrity "admin/js/admin_agents.js"}}"></script>
      ```
 3. **No Inline State or Global Variables in HTML**:
    - Variables like `let selectedProvisionType = 'docker';` or modal state must **never live in HTML templates**. All state belongs in the appropriate static JS module.
@@ -104,13 +98,17 @@ To ensure clean separation of concerns, CSP (Content Security Policy) readiness,
 ---
 
 ### 3.2 Modular Vanilla JavaScript Architecture
-- Frontend scripts live in `web/static/js/`:
-  - `telemetry.js` (`window.CertainStatsTelemetry`): WebSocket manager, SPA router, date/time pickers, formatters, toasts.
-  - `chart.js` (`window.CertainStatsChart`): High-DPI Canvas time-series charting engine.
-  - `admin_agents.js` (`window.CertainStatsAdminAgents`): Private Multi-Agent Hub and In-Page Detail SPA.
-  - `public_dashboard.js` (`window.CertainStatsPublicDashboard`): Public status page SPA.
-  - `provision_renderer.js` (`window.CertainStatsProvision`): Multi-driver provisioning, reinstall, and uninstall instructions.
-- All modules must wrap their code in an IIFE (`(function () { 'use strict'; ... })();`) and export explicitly to `window`.
+- Static assets live in areas by audience: `web/static/shared/` (both sides), `admin/` (signed-in panel only), `public/` (status pages) and `auth/` (sign-in and setup). The public host never serves `admin/` or `auth/`. See [frontend assets](frontend-js-build.md).
+- The larger scripts are ES modules under `web/src/js/{components,pages}/<name>/`, grouped into concern folders and bundled into `web/static/<area>/js/<name>.js` by `node tools/js-bundle/build.cjs`:
+  - `components/telemetry/` → `shared/js/telemetry.js` (`window.CertainStatsTelemetry`): WebSocket feed, SPA router, cluster figures, formatters, toasts.
+  - `components/chart/` → `shared/js/chart.js` (`window.CertainStatsChart`): High-DPI Canvas time-series charting engine.
+  - `components/admin_core/` → `admin/js/admin_core.js`: admin-only additions to those globals (modals, time picker, network feed, sparklines).
+  - `components/network_monitors/` → `admin/js/network_monitors.js` (`window.CertainStatsNetworkMonitors`): Network monitor list, graphs and editor.
+  - `pages/admin_agents/` → `admin/js/admin_agents.js` (`window.CertainStatsAdminAgents`): Private Multi-Agent Hub and In-Page Detail SPA.
+  - `pages/public_dashboard/` → `public/js/public_dashboard.js` (`window.CertainStatsPublicDashboard`): Public status page SPA.
+- Smaller scripts are hand-written directly in their area, e.g. `admin/js/provision_renderer.js` (`window.CertainStatsProvision`): Multi-driver provisioning, reinstall, and uninstall instructions.
+- Hand-written scripts must wrap their code in an IIFE (`(function () { 'use strict'; ... })();`) and export explicitly to `window`. Bundle sources export from their `index.js` instead.
+- Every source file stays at or under 400 lines; split by concern before it grows past that.
 
 ---
 
@@ -160,7 +158,7 @@ To ensure clean separation of concerns, CSP (Content Security Policy) readiness,
 ---
 
 ### 3.8 Styling & Design Tokens
-- All visual styles must utilize CSS custom properties defined in `styles.css`:
+- All visual styles must utilize CSS custom properties defined in `shared/css/base.css`. Rules only one kind of page uses go in that area's stylesheet (`admin/css/admin.css`, `public/css/public.css`, `auth/css/auth.css`):
   - Backgrounds: `var(--bg-primary)`, `var(--bg-secondary)`, `var(--bg-panel)`
   - Borders: `var(--border-color)`, `var(--border-hover)`
   - Text: `var(--text-primary)`, `var(--text-secondary)`, `var(--text-muted)`
@@ -187,11 +185,12 @@ Refer to [`docs/caching_code_of_conduct.md`](caching_code_of_conduct.md) for ful
 
 | Anti-Pattern | Reason & Consequence | Approved Pattern |
 |---|---|---|
-| ❌ `<script>` inside partial templates | Causes duplicate execution, leaks unmanaged state, breaks CSP/SRI. | Move all script logic to `web/static/js/*.js`. |
+| ❌ `<script>` inside partial templates | Causes duplicate execution, leaks unmanaged state, breaks CSP/SRI. | Move all script logic to a script in its `web/static/<area>/js/` folder. |
 | ❌ Emojis in technical/provisioning UI | Clutters technical telemetry and breaks clean ops aesthetic. | Use clean inline SVGs and crisp typography. |
 | ❌ Modal popup for simple note editing | Adds unnecessary friction and extra clicks. | Use direct in-place click-to-edit inline inputs and cards. |
 | ❌ Redundant standalone page routes (`/agent/:id`) | Creates duplicate template maintenance and breaks SPA flow. | Use unified in-page SPA routing (`/:agent_id`). |
 | ❌ `agent.disks = snap.disks;` | Overwrites lifetime cumulative GB with 15s tick delta (KB). | Update `d.used_bytes` in-place; preserve `d.read_bytes`. |
+| ❌ Editing a generated `web/static/<area>/js/<bundle>.js` | The next build overwrites it and CI rejects the mismatch. | Edit the sources under `web/src/js/` and run `node tools/js-bundle/build.cjs`. |
 | ❌ `go build -o certainstats ./cmd/certainstats` | Pollutes repository root with compiled binary artifacts. | Use `go build -o /dev/null ./cmd/certainstats`. |
 | ❌ Manual `innerHTML` wiping in live loops | Destroys active DOM nodes, causes layout thrashing and resets scroll. | Target specific element IDs with `textContent` or `style`. |
 | ❌ Hardcoded colors (e.g., `#121318`) in HTML | Breaks light/dark theme switching and consistency. | Use CSS custom properties (`var(--bg-secondary)`). |

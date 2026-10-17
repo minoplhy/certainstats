@@ -11,7 +11,7 @@ async function main() {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'certainstats-protobuf-'));
   const schema = 'protocol/browser/v1/telemetry.proto';
   const goFile = 'internal/ws/browserpb/telemetry.pb.go';
-  const jsFile = 'web/static/js/browser_protocol.js';
+  const jsFile = 'web/static/shared/js/browser_protocol.js';
   try {
     if (execFileSync('protoc', ['--version'], {encoding: 'utf8'}).trim() !== 'libprotoc 36.1') {
       throw new Error('Regeneration requires protoc 36.1');

@@ -1,0 +1,59 @@
+{{define "base"}}
+<!DOCTYPE html>
+<html data-ws-protobuf="{{wsProtobuf}}" lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="csrf-token" content="{{.CSRFToken}}">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{if .Title}}{{.Title}} — {{end}}CertainStats</title>
+  {{template "theme_bootstrap" .}}
+  <link rel="preload" href="{{.StaticPath}}/shared/fonts/figtree-latin.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="{{.StaticPath}}/{{asset "shared/css/base.css"}}" integrity="{{integrity "shared/css/base.css"}}">
+  <link rel="stylesheet" href="{{.StaticPath}}/{{asset "auth/css/auth.css"}}" integrity="{{integrity "auth/css/auth.css"}}">
+  {{/* Signed-out pages: only shared and auth assets, never the admin area, which needs a session. */}}
+  <script src="{{.StaticPath}}/{{asset "shared/js/chart.js"}}" integrity="{{integrity "shared/js/chart.js"}}"></script>
+  <script src="{{.StaticPath}}/{{asset "shared/js/telemetry.js"}}" integrity="{{integrity "shared/js/telemetry.js"}}"></script>
+</head>
+<body data-panel-path="{{.PanelPath}}" data-static-path="{{.StaticPath}}">
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="navbar admin-navbar">
+    <div class="navbar-container">
+      <div class="nav-left">
+        <a href="{{.PanelPath}}/" class="nav-brand">
+          {{template "logo_mark"}}
+          <span class="brand-title">CertainStats</span>
+        </a>
+      </div>
+
+      <div class="nav-right">
+        {{template "theme_toggle"}}
+      </div>
+    </div>
+  </header>
+
+  <main id="main" class="container">
+    {{if .FlashSuccess}}
+    <div class="flash flash-success" role="status">
+      <span>{{.FlashSuccess}}</span>
+    </div>
+    {{end}}
+
+    {{if .FlashError}}
+    <div class="flash flash-error" role="alert">
+      <span>{{.FlashError}}</span>
+    </div>
+    {{end}}
+
+    {{template "content" .Data}}
+  </main>
+
+  <footer class="footer">
+    <div class="footer-content">
+      <span>CertainStats &copy; {{.Year}} · Self-hosted server monitoring</span>
+      <span class="footer-stats">Rendered in {{.RenderTime}}</span>
+    </div>
+  </footer>
+
+  <div id="toast-container" aria-live="polite"></div>
+</body>
+</html>{{end}}

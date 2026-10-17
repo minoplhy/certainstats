@@ -7,13 +7,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{{.Title}} — Status</title>
   {{template "theme_bootstrap" .}}
-  <link rel="preload" href="{{.StaticPath}}/fonts/figtree-latin.woff2" as="font" type="font/woff2" crossorigin>
-  <link rel="stylesheet" href="{{.StaticPath}}/{{asset "css/styles.css"}}" integrity="{{integrity "css/styles.css"}}">
-  <script src="{{.StaticPath}}/{{asset "js/disk_dom.js"}}" integrity="{{integrity "js/disk_dom.js"}}"></script>
-  <script src="{{.StaticPath}}/{{asset "js/requests.js"}}" integrity="{{integrity "js/requests.js"}}"></script>
-  <script src="{{.StaticPath}}/{{asset "js/chart.js"}}" integrity="{{integrity "js/chart.js"}}"></script>
-  {{if wsProtobuf}}<script src="{{.StaticPath}}/{{asset "js/browser_protocol.js"}}" integrity="{{integrity "js/browser_protocol.js"}}"></script>{{end}}
-  <script src="{{.StaticPath}}/{{asset "js/telemetry.js"}}" integrity="{{integrity "js/telemetry.js"}}"></script>
+  <link rel="preload" href="{{.StaticPath}}/shared/fonts/figtree-latin.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="{{.StaticPath}}/{{asset "shared/css/base.css"}}" integrity="{{integrity "shared/css/base.css"}}">
+  <link rel="stylesheet" href="{{.StaticPath}}/{{asset "public/css/public.css"}}" integrity="{{integrity "public/css/public.css"}}">
+  <script src="{{.StaticPath}}/{{asset "shared/js/disk_dom.js"}}" integrity="{{integrity "shared/js/disk_dom.js"}}"></script>
+  <script src="{{.StaticPath}}/{{asset "shared/js/requests.js"}}" integrity="{{integrity "shared/js/requests.js"}}"></script>
+  <script src="{{.StaticPath}}/{{asset "shared/js/chart.js"}}" integrity="{{integrity "shared/js/chart.js"}}"></script>
+  {{if wsProtobuf}}<script src="{{.StaticPath}}/{{asset "shared/js/browser_protocol.js"}}" integrity="{{integrity "shared/js/browser_protocol.js"}}"></script>{{end}}
+  <script src="{{.StaticPath}}/{{asset "shared/js/telemetry.js"}}" integrity="{{integrity "shared/js/telemetry.js"}}"></script>
 </head>
 <body data-public-path="{{.PublicPath}}" data-static-path="{{.StaticPath}}">
   <a class="skip-link" href="#main">Skip to content</a>

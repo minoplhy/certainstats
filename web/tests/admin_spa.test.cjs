@@ -25,7 +25,7 @@ function shell(path = '/panel/') {
   w.CertainStatsDiskDOM={pathId:value=>value};
   w.CertainStatsChart={formatBps:String,convertDeltaToRate:value=>value,renderMultiChart(){return {destroy(){},updateSeries(){}};}};
   w.CertainStatsNetworkMonitors={mount(root,options){const view={root,options,activations:0,deactivations:0,nodes:[],activate(){this.activations++;},deactivate(){this.deactivations++;},setNode(id){this.nodes.push(id);}};mounts.push(view);return view;}};
-  for (const file of ['telemetry','requests','admin_agents']) w.eval(fs.readFileSync('web/static/js/'+file+'.js','utf8'));
+  for (const file of ['shared/js/telemetry','shared/js/requests','admin/js/admin_core','admin/js/admin_agents']) w.eval(fs.readFileSync('web/static/'+file+'.js','utf8'));
   w.CertainStatsTelemetry.onReady=fn=>fn();
   w.CertainStatsAdminAgents.init({panelPath:'/panel',agents:[{agent_id:'node',nickname:'Node',agent_type:'beszel'}]});
   function navigate(url) {w.history.pushState({},'',url);w.dispatchEvent(new w.PopStateEvent('popstate'));}

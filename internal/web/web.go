@@ -63,6 +63,12 @@ func (h *WebHandler) newPageData(r *http.Request, title, activeNav string, data 
 }
 
 // RequireAuthWeb redirects unauthenticated requests to login page.
+// HasSession reports whether r carries a valid browser session, without redirecting.
+func (h *WebHandler) HasSession(r *http.Request) bool {
+	_, err := auth.Authenticate(r, h.Store)
+	return err == nil
+}
+
 func (h *WebHandler) RequireAuthWeb(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "private, no-store")

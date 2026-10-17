@@ -253,9 +253,9 @@ func TestRendererWebSocketMode(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		for _, page := range []string{"login.html", "public_dashboard.html"} {
+		for _, page := range []string{"settings.html", "public_dashboard.html", "login.html"} {
 			var output bytes.Buffer
-			data := PageData{Data: map[string]any{"Dashboard": store.Dashboard{AccessRules: accessrules.AccessRules{}}}}
+			data := PageData{Data: map[string]any{"Dashboard": store.Dashboard{AccessRules: accessrules.AccessRules{}}, "Sessions": []store.Session{}}}
 			if err := renderer.Render(&output, page, data); err != nil {
 				t.Fatal(err)
 			}
@@ -267,8 +267,10 @@ func TestRendererWebSocketMode(t *testing.T) {
 			if !strings.Contains(html, `data-ws-protobuf="`+value+`"`) {
 				t.Fatal("missing inert mode")
 			}
-			if strings.Contains(html, "js/browser_protocol") != protobuf {
-				t.Fatal("decoder loading disagrees with mode")
+			// Signed-out pages have no live feed, so they never load the decoder.
+			wantDecoder := protobuf && page != "login.html"
+			if strings.Contains(html, "js/browser_protocol") != wantDecoder {
+				t.Fatalf("%s: decoder loading disagrees with mode", page)
 			}
 		}
 	}

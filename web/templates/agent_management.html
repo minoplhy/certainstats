@@ -144,7 +144,6 @@
 {{template "uninstall_modal" .}}
 {{template "confirm_modal"}}
 
-<script src="{{.StaticPath}}/{{asset "js/agent_management.js"}}" integrity="{{integrity "js/agent_management.js"}}"></script>
 <script type="application/json" id="page-config" data-module="CertainStatsAgentManagement">{{bootstrap .}}</script>
-<script src="{{.StaticPath}}/{{asset "js/bootstrap.js"}}" integrity="{{integrity "js/bootstrap.js"}}"></script>
+<script src="{{.StaticPath}}/{{asset "admin/js/agent_management.js"}}" integrity="{{integrity "admin/js/agent_management.js"}}"></script>
 {{end}}

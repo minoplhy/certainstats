@@ -54,11 +54,43 @@ func InitStatic() error {
 	return staticCacheErr
 }
 
-// ServeStatic mounts in-memory static asset serving onto a Chi router.
+// StaticArea is a top-level folder of web/static that a router may serve, e.g. "shared" or "admin".
+// When Auth is set, the area is only served to requests it accepts; others get a 404.
+type StaticArea struct {
+	Prefix string
+	Auth   func(*http.Request) bool
+}
+
+// PanelStaticAreas are served by the admin panel: shared and auth assets to anyone, admin assets
+// only to requests hasSession accepts.
+func PanelStaticAreas(hasSession func(*http.Request) bool) []StaticArea {
+	return []StaticArea{{Prefix: "shared"}, {Prefix: "auth"}, {Prefix: "admin", Auth: hasSession}}
+}
+
+// PublicStaticAreas are served by the public dashboards; admin and auth assets never are.
+func PublicStaticAreas() []StaticArea {
+	return []StaticArea{{Prefix: "shared"}, {Prefix: "public"}}
+}
+
+// area returns the area relPath belongs to, if it is one of areas.
+func area(relPath string, areas []StaticArea) (StaticArea, bool) {
+	for _, a := range areas {
+		if strings.HasPrefix(relPath, a.Prefix+"/") {
+			return a, true
+		}
+	}
+	return StaticArea{}, false
+}
+
+// ServeStatic mounts in-memory static asset serving onto a Chi router, limited to the given areas.
 // It dynamically calculates the route pattern prefix so it works on any subpath, host, or custom prefix.
-func ServeStatic(r chi.Router, path string) {
+func ServeStatic(r chi.Router, path string, areas ...StaticArea) {
 	if strings.Contains(path, ":") || strings.Contains(path, "*") {
 		panic("ServeStatic does not permit URL parameters")
+	}
+	// Serving nothing by default keeps a forgotten argument from exposing every area.
+	if len(areas) == 0 {
+		panic("ServeStatic needs at least one static area")
 	}
 
 	_ = InitStatic()
@@ -78,6 +110,21 @@ func ServeStatic(r chi.Router, path string) {
 
 		relPath := strings.TrimPrefix(r.URL.Path, pathPrefix)
 		relPath = strings.TrimPrefix(relPath, "/")
+
+		served, ok := area(relPath, areas)
+		if !ok || strings.Contains(relPath, "..") {
+			http.NotFound(w, r)
+			return
+		}
+		cacheControl := "public, max-age=31536000, immutable"
+		if served.Auth != nil {
+			if !served.Auth(r) {
+				w.Header().Set("Cache-Control", "private, no-store")
+				http.NotFound(w, r)
+				return
+			}
+			cacheControl = "private, max-age=31536000, immutable"
+		}
 
 		if entry, hit := ctx.GetCacheEntry(&ctx.StaticCache, relPath); hit {
 			ext := filepath.Ext(relPath)
@@ -107,7 +154,7 @@ func ServeStatic(r chi.Router, path string) {
 				}
 			}
 
-			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+			w.Header().Set("Cache-Control", cacheControl)
 			entry.Serve(w, r, contentType, http.StatusOK)
 			return
 		}

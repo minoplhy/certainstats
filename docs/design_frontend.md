@@ -13,7 +13,7 @@
 
 > **"Calm, legible, real-time. Dependency-free."**
 
-CertainStats renders pages on the server with Go `html/template` and makes them live with small vanilla JS modules. There is no Node.js build, npm package or frontend framework at runtime.
+CertainStats renders pages on the server with Go `html/template` and makes them live with small vanilla JS modules. There is no npm package or frontend framework at runtime. The larger scripts are written as ES modules under `web/src/js` and bundled with esbuild into checked-in files, so Node is needed only to regenerate them. See [frontend JavaScript build](frontend-js-build.md).
 
 Browser live feeds default to JSON. Experimental `WS_PROTOBUF=true` loads a locally bundled Protobuf decoder. Its Go and JavaScript
 artifacts are checked in; Node tooling is needed only for protocol regeneration.
@@ -33,7 +33,7 @@ See [browser protocol](browser-protocol.md) for schema and build instructions.
 
 ## 2. Design Tokens
 
-All tokens are defined at the top of [`web/static/css/styles.css`](../web/static/css/styles.css). Light values sit on `:root`, and dark values on `[data-theme="dark"]`. Components reference tokens only. Templates and scripts contain no color literals.
+All tokens are defined at the top of [`web/static/shared/css/base.css`](../web/static/shared/css/base.css). Light values sit on `:root`, and dark values on `[data-theme="dark"]`. Components reference tokens only. Templates and scripts contain no color literals.
 
 ### 2.1 Color Palette
 
@@ -69,7 +69,7 @@ Swatch helpers `.sw-s1` … `.sw-tx` color legend marks. Scripts pass series col
 
 ### 2.3 Typography
 
-Fonts are self-hosted as Latin-subset variable woff2 files in [`web/static/fonts/`](../web/static/fonts/) (SIL OFL, license files alongside). Public pages make no third-party font requests.
+Fonts are self-hosted as Latin-subset variable woff2 files in [`web/static/shared/fonts/`](../web/static/shared/fonts/) (SIL OFL, license files alongside). Public pages make no third-party font requests.
 
 ```css
 --font-head: 'Bricolage Grotesque', 'Figtree', system-ui, sans-serif;
@@ -177,7 +177,7 @@ The `{{template "theme_toggle"}}` icon button cycles **system → light → dark
 
 ## 4. Interactive JavaScript Subsystems
 
-Dependency-free modules loaded with `<script>` tags carrying SRI hashes.
+Dependency-free modules loaded with `<script>` tags carrying SRI hashes. The telemetry, chart, network monitor, Agent Hub and public dashboard scripts are generated bundles: edit their sources under `web/src/js`, as described in [frontend JavaScript build](frontend-js-build.md).
 
 ```mermaid
 flowchart LR
@@ -202,14 +202,25 @@ flowchart LR
 ```
 
 ### 4.1 `CertainStatsTelemetry` ([`telemetry.js`])
-- **WebSocket manager** for `/api/ws` and `/api/public/ws/{id}`, with reconnection.
-- **In-page router (`initRouter`)** maps `/{agent_id}` and `/{slug}/{pub_id}` to view swaps.
-- **Time range picker (`initCustomTimePicker`)**: quick ranges plus a custom start and end dropdown with `aria-expanded`. Public pages clamp the range to `MaxDays`.
-- **`renderClusterStats`** updates the hero figures, the public header status and the public status banner.
-- **`partitionCardHtml`** renders the shared storage partition card.
-- **Floating tooltips** on meters, **toasts**, and **`CertainStatsModal`** (open/close plus the delegated `data-open-modal`/`data-close-modal` handlers).
+Source: [`web/src/js/components/telemetry/`](../web/src/js/components/telemetry/)
+
+Shared by the panel and public pages; it contains only what both use.
+
+- **WebSocket feed** for `/api/ws` and `/api/public/ws/{id}`, with reconnection. `onFeedEvent` lets admin code follow connection and frame events.
+- **In-page router (`initRouter`)** maps `/{agent_id}` and `/{slug}/{pub_id}` to view swaps. Callers pass their own `reservedSegments`.
+- **`renderClusterStats`** updates the hero figures, the public header status and the public status banner. **`renderPartitions`** renders the storage partition cards.
+- **Floating tooltips** on meters and **toasts**.
+
+Admin-only members are added to the same global by `admin_core` ([`web/src/js/components/admin_core/`](../web/src/js/components/admin_core/)), which only signed-in panel pages load:
+- **Time range picker (`initCustomTimePicker`)**: quick ranges plus a custom start and end dropdown with `aria-expanded`.
+- **`CertainStatsModal`**: open/close, `data-confirm` forms, and the delegated `data-open-modal`/`data-close-modal` handlers. Also the reinstall and uninstall dialogs.
+- **Network pulses** (`subscribeNetwork`, `getNetworkFeedState`) and `drawSparkline` on `CertainStatsChart`.
+
+The public range bar (`initTimeRangeBar`) belongs to the public dashboard bundle and clamps ranges to `MaxDays`.
 
 ### 4.2 `CertainStatsChart` ([`chart.js`])
+Source: [`web/src/js/components/chart/`](../web/src/js/components/chart/)
+
 - **Colors from tokens**: grid, axis text, tooltip card, downtime band and drag selection all read CSS variables, and series colors go through `resolveColor`.
 - **Style**:
   - smooth curves (horizontal midpoint bezier, so no overshoot) with a 2px stroke and soft gradient area;
@@ -217,16 +228,20 @@ flowchart LR
   - offline gaps drawn as a red band labelled "Offline 42m".
 - **Fitted y-axis gutter**: the left padding grows to fit the widest label.
 - **Drag to zoom**, a **crosshair tooltip**, and **High-DPI** rendering.
-- **`drawSparkline(canvas, points, opts)`**: axis-less trend line for Agent Hub cards, split at data gaps.
+- **`drawSparkline(canvas, points, opts)`**: axis-less trend line for Agent Hub cards and monitor rows, split at data gaps. Admin-only, so `admin_core` adds it.
 - **Theme**: `initThemeToggle` handles the three-way preference described in §3.9.
 
 ### 4.3 `CertainStatsAdminAgents` ([`admin_agents.js`])
+Source: [`web/src/js/pages/admin_agents/`](../web/src/js/pages/admin_agents/)
+
 - Switches between card and table views (persisted), and filters by name, CPU or ID.
 - Applies live WebSocket snapshots to cards, table rows and the open detail view. Element IDs are the contract between templates and this script, so keep them stable.
 - Loads 24h CPU sparklines (`/api/metrics?…&hours=24`), staggered per card.
 - Re-renders the headline and offline card washes after each metadata sync.
 
 ### 4.4 `CertainStatsPublicDashboard` ([`public_dashboard.js`])
+Source: [`web/src/js/pages/public_dashboard/`](../web/src/js/pages/public_dashboard/)
+
 - Status rows (the default view) or cards, persisted per visitor.
 - Strictly respects `AllowedFeatures` and `AllowedMetrics`. Templates use `hasFeature` and `hasMetric`, and scripts check `pubAllowedMetrics`.
 - Public agent detail is rendered in place at `/dashboard/{slug}/{pub_id}` with the same structure as the admin detail, minus admin actions.
@@ -305,7 +320,9 @@ web/templates/
 
 ### 6.2 Asset Embedding & Minification
 - Static assets (CSS, JS, fonts) and templates are embedded into the Go binary using `embed.FS` in `web/embed.go`.
-- CSS and JS are minified at startup by `internal/minify` and served under content-hashed names with SRI. Fonts pass through unchanged and are referenced by stable paths (`/static/fonts/*.woff2`).
+- Assets are grouped by audience: `shared/`, `admin/`, `public/` and `auth/` under `web/static`. The public router serves only `shared` and `public`; the panel serves `shared` and `auth` to anyone and `admin` only with a session. Each layout (`base.html`, `public_base.html`, `auth_base.html`) loads `shared/css/base.css` plus its own area stylesheet. See [frontend assets](frontend-js-build.md).
+- The larger scripts are bundled from `web/src/js` by `tools/js-bundle` ahead of time and checked in, so the Go build only sees ordinary files in `web/static/<area>/js`.
+- CSS and JS are minified at startup by `internal/minify` and served under content-hashed names with SRI. Fonts pass through unchanged and are referenced by stable paths (`/static/shared/fonts/*.woff2`).
 - The CSS minifier keeps whitespace that changes meaning: around `(` in media queries, after `)` in selectors such as `:not(…) .x`, and inside `calc()` and `color-mix()`.
 
 ### 6.3 In-Memory Output Caching

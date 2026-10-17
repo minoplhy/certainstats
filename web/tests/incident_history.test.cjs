@@ -39,7 +39,7 @@ function harness(fetch, nodeMode = false) {
   const document = { hidden: false, createElement: tag => new Element(tag), getElementById: () => null, addEventListener: (event, cb) => { callbacks[event] = cb; }, removeEventListener() {} };
   const window = { addEventListener: (event, cb) => { callbacks[event] = cb; }, confirm: () => true };
   const context = { window, document, fetch, AbortController, URLSearchParams, Date, Number, Intl, CSS: { escape: s => s }, Option: class extends Element { constructor(text, value) { super('option'); this.textContent = text; this.value = value; } }, setInterval: cb => { callbacks.interval = cb; return 1; }, clearInterval() {}, setTimeout: cb => { timers.push(cb); return timers.length; }, clearTimeout() {} };
-  vm.runInNewContext(fs.readFileSync('web/static/js/incident_history.js', 'utf8'), context);
+  vm.runInNewContext(fs.readFileSync('web/static/admin/js/incident_history.js', 'utf8'), context);
   const view = window.CertainStatsIncidentHistory.mount(root, { panelPath: '/panel', nodeMode });
   return { root, controls, parent, view, callbacks, timers, format: window.CertainStatsIncidentHistory };
 }

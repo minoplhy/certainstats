@@ -11,7 +11,9 @@ function harness(blockStorage = false) {
   const handlers = new Set(), add = window.document.addEventListener.bind(window.document), remove = window.document.removeEventListener.bind(window.document);
   window.document.addEventListener = (name, fn, ...args) => {if (name === 'click') handlers.add(fn); add(name, fn, ...args);};
   window.document.removeEventListener = (name, fn, ...args) => {if (name === 'click') handlers.delete(fn); remove(name, fn, ...args);};
-  window.eval(fs.readFileSync('web/static/js/telemetry.js', 'utf8'));
+  // The time picker is admin-only, added to the shared telemetry global by admin_core.
+  window.CertainStatsChart = {};
+  for (const file of ['shared/js/telemetry', 'admin/js/admin_core']) window.eval(fs.readFileSync('web/static/' + file + '.js', 'utf8'));
   const applied = [[], []], pickers = ['one', 'two'].map((id, i) => window.CertainStatsTelemetry.initCustomTimePicker(id, {onApply: state => applied[i].push(state)}));
   return {dom, window, handlers, applied, pickers, containers: ['one', 'two'].map(id => window.document.getElementById(id))};
 }

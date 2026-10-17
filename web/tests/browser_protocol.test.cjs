@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
 const fixtures = require('./fixtures/browser_protocol.json');
-const protocolSource = fs.readFileSync('web/static/js/browser_protocol.js', 'utf8');
+const protocolSource = fs.readFileSync('web/static/shared/js/browser_protocol.js', 'utf8');
 
 function codecContext(extra = {}) {
   const context = {ArrayBuffer, Uint8Array, TextDecoder, ...extra};
@@ -86,7 +86,9 @@ function feed(protobuf = true) {
     console: {warn() {}, error() {}, log() {}},
     WebSocket: Socket, Intl, Date: Clock, Event: class {constructor(type) {this.type = type;}}, dispatchEvent(event) {events[event.type]?.();}
   });
-  vm.runInNewContext(fs.readFileSync('web/static/js/telemetry.js', 'utf8'), context);
+  // Network pulses are tracked by admin_core on top of the shared feed; it extends the chart global too.
+  context.CertainStatsChart = {};
+  for (const file of ['shared/js/telemetry', 'admin/js/admin_core']) vm.runInNewContext(fs.readFileSync('web/static/' + file + '.js', 'utf8'), context);
   return {context, sockets, timers, intervals, events, status, reloads: () => reloads,
     advance(ms) {now += ms; intervals.forEach(callback => callback());},
     retry() {const [id, callback] = timers.entries().next().value; timers.delete(id); callback();}};

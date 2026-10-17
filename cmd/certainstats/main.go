@@ -249,8 +249,8 @@ func main() {
 			})
 		})
 
-		// Static assets
-		web.ServeStatic(rt, "/static")
+		// Static assets: shared and login/setup assets for anyone, admin assets only with a session.
+		web.ServeStatic(rt, "/static", web.PanelStaticAreas(webHandler.HasSession)...)
 
 		// Agent Submission Endpoints
 		rt.Post("/submit", agent.SubmitHandler(db, tdb, parserRegistry, metricsCache))
@@ -384,7 +384,8 @@ func main() {
 		parent.Group(func(rt chi.Router) {
 			rt.Use(security.PublicRequests)
 
-			web.ServeStatic(rt, "/static")
+			// The public host only ever sees shared and public assets.
+			web.ServeStatic(rt, "/static", web.PublicStaticAreas()...)
 
 			// Register API routes BEFORE wildcard slug routes so they are never intercepted
 			rt.Route("/api/public", func(pubApi chi.Router) {

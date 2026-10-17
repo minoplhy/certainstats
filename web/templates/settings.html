@@ -10,7 +10,6 @@
   {{template "settings_sessions_table" .}}
 </div>
 
-<script src="{{.StaticPath}}/{{asset "js/admin_modals.js"}}" integrity="{{integrity "js/admin_modals.js"}}"></script>
 <script type="application/json" id="page-config" data-module="CertainStatsAdminModals">{{bootstrap .}}</script>
-<script src="{{.StaticPath}}/{{asset "js/bootstrap.js"}}" integrity="{{integrity "js/bootstrap.js"}}"></script>
+<script src="{{.StaticPath}}/{{asset "admin/js/admin_modals.js"}}" integrity="{{integrity "admin/js/admin_modals.js"}}"></script>
 {{end}}
