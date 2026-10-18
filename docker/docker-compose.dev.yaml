@@ -8,8 +8,11 @@ services:
       - ./data:/app/data
     environment:
       - WS_PROTOBUF=${WS_PROTOBUF:-false}
-      - PANEL_PATH=${PANEL_PATH:-/}
-      - PUBLIC_PATH=${PUBLIC_PATH:-/dashboard}
+      # Use either PANEL_URL (+ optional PUBLIC_URL) or the *_PATH pair, not both.
+      - PANEL_URL=${PANEL_URL:-}
+      - PUBLIC_URL=${PUBLIC_URL:-}
+      - PANEL_PATH=${PANEL_PATH:-}
+      - PUBLIC_PATH=${PUBLIC_PATH:-}
       - DATA_DIR=/app/data
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-}
       - PORT=${PORT:-8080}

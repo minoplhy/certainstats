@@ -3,13 +3,35 @@ package auth
 import (
 	"certainstats/internal/security"
 	"certainstats/internal/store"
+	"context"
 	"database/sql"
 	"errors"
 	"net/http"
 	"time"
+
+	"golang.org/x/crypto/bcrypt"
 )
 
 var ErrUnauthenticated = errors.New("unauthenticated")
+
+// dummyHash keeps an unknown username as slow as a wrong password.
+var dummyHash, _ = bcrypt.GenerateFromPassword([]byte("certainstats-dummy-password"), bcrypt.DefaultCost)
+
+// CheckCredentials returns the user only when the username and password match.
+func CheckCredentials(ctx context.Context, users store.UserStore, username, password string) (*store.User, error) {
+	user, err := users.GetByUsername(ctx, username)
+	if errors.Is(err, sql.ErrNoRows) {
+		bcrypt.CompareHashAndPassword(dummyHash, []byte(password))
+		return nil, ErrUnauthenticated
+	}
+	if err != nil {
+		return nil, err
+	}
+	if bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password)) != nil {
+		return nil, ErrUnauthenticated
+	}
+	return user, nil
+}
 
 func Authenticate(r *http.Request, sessions store.SessionStore) (*store.Session, error) {
 	cookie, err := r.Cookie("session_token")

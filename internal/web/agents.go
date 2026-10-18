@@ -4,9 +4,11 @@ import (
 	"certainstats/internal/agent"
 	agentdata "certainstats/internal/agent_data"
 	ctx "certainstats/internal/context"
+	log "certainstats/internal/logger"
 	"crypto/rand"
 	"encoding/hex"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
@@ -92,6 +94,10 @@ func (h *WebHandler) AgentProvisionHandler(w http.ResponseWriter, r *http.Reques
 	if nickname == "" {
 		nickname = agent.GenerateNickname()
 	}
+	if len(nickname) > 64 {
+		http.Error(w, "Nickname too long (max 64 chars)", http.StatusBadRequest)
+		return
+	}
 	agentType := strings.TrimSpace(r.FormValue("agent_type"))
 	if agentType == "" {
 		agentType = "beszel"
@@ -101,7 +107,8 @@ func (h *WebHandler) AgentProvisionHandler(w http.ResponseWriter, r *http.Reques
 	token := agentdata.GenerateDeviceToken(agentType)
 
 	if err := h.Store.AgentProvision(r.Context(), agentID, userID, token, nickname, agentType); err != nil {
-		http.Error(w, "Failed to provision agent: "+err.Error(), http.StatusInternalServerError)
+		log.Printf("provision agent: %v", err)
+		http.Error(w, "Failed to provision agent", http.StatusInternalServerError)
 		return
 	}
 
@@ -112,9 +119,11 @@ func (h *WebHandler) AgentProvisionHandler(w http.ResponseWriter, r *http.Reques
 		}
 	}
 
-	redir := r.FormValue("redirect_to")
+	redir := localPath(r.FormValue("redirect_to"))
 	if redir == "" {
-		redir = r.Header.Get("Referer")
+		if ref, err := url.Parse(r.Referer()); err == nil && (ref.Host == "" || ref.Host == r.Host) {
+			redir = localPath(ref.RequestURI())
+		}
 	}
 	if redir == "" {
 		redir = h.PanelPath + "/"
@@ -142,8 +151,9 @@ func (h *WebHandler) AgentResetTokenHandler(w http.ResponseWriter, r *http.Reque
 		http.Error(w, "Failed to persist change", 500)
 		return
 	}
+	h.closeAgent(agentID)
 
-	redir := r.FormValue("redirect_to")
+	redir := localPath(r.FormValue("redirect_to"))
 	if redir == "" {
 		redir = h.PanelPath + "/agents/management"
 	}
@@ -163,8 +173,9 @@ func (h *WebHandler) AgentResetSSHHandler(w http.ResponseWriter, r *http.Request
 		http.Error(w, "SSH key generation failed", 500)
 		return
 	}
+	h.closeAgent(agentID)
 
-	redir := r.FormValue("redirect_to")
+	redir := localPath(r.FormValue("redirect_to"))
 	if redir == "" {
 		redir = h.PanelPath + "/agents/management"
 	}
@@ -200,7 +211,7 @@ func (h *WebHandler) AgentRenameHandler(w http.ResponseWriter, r *http.Request) 
 	}
 	ctx.InvalidateAgent(agentID)
 
-	redir := r.FormValue("redirect_to")
+	redir := localPath(r.FormValue("redirect_to"))
 	if redir == "" {
 		redir = h.PanelPath + "/agents/management"
 	}
@@ -221,10 +232,26 @@ func (h *WebHandler) AgentDeleteHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	h.Cache.Delete(agentID)
+	h.closeAgent(agentID)
 
-	redir := r.FormValue("redirect_to")
+	redir := localPath(r.FormValue("redirect_to"))
 	if redir == "" {
 		redir = h.PanelPath + "/agents/management"
 	}
 	http.Redirect(w, r, redir, http.StatusSeeOther)
+}
+
+// localPath accepts only same-origin absolute paths, so a form cannot redirect off-site.
+func localPath(p string) string {
+	if !strings.HasPrefix(p, "/") || strings.HasPrefix(p, "//") || strings.HasPrefix(p, "/\\") {
+		return ""
+	}
+	return p
+}
+
+// closeAgent disconnects a live agent after its credentials were revoked.
+func (h *WebHandler) closeAgent(agentID string) {
+	if h.Agents != nil {
+		h.Agents.CloseAgent(agentID)
+	}
 }

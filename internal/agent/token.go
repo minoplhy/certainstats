@@ -33,6 +33,7 @@ func ResetAgentTokenHandler(agent store.AgentStore, wsManager *ws.Manager) http.
 			api_response.Error(w, http.StatusInternalServerError, "Failed to reset token")
 			return
 		}
+		wsManager.CloseAgent(agentID)
 
 		api_response.JSON(w, http.StatusOK, map[string]string{
 			"status":  "success",

@@ -168,3 +168,17 @@ func TestPublicQueueRejectsBeyondBound(t *testing.T) {
 		t.Fatal("rejected request acquired a read slot")
 	}
 }
+
+func TestPublicRangeClampsToLimitBetweenBuckets(t *testing.T) {
+	// max_days=3 is 72h, which lies between the 48h and 168h buckets.
+	tr, _, ok := parsePublicTimeRange(httptest.NewRequest("GET", "/?hours=60", nil), 72)
+	if !ok {
+		t.Fatal("a range within the dashboard limit was rejected")
+	}
+	if got := (tr.EndMs - tr.StartMs) / time.Hour.Milliseconds(); got != 72 {
+		t.Fatalf("window = %dh, want 72h", got)
+	}
+	if _, _, ok := parsePublicTimeRange(httptest.NewRequest("GET", "/?hours=73", nil), 72); ok {
+		t.Fatal("a range past the dashboard limit was accepted")
+	}
+}

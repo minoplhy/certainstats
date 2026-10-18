@@ -4,10 +4,8 @@ import (
 	"certainstats/internal/alertdelivery"
 	apiresponse "certainstats/internal/response"
 	"certainstats/internal/store"
-	"context"
 	"database/sql"
 	"errors"
-	"log"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -59,10 +57,6 @@ func queueHistoryRetry(w http.ResponseWriter, r *http.Request, db store.AlertsSt
 		}
 		return
 	}
-	go func() {
-		if err := alertdelivery.Dispatch(context.Background(), db, attempt.EventID); err != nil {
-			log.Printf("Notification retry: %v", err)
-		}
-	}()
+	alertdelivery.Go(db, attempt.EventID)
 	apiresponse.JSON(w, 200, map[string]string{"status": "queued", "message": "Notification retry queued", "event_id": attempt.EventID})
 }

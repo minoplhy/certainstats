@@ -1,4 +1,27 @@
 // Floating Tooltip for Compact Usage Bars
+
+function el(tag, className, text) {
+  const node = document.createElement(tag);
+  node.className = className;
+  if (text !== undefined) node.textContent = String(text);
+  return node;
+}
+
+// Rows can carry agent-reported text such as disk paths, so they are set as text, never as HTML.
+export function renderTooltip(tooltip, header, rows) {
+  const nodes = [el('div', 'tooltip-header', header)];
+  rows.forEach(r => {
+    const row = el('div', 'tooltip-row');
+    const label = el('span', 'tooltip-label');
+    const dot = el('span', 'tooltip-dot');
+    dot.style.background = String(r.color || '');
+    label.append(dot, String(r.label ?? ''));
+    row.append(label, el('strong', '', r.val ?? ''));
+    nodes.push(row);
+  });
+  tooltip.replaceChildren(...nodes);
+}
+
 export function initFloatingTooltips() {
   let tooltip = document.getElementById('global-floating-tooltip');
   if (!tooltip) {
@@ -19,17 +42,7 @@ export function initFloatingTooltips() {
     if (!rawRows) return;
 
     try {
-      const rows = JSON.parse(rawRows);
-      let html = `<div class="tooltip-header">${header}</div>`;
-      rows.forEach(r => {
-        html += `
-          <div class="tooltip-row">
-            <span class="tooltip-label"><span class="tooltip-dot" style="background: ${r.color};"></span>${r.label}</span>
-            <strong>${r.val}</strong>
-          </div>
-        `;
-      });
-      tooltip.innerHTML = html;
+      renderTooltip(tooltip, header, JSON.parse(rawRows));
       tooltip.style.display = 'flex';
     } catch (err) {}
   });

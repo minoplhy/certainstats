@@ -114,20 +114,28 @@ func applyTemplate(tmpl string, nctx NotificationContext, isDiscord bool) string
 		duration = formatDuration(nctx.ResolvedAt.Sub(*nctx.WentOfflineAt))
 	}
 
-	jsonText := func(value string) string { raw, _ := json.Marshal(value); return string(raw[1 : len(raw)-1]) }
+	// Every value is JSON-string escaped so nicknames or targets with quotes keep the payload valid.
+	jsonText := func(value string) string {
+		var buf bytes.Buffer
+		enc := json.NewEncoder(&buf)
+		enc.SetEscapeHTML(false)
+		_ = enc.Encode(value)
+		raw := strings.TrimSuffix(buf.String(), "\n")
+		return raw[1 : len(raw)-1]
+	}
 	r := strings.NewReplacer(
 		"{{MONITOR_ID}}", jsonText(nctx.MonitorID), "{{MONITOR_TARGET}}", jsonText(nctx.MonitorTarget), "{{MONITOR_PROTOCOL}}", jsonText(nctx.MonitorProtocol), "{{DNS_SERVER}}", jsonText(nctx.DNSServer),
-		"{{AGENT_ID}}", nctx.AgentID,
-		"{{NICKNAME}}", nctx.Nickname,
-		"{{TRIGGER_TYPE}}", nctx.TriggerType,
-		"{{TRIGGER_LABEL}}", getTriggerLabel(nctx.TriggerType),
-		"{{STATUS}}", nctx.Status,
-		"{{VALUE}}", formatMetricValue(nctx.TriggerType, nctx.Value),
-		"{{OPERATOR}}", nctx.Operator,
-		"{{THRESHOLD}}", formatMetricValue(nctx.TriggerType, nctx.Threshold),
-		"{{TIME_TRIGGER}}", triggerTime,
-		"{{TIME_RESOLVED}}", resolvedTime,
-		"{{DOWN_DURATION}}", duration,
+		"{{AGENT_ID}}", jsonText(nctx.AgentID),
+		"{{NICKNAME}}", jsonText(nctx.Nickname),
+		"{{TRIGGER_TYPE}}", jsonText(nctx.TriggerType),
+		"{{TRIGGER_LABEL}}", jsonText(getTriggerLabel(nctx.TriggerType)),
+		"{{STATUS}}", jsonText(nctx.Status),
+		"{{VALUE}}", jsonText(formatMetricValue(nctx.TriggerType, nctx.Value)),
+		"{{OPERATOR}}", jsonText(nctx.Operator),
+		"{{THRESHOLD}}", jsonText(formatMetricValue(nctx.TriggerType, nctx.Threshold)),
+		"{{TIME_TRIGGER}}", jsonText(triggerTime),
+		"{{TIME_RESOLVED}}", jsonText(resolvedTime),
+		"{{DOWN_DURATION}}", jsonText(duration),
 	)
 	return r.Replace(tmpl)
 }

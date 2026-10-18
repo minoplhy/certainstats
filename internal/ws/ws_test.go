@@ -216,3 +216,18 @@ func TestHubDisconnectedErrors(t *testing.T) {
 		t.Errorf("expected 'not connected' error, got %v", err)
 	}
 }
+
+func TestManagerCloseAgent(t *testing.T) {
+	m := NewManager()
+	keep, drop := NewHub(), NewHub()
+	keep.AgentID, drop.AgentID = "agt_keep", "agt_drop"
+	m.Register("tok_keep", keep)
+	m.Register("tok_drop", drop)
+	m.CloseAgent("agt_drop")
+	if _, ok := m.GetHub("tok_drop"); ok {
+		t.Fatal("revoked agent still registered")
+	}
+	if _, ok := m.GetHub("tok_keep"); !ok {
+		t.Fatal("other agent was closed")
+	}
+}

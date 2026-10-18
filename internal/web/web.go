@@ -6,6 +6,7 @@ import (
 	"certainstats/internal/metrics"
 	"certainstats/internal/security"
 	"certainstats/internal/store"
+	"certainstats/internal/ws"
 	"net/http"
 	"time"
 )
@@ -19,6 +20,8 @@ type WebHandler struct {
 	PanelPath  string
 	PublicPath string
 	StaticPath string
+	// Agents holds live agent connections, closed when credentials are revoked.
+	Agents *ws.Manager
 }
 
 // Helper to extract user ID from context

@@ -14,11 +14,13 @@ import (
 type Hub struct {
 	// ConnectionEpoch is assigned before registration and remains immutable.
 	ConnectionEpoch string
-	pendingMu       sync.Mutex
-	pending         map[uint32]pendingRequest
-	nextID          uint32
-	conn            *websocket.Conn
-	mu              sync.Mutex
+	// AgentID identifies the agent so revocation can close its connection.
+	AgentID   string
+	pendingMu sync.Mutex
+	pending   map[uint32]pendingRequest
+	nextID    uint32
+	conn      *websocket.Conn
+	mu        sync.Mutex
 }
 
 // Send sends a CBOR message to the hub

@@ -108,3 +108,12 @@ test('history requests cancel obsolete work and preserve HTTP failures', async (
  callbacks.pagehide();
  assert.equal(latest.signal.aborted,true);
 });
+test('usage tooltips render agent-reported labels as text',()=>{
+ class El extends Node {constructor(tag){super(tag);this.style={};} replaceChildren(...n){this.children=n;}}
+ const document={readyState:'loading',addEventListener(){},createElement:tag=>new El(tag)};
+ const context={window:{},document};vm.runInNewContext(fs.readFileSync('web/static/shared/js/telemetry.js','utf8'),context);
+ const tooltip=new El('div');const hostile='<img src=x onerror="alert(1)">';
+ context.window.CertainStatsTelemetry.renderTooltip(tooltip,hostile,[{label:'Disk ('+hostile+')',val:'1 B',color:'var(--s1)'}]);
+ assert.equal(tooltip.innerHTML,undefined);assert.equal(tooltip.children[0].textContent,hostile);
+ const label=tooltip.children[1].children[0];assert.equal(label.children[1],'Disk ('+hostile+')');assert.equal(label.children[0].style.background,'var(--s1)');
+});

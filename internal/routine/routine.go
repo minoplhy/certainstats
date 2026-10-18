@@ -24,14 +24,7 @@ func (e *Routine) Start(ctx context.Context) {
 		e.beszelTicks = make(map[string]int)
 	}
 	// 1. Determine interval from environment
-	interval := 60 * time.Second
-	if env := os.Getenv("UPDATE_EVERY"); env != "" {
-		if d, err := time.ParseDuration(env); err == nil {
-			interval = d
-		} else if i, err := strconv.Atoi(env); err == nil {
-			interval = time.Duration(i) * time.Second
-		}
-	}
+	interval := envInterval("UPDATE_EVERY", 60*time.Second)
 
 	log.Printf("[Timer] Central loop started with interval: %v", interval)
 
@@ -43,14 +36,7 @@ func (e *Routine) Start(ctx context.Context) {
 	defer uiTicker.Stop()
 
 	// 2. Beszel Heartbeat Ticker (Syncs with UPDATE_EVERY by default, but allows override)
-	beszelInterval := interval
-	if env := os.Getenv("BESZEL_EVERY"); env != "" {
-		if d, err := time.ParseDuration(env); err == nil {
-			beszelInterval = d
-		} else if i, err := strconv.Atoi(env); err == nil {
-			beszelInterval = time.Duration(i) * time.Second
-		}
-	}
+	beszelInterval := envInterval("BESZEL_EVERY", interval)
 	log.Printf("[Timer] Beszel heartbeat loop started with interval: %v", beszelInterval)
 
 	beszelTicker := time.NewTicker(beszelInterval)
@@ -66,7 +52,9 @@ func (e *Routine) Start(ctx context.Context) {
 		case <-beszelTicker.C:
 			// Task 0: Beszel Heartbeats (Pulls)
 			if e.WS != nil {
+				seen := make(map[string]bool)
 				e.WS.Range(func(token string, hub *ws.Hub) {
+					seen[token] = true
 					// Decide if we want full details (IncludeDetails: true)
 					includeDetails := false
 					e.beszelTicks[token]++
@@ -80,6 +68,12 @@ func (e *Routine) Start(ctx context.Context) {
 						log.Debugf("[Beszel] Stats request failed: %v", err)
 					}
 				})
+				// Forget counters of disconnected or rotated tokens.
+				for token := range e.beszelTicks {
+					if !seen[token] {
+						delete(e.beszelTicks, token)
+					}
+				}
 			}
 		case <-uiTicker.C:
 			// Task 1: Synchronized UI Pulse
@@ -114,6 +108,24 @@ func (e *Routine) Start(ctx context.Context) {
 			}
 		}
 	}
+}
+
+// envInterval reads a positive Go duration or whole seconds; anything else keeps the fallback.
+func envInterval(key string, fallback time.Duration) time.Duration {
+	env := os.Getenv(key)
+	if env == "" {
+		return fallback
+	}
+	d, err := time.ParseDuration(env)
+	if err != nil {
+		i, convErr := strconv.Atoi(env)
+		d, err = time.Duration(i)*time.Second, convErr
+	}
+	if err != nil || d <= 0 {
+		log.Printf("[Timer] Ignoring invalid %s=%q; using %v", key, env, fallback)
+		return fallback
+	}
+	return d
 }
 
 func (e *Routine) runCleanup(ctx context.Context) {

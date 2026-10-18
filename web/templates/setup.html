@@ -8,12 +8,16 @@
     </div>
 
     <form class="card auth-form" action="{{.PanelPath}}/first-time-setup" method="POST" id="setup-form"><input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
-      <input type="hidden" name="token" value="{{.Token}}">
+      <div class="form-group">
+        <label class="form-label" for="token">Setup credential</label>
+        <p class="muted">Filled in when you open the setup link from the server log.</p>
+        <input type="password" id="token" name="token" value="{{.Token}}" class="form-input" required{{if not .Token}} autofocus{{end}} autocomplete="off">
+      </div>
 
       <div class="form-group">
         <label class="form-label" for="username">Username</label>
         {{with .FieldErrors.username}}<p class="field-error" role="alert">{{.}}</p>{{end}}
-        <input type="text" id="username" name="username" value="{{.Username}}" class="form-input" required autofocus autocomplete="username">
+        <input type="text" id="username" name="username" value="{{.Username}}" class="form-input" required{{if .Token}} autofocus{{end}} autocomplete="username">
       </div>
 
       <div class="form-group">

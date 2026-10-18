@@ -1,22 +1,25 @@
 package main
 
 import (
+	"certainstats/internal/security"
 	"fmt"
 	"net/http"
 	"strings"
 )
 
+// cleanHost drops the port and lowercases, since hostnames are case-insensitive.
 func cleanHost(host string) string {
 	if idx := strings.Index(host, ":"); idx != -1 {
-		return host[:idx]
+		host = host[:idx]
 	}
-	return host
+	return strings.ToLower(host)
 }
 
 func HostRouter(panelHost, panelPath, publicHost, publicPath string, panelRouter, publicRouter, fallbackRouter http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		host := cleanHost(r.Host)
-		if forwardedHost := r.Header.Get("X-Forwarded-Host"); forwardedHost != "" {
+		// Only a trusted proxy may choose the virtual host; ProxyHeaders runs later, inside each router.
+		if forwardedHost := r.Header.Get("X-Forwarded-Host"); forwardedHost != "" && security.TrustedPeer(r) {
 			host = cleanHost(forwardedHost)
 		}
 

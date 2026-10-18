@@ -14,6 +14,7 @@ func (s *Store) AgentGetByToken(ctx context.Context, token string) (*store.Agent
 		return val.(*store.AgentIdentity), nil
 	}
 
+	gen := s.tokenGen.Load()
 	var id store.AgentIdentity
 	err := s.db.QueryRowContext(ctx,
 		`SELECT user_id, agent_id, agent_type FROM agents WHERE token = ?`, token,
@@ -23,6 +24,9 @@ func (s *Store) AgentGetByToken(ctx context.Context, token string) (*store.Agent
 	}
 
 	s.cache.Store(token, &id)
+	if s.tokenGen.Load() != gen {
+		s.cache.Delete(token)
+	}
 	return &id, nil
 }
 
@@ -212,13 +216,7 @@ func (s *Store) AgentDelete(ctx context.Context, agentID, userID string) error {
 	}
 
 	// Evict from identity cache immediately so in-flight submits are rejected.
-	s.cache.Range(func(key, val any) bool {
-		if val.(*store.AgentIdentity).AgentID == agentID {
-			s.cache.Delete(key)
-			return false
-		}
-		return true
-	})
+	s.evictAgentTokens(agentID)
 	csctx.InvalidateDashboard("")
 	return nil
 }
@@ -326,16 +324,6 @@ func (s *Store) AgentMarkOffline(ctx context.Context, olderThan time.Duration) (
 	return ids, nil
 }
 func (s *Store) AgentResetToken(ctx context.Context, agentID, userID, newToken string) error {
-	// 1. Evict any old tokens for this agent from the cache
-	s.cache.Range(func(key, val any) bool {
-		if val.(*store.AgentIdentity).AgentID == agentID {
-			s.cache.Delete(key)
-			return false
-		}
-		return true
-	})
-
-	// 2. Update the token in DB
 	res, err := s.db.ExecContext(ctx,
 		`UPDATE agents SET token = ? WHERE agent_id = ? AND user_id = ?`,
 		newToken, agentID, userID,
@@ -350,8 +338,22 @@ func (s *Store) AgentResetToken(ctx context.Context, agentID, userID, newToken s
 	if n == 0 {
 		return sql.ErrNoRows
 	}
+	s.evictAgentTokens(agentID)
 	return nil
 }
+
+// evictAgentTokens runs after a token change commits. Advancing tokenGen first
+// makes any lookup that read the old row before the commit drop its cache entry.
+func (s *Store) evictAgentTokens(agentID string) {
+	s.tokenGen.Add(1)
+	s.cache.Range(func(key, val any) bool {
+		if val.(*store.AgentIdentity).AgentID == agentID {
+			s.cache.Delete(key)
+		}
+		return true
+	})
+}
+
 func (s *Store) AgentListManagement(ctx context.Context, userID string) ([]store.AgentManagement, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT a.agent_id, a.agent_type, a.nickname, a.token, IFNULL(b.public_key, '')

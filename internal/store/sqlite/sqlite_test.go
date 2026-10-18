@@ -5,6 +5,8 @@ import (
 	"certainstats/internal/dashboard/accessrules"
 	"certainstats/internal/store"
 	"context"
+	"database/sql"
+	"errors"
 	"path/filepath"
 	"testing"
 	"time"
@@ -445,5 +447,32 @@ func TestDashboardUpdate_AddNewAgentsPreservesExisting(t *testing.T) {
 		if !found[expectedID] {
 			t.Errorf("expected agent %s to be present in dashboard, but was missing", expectedID)
 		}
+	}
+}
+
+func TestAgentResetTokenRejectsOldToken(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	_ = s.CreateUser(ctx, "usr_reset", "reset_owner", "hash", true)
+	if err := s.AgentProvision(ctx, "ag_reset", "usr_reset", "tok_old", "Reset", "beszel"); err != nil {
+		t.Fatal(err)
+	}
+	// Lookups racing the reset must not leave the old token cached.
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for i := 0; i < 200; i++ {
+			_, _ = s.AgentGetByToken(ctx, "tok_old")
+		}
+	}()
+	if err := s.AgentResetToken(ctx, "ag_reset", "usr_reset", "tok_new"); err != nil {
+		t.Fatal(err)
+	}
+	<-done
+	if _, err := s.AgentGetByToken(ctx, "tok_old"); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("old token still accepted: %v", err)
+	}
+	if id, err := s.AgentGetByToken(ctx, "tok_new"); err != nil || id.AgentID != "ag_reset" {
+		t.Fatalf("new token lookup: %v %v", id, err)
 	}
 }

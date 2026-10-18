@@ -6,8 +6,7 @@ import (
 	"strings"
 )
 
-func getSetupInstructions(agentType, token, host, panelPath, publicKey string) []base.ProvisionMessage {
-	scheme := "https" // TODO detect this from config
+func getSetupInstructions(agentType, token, scheme, host, panelPath, publicKey string) []base.ProvisionMessage {
 	var messages []base.ProvisionMessage
 
 	// Normalize panelPath

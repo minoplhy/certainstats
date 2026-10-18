@@ -16,6 +16,8 @@ type Routine struct {
 	WS          *ws.Manager
 	Cache       *metrics.RealtimeCache
 	Broadcaster *ws.AgentBroadcaster
+	// Deliver sends a queued alert attempt; nil means alertdelivery.Go.
+	Deliver func(eventID string)
 
 	beszelTicks map[string]int // track polling count per agent for periodic full refresh
 }

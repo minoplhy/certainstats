@@ -3,18 +3,20 @@ package agent
 import (
 	api_response "certainstats/internal/response"
 	"database/sql"
+	"errors"
 	"math"
 	"net/http"
 
 	ctx "certainstats/internal/context"
 	"certainstats/internal/metrics"
 	"certainstats/internal/store"
+	"certainstats/internal/ws"
 
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/tsdb"
 )
 
-func RevokeAgentHandler(agent store.AgentStore, tdb *tsdb.DB, cache *metrics.RealtimeCache) http.HandlerFunc {
+func RevokeAgentHandler(agent store.AgentStore, tdb *tsdb.DB, cache *metrics.RealtimeCache, wsManager *ws.Manager) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 
 		userID := r.Context().Value(ctx.UserIDKey).(string)
@@ -25,14 +27,16 @@ func RevokeAgentHandler(agent store.AgentStore, tdb *tsdb.DB, cache *metrics.Rea
 		}
 
 		err := agent.AgentDelete(r.Context(), agentID, userID)
+		if errors.Is(err, sql.ErrNoRows) {
+			api_response.Error(w, http.StatusNotFound, "Agent not found or unauthorized")
+			return
+		}
 		if err != nil {
 			api_response.Error(w, http.StatusInternalServerError, "Database error")
 			return
 		}
-
-		if err == sql.ErrNoRows {
-			api_response.Error(w, http.StatusNotFound, "Agent not found or unauthorized")
-			return
+		if wsManager != nil {
+			wsManager.CloseAgent(agentID)
 		}
 
 		// 0. Evict from in-memory telemetry cache

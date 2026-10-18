@@ -9,7 +9,6 @@ import (
 	"crypto/rand"
 	_ "embed"
 	"encoding/hex"
-	"fmt"
 	"net/http"
 	"os"
 	"os/signal"
@@ -138,7 +137,10 @@ func main() {
 	go func() { defer close(routineDone); routine.Start(ctx) }()
 	log.Println("Alert routine started in background...")
 
-	cfg := LoadConfig()
+	cfg, err := LoadConfig()
+	if err != nil {
+		log.Fatalf("config: %v", err)
+	}
 	if err := checkPathCollision(cfg); err != nil {
 		log.Fatalf("config: %v", err)
 	}
@@ -162,9 +164,8 @@ func main() {
 		}
 		setupTok := hex.EncodeToString(tokenBytes)
 		auth.SetSetupToken(setupTok)
-		auth.SetSetupCredentialPath(filepath.Join(dataDir, "setup-token"))
 
-		displayHost := cfg.PanelHost
+		displayHost := cfg.PanelAddr
 		if displayHost == "" {
 			displayHost = cfg.Host
 			if displayHost == "" {
@@ -183,15 +184,8 @@ func main() {
 			pPath = ""
 		}
 
-		setupURL := fmt.Sprintf("%s://%s%s/first-time-setup", scheme, displayHost, pPath)
-		tokenPath := filepath.Join(dataDir, "setup-token")
-		if err := os.WriteFile(tokenPath, []byte(setupTok+"\n"), 0600); err != nil {
-			log.Fatalf("write setup credential: %v", err)
-		}
-		if err := os.Chmod(tokenPath, 0600); err != nil {
-			log.Fatalf("secure setup credential: %v", err)
-		}
-		log.Printf("Setup required: visit %s and enter the credential stored in %s", setupURL, tokenPath)
+		// The link works only until the first account exists.
+		log.Printf("Setup required: visit %s://%s%s/first-time-setup?token=%s", scheme, displayHost, pPath, setupTok)
 
 	}
 
@@ -216,6 +210,7 @@ func main() {
 		PanelPath:  strings.TrimSuffix(panelPath, "/"),
 		PublicPath: strings.TrimSuffix(publicPath, "/"),
 		StaticPath: staticPath,
+		Agents:     wsManager,
 	}
 
 	// 4. Router setups
@@ -258,9 +253,9 @@ func main() {
 
 		// Web 1.0 HTML Routes
 		rt.Get("/first-time-setup", webHandler.SetupHandler)
-		rt.Post("/first-time-setup", webHandler.SetupHandler)
+		rt.Post("/first-time-setup", security.LoginRequests(webHandler.SetupHandler))
 		rt.Get("/login", webHandler.LoginHandler)
-		rt.Post("/login", webHandler.LoginHandler)
+		rt.Post("/login", security.LoginRequests(webHandler.LoginHandler))
 		rt.Post("/logout", webHandler.LogoutHandler)
 
 		rt.Get("/", webHandler.RequireAuthWeb(webHandler.AgentsListHandler))
@@ -299,13 +294,13 @@ func main() {
 
 		// REST JSON API Routes
 		rt.Route("/api", func(api chi.Router) {
-			api.Post("/login", auth.LoginHandler(db, db))
+			api.Post("/login", security.LoginRequests(auth.LoginHandler(db, db)))
 			api.Post("/logout", auth.LogoutHandler(db))
 
 			if isZero {
 				api.Get("/first-time-setup/status", auth.GetSetupStatusHandler(db))
 				api.Get("/first-time-setup/check", auth.CheckSetupHandler())
-				api.Post("/first-time-setup", auth.RegisterFirstUserHandler(db))
+				api.Post("/first-time-setup", security.LoginRequests(auth.RegisterFirstUserHandler(db)))
 			}
 
 			api.Group(func(authApi chi.Router) {
@@ -315,7 +310,7 @@ func main() {
 				authApi.Get("/agent/install/{id}", requireAuth(db, agent.InstallAgentHandler(db)))
 				authApi.Get("/agent/uninstall/{id}", requireAuth(db, agent.UninstallAgentHandler(db)))
 				authApi.Put("/agent", requireAuth(db, agent.RenameAgentHandler(db)))
-				authApi.Delete("/agent", requireAuth(db, agent.RevokeAgentHandler(db, tdb, metricsCache)))
+				authApi.Delete("/agent", requireAuth(db, agent.RevokeAgentHandler(db, tdb, metricsCache, wsManager)))
 				authApi.Post("/agent/reset/ssh/{id}", requireAuth(db, agent.ResetAgentSSHKeyHandler(db, wsManager)))
 				authApi.Post("/agent/reset/token/{id}", requireAuth(db, agent.ResetAgentTokenHandler(db, wsManager)))
 				authApi.Get("/agent/ssh-key/{id}", requireAuth(db, agent.GetAgentSSHKeyHandler(db)))
@@ -426,11 +421,10 @@ func main() {
 		}
 	}
 
-	// 7. Route and mount Virtual Hosts
-	if panelHost != "" {
+	// 7. URL mode: each side is served only on its own host; any other host gets
+	// the empty legacy router's 404. Path mode: the legacy router serves every host.
+	if cfg.URLMode {
 		mountContext(panelRouter, panelPath, setupPanel)
-	}
-	if publicHost != "" {
 		if publicPath == "/" {
 			mountContext(publicRouter, publicPath, func(rt chi.Router) {
 				setupPublic(rt)
@@ -439,10 +433,7 @@ func main() {
 		} else {
 			mountContext(publicRouter, publicPath, setupPublic)
 		}
-	}
-
-	// 8. Legacy combined path-prefix routing (fallback)
-	if panelPath == publicPath {
+	} else if panelPath == publicPath {
 		mountContext(legacyRouter, panelPath, func(rt chi.Router) {
 			setupPanel(rt)
 			setupPublic(rt)
@@ -450,15 +441,7 @@ func main() {
 		})
 	} else {
 		mountContext(legacyRouter, panelPath, setupPanel)
-
-		if publicPath == "/" {
-			mountContext(legacyRouter, publicPath, func(rt chi.Router) {
-				setupPublic(rt)
-				rt.Route("/dashboard", setupPublic)
-			})
-		} else {
-			mountContext(legacyRouter, publicPath, setupPublic)
-		}
+		mountContext(legacyRouter, publicPath, setupPublic)
 	}
 
 	go startHeartbeatSweeper(ctx, db, metricsCache)
@@ -471,13 +454,13 @@ func main() {
 	}
 	displayAddr := displayHost + ":" + cfg.Port
 
-	if panelHost != "" {
-		log.Printf("   - Admin Panel:        %s://%s%s", panelScheme, panelHost, panelPath)
+	if cfg.URLMode {
+		log.Printf("   - Admin Panel:        %s://%s%s", panelScheme, cfg.PanelAddr, panelPath)
 	} else {
 		log.Printf("   - Admin Panel:        http://%s%s", displayAddr, panelPath)
 	}
-	if publicHost != "" {
-		log.Printf("   - Public Dashboards:  %s://%s%s", publicScheme, publicHost, publicPath)
+	if cfg.URLMode {
+		log.Printf("   - Public Dashboards:  %s://%s%s", publicScheme, cfg.PublicAddr, publicPath)
 	} else {
 		log.Printf("   - Public Dashboards:  http://%s%s", displayAddr, publicPath)
 	}

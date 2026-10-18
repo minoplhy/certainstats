@@ -41,14 +41,20 @@ func ClientIP(r *http.Request) string {
 	return ip.String()
 }
 
+// TrustedPeer reports whether the direct peer is a configured trusted proxy.
+func TrustedPeer(r *http.Request) bool {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		host = r.RemoteAddr
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && trusted(ip)
+}
+
 // Strip forwarded headers at the trust boundary, before cookies or origins use them.
 func ProxyHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		host, _, err := net.SplitHostPort(r.RemoteAddr)
-		if err != nil {
-			host = r.RemoteAddr
-		}
-		if !trusted(net.ParseIP(host)) {
+		if !TrustedPeer(r) {
 			for _, h := range []string{"Forwarded", "X-Forwarded-For", "X-Real-IP", "X-Forwarded-Proto", "X-Forwarded-Scheme", "X-Forwarded-Host"} {
 				r.Header.Del(h)
 			}

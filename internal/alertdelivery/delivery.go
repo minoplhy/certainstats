@@ -4,12 +4,28 @@ package alertdelivery
 
 import (
 	a "certainstats/internal/base/alert"
+	log "certainstats/internal/logger"
 	"certainstats/internal/notifications"
 	"certainstats/internal/store"
 	"context"
 	"fmt"
 	"strings"
 )
+
+// sendSlots bounds concurrent deliveries so a burst of alerts cannot open unlimited connections.
+var sendSlots = make(chan struct{}, 8)
+
+// Go delivers an attempt in the background so slow destinations never stall the
+// caller. The attempt is already durable; the database claim prevents double sends.
+func Go(db store.AlertsStore, eventID string) {
+	go func() {
+		sendSlots <- struct{}{}
+		defer func() { <-sendSlots }()
+		if err := Dispatch(context.Background(), db, eventID); err != nil {
+			log.Printf("Alert delivery %s: %v", eventID, err)
+		}
+	}()
+}
 
 func Dispatch(ctx context.Context, db store.AlertsStore, eventID string) error {
 	h, e, err := db.AlertAttemptStart(ctx, eventID)

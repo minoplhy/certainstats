@@ -26,7 +26,7 @@ func ChangePasswordHandler(users store.UserStore) http.HandlerFunc {
 			return
 		}
 
-		if err := ValidatePassword(req.NewPassword, req.NewPassword); err != nil {
+		if err := ValidatePassword(req.NewPassword, req.ConfirmPassword); err != nil {
 			apiresponse.Error(w, http.StatusBadRequest, err.Error())
 			return
 		}

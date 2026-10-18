@@ -546,3 +546,33 @@ func TestNetworkTemplatePreservesQuotedTarget(t *testing.T) {
 		t.Fatal(raw, e)
 	}
 }
+
+func TestApplyTemplateEscapesValues(t *testing.T) {
+	out := applyTemplate(`{"n":"{{NICKNAME}}","a":"{{AGENT_ID}}"}`, NotificationContext{Nickname: `a"b\c <x>`, AgentID: "agt_1"}, true)
+	var got map[string]string
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatalf("invalid JSON %q: %v", out, err)
+	}
+	if got["n"] != `a"b\c <x>` || got["a"] != "agt_1" {
+		t.Fatalf("unexpected values: %v", got)
+	}
+	if strings.Contains(out, `\`+"u003c") {
+		t.Fatalf("HTML characters should stay readable: %q", out)
+	}
+}
+
+func TestWebhookRejectsCrossHostRedirect(t *testing.T) {
+	hit := false
+	other := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { hit = true }))
+	defer other.Close()
+	// 127.0.0.1 and localhost are different hosts for the redirect policy.
+	target := strings.Replace(other.URL, "127.0.0.1", "localhost", 1)
+	first := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, target, http.StatusTemporaryRedirect)
+	}))
+	defer first.Close()
+	err := DispatchNotification(alert.AlertAction{Type: alert.DestWebhook, Destination: first.URL}, NotificationContext{Status: "FIRING"})
+	if err == nil || hit {
+		t.Fatalf("cross-host redirect followed: err=%v hit=%v", err, hit)
+	}
+}

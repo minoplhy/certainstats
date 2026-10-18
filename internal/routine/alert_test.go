@@ -1,11 +1,13 @@
 package routine
 
 import (
+	"certainstats/internal/alertdelivery"
 	basealert "certainstats/internal/base/alert"
 	"certainstats/internal/store"
 	"certainstats/internal/store/sqlite"
 	"context"
 	"io"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -76,6 +78,7 @@ func TestRetryFailedAlerts(t *testing.T) {
 	r := &Routine{
 		Store: storeInst,
 	}
+	r.Deliver = syncDeliver(r)
 
 	// 4. Trigger alert which fails (simulate a failed webhook)
 	webhookStatus = http.StatusInternalServerError
@@ -201,6 +204,7 @@ func TestAlertLifecycle_DownAndResolve(t *testing.T) {
 	r := &Routine{
 		Store: storeInst,
 	}
+	r.Deliver = syncDeliver(r)
 
 	// Initial State: Set agent online
 	if err := storeInst.AgentUpdateHeartbeat(ctx, agentID, userID); err != nil {
@@ -373,6 +377,7 @@ func TestRecoveryFailureIsPersistedAndAutomaticallyRetried(t *testing.T) {
 		t.Fatal(err)
 	}
 	routine := &Routine{Store: db}
+	routine.Deliver = syncDeliver(routine)
 	state := basealert.AgentState{AgentID: "node", Status: "ok"}
 	info := store.AgentInfo{Nickname: "Node"}
 	if err = routine.TriggerAlert(ctx, rule, state, info, 0); err != nil {
@@ -404,5 +409,23 @@ func TestRecoveryFailureIsPersistedAndAutomaticallyRetried(t *testing.T) {
 	rules, err := db.AlertList(ctx, "owner")
 	if err != nil || rules[0].Agents[0].Status != "ok" {
 		t.Fatalf("recovery refired: %+v %v", rules, err)
+	}
+}
+
+// syncDeliver keeps deliveries in the calling goroutine so tests can assert outcomes directly.
+func syncDeliver(r *Routine) func(string) {
+	return func(eventID string) {
+		if err := alertdelivery.Dispatch(context.Background(), r.Store, eventID); err != nil {
+			log.Printf("test delivery: %v", err)
+		}
+	}
+}
+
+func TestEnvIntervalRejectsNonPositive(t *testing.T) {
+	for value, want := range map[string]time.Duration{"": time.Minute, "0": time.Minute, "-5s": time.Minute, "bad": time.Minute, "30": 30 * time.Second, "2m": 2 * time.Minute} {
+		t.Setenv("UPDATE_EVERY", value)
+		if got := envInterval("UPDATE_EVERY", time.Minute); got != want {
+			t.Errorf("UPDATE_EVERY=%q: got %v, want %v", value, got, want)
+		}
 	}
 }

@@ -3,6 +3,7 @@ package agent
 import (
 	resp "certainstats/internal/base/response"
 	ctx "certainstats/internal/context"
+	log "certainstats/internal/logger"
 	"certainstats/internal/metrics"
 	apiresponse "certainstats/internal/response"
 
@@ -18,7 +19,8 @@ func ListAgentsHandler(agents store.AgentStore, cache *metrics.RealtimeCache, pr
 
 		list, err := agents.AgentList(r.Context(), userID)
 		if err != nil {
-			apiresponse.Error(w, http.StatusInternalServerError, err.Error())
+			log.Printf("list agents: %v", err)
+			apiresponse.Error(w, http.StatusInternalServerError, "Database error")
 			return
 		}
 

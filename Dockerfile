@@ -31,8 +31,6 @@ COPY --from=backend-builder /app/certainstats .
 RUN mkdir -p /app/data
 
 # Default production environment variables
-ENV PANEL_PATH="/"
-ENV PUBLIC_PATH="/dashboard"
 ENV DATA_DIR="/app/data"
 
 EXPOSE 8080

@@ -41,6 +41,9 @@ var PublicWaitSlots = make(chan struct{}, 64)
 
 var PublicLimits = NewLimiter()
 
+// LoginLimits throttles sign-in and setup attempts per client IP.
+var LoginLimits = &Limiter{entries: make(map[string]*client), requestRate: envNumber("LOGIN_ATTEMPTS_PER_MINUTE", 10) / 60, requestBurst: envNumber("LOGIN_ATTEMPT_BURST", 10)}
+
 func (l *Limiter) Allow(ip string, build bool) bool {
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -101,6 +104,16 @@ func PublicRequests(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+func LoginRequests(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if !LoginLimits.Allow(ClientIP(r), false) {
+			Reject(w, 429, "Too many sign-in attempts; wait and retry")
+			return
+		}
+		next(w, r)
+	}
 }
 
 func (l *Limiter) Statistics() map[string]any {

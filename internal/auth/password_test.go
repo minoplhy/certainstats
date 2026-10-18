@@ -67,8 +67,9 @@ func TestChangePasswordHandler(t *testing.T) {
 		handler := ChangePasswordHandler(mockStore)
 
 		payload := map[string]string{
-			"old_password": oldPassword,
-			"new_password": newPassword,
+			"old_password":     oldPassword,
+			"new_password":     newPassword,
+			"confirm_password": newPassword,
 		}
 		body, _ := json.Marshal(payload)
 
@@ -128,8 +129,9 @@ func TestChangePasswordHandler(t *testing.T) {
 		handler := ChangePasswordHandler(mockStore)
 
 		payload := map[string]string{
-			"old_password": oldPassword,
-			"new_password": "",
+			"old_password":     oldPassword,
+			"new_password":     "",
+			"confirm_password": "",
 		}
 		body, _ := json.Marshal(payload)
 
@@ -154,8 +156,9 @@ func TestChangePasswordHandler(t *testing.T) {
 		handler := ChangePasswordHandler(mockStore)
 
 		payload := map[string]string{
-			"old_password": oldPassword,
-			"new_password": newPassword,
+			"old_password":     oldPassword,
+			"new_password":     newPassword,
+			"confirm_password": newPassword,
 		}
 		body, _ := json.Marshal(payload)
 
@@ -184,8 +187,9 @@ func TestChangePasswordHandler(t *testing.T) {
 		handler := ChangePasswordHandler(mockStore)
 
 		payload := map[string]string{
-			"old_password": "wrong_password",
-			"new_password": newPassword,
+			"old_password":     "wrong_password",
+			"new_password":     newPassword,
+			"confirm_password": newPassword,
 		}
 		body, _ := json.Marshal(payload)
 
@@ -214,8 +218,9 @@ func TestChangePasswordHandler(t *testing.T) {
 		handler := ChangePasswordHandler(mockStore)
 
 		payload := map[string]string{
-			"old_password": oldPassword,
-			"new_password": oldPassword,
+			"old_password":     oldPassword,
+			"new_password":     oldPassword,
+			"confirm_password": oldPassword,
 		}
 		body, _ := json.Marshal(payload)
 
@@ -247,8 +252,9 @@ func TestChangePasswordHandler(t *testing.T) {
 		handler := ChangePasswordHandler(mockStore)
 
 		payload := map[string]string{
-			"old_password": oldPassword,
-			"new_password": newPassword,
+			"old_password":     oldPassword,
+			"new_password":     newPassword,
+			"confirm_password": newPassword,
 		}
 		body, _ := json.Marshal(payload)
 
@@ -267,4 +273,15 @@ func TestChangePasswordHandler(t *testing.T) {
 
 func (m *mockUserStore) ChangePasswordAndRevoke(ctx context.Context, id, oldHash, newHash, token string) error {
 	return m.UpdatePassword(ctx, id, newHash)
+}
+
+func TestChangePasswordRequiresMatchingConfirmation(t *testing.T) {
+	body, _ := json.Marshal(map[string]string{"old_password": "old", "new_password": "newsecret456", "confirm_password": "different"})
+	req := httptest.NewRequest("POST", "/api/user/password", bytes.NewBuffer(body))
+	req = req.WithContext(context.WithValue(req.Context(), CSContext.UserIDKey, "user-123"))
+	rec := httptest.NewRecorder()
+	ChangePasswordHandler(&mockUserStore{}).ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for mismatched confirmation, got %d", rec.Code)
+	}
 }

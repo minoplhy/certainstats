@@ -3,6 +3,7 @@ package agent
 import (
 	agentdata "certainstats/internal/agent_data"
 	"certainstats/internal/agent_parser/registry"
+	"certainstats/internal/auth"
 	base "certainstats/internal/base/agent"
 	ctx "certainstats/internal/context"
 	api_response "certainstats/internal/response"
@@ -10,6 +11,7 @@ import (
 	"encoding/json"
 	"math/rand"
 	"net/http"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 )
@@ -66,6 +68,14 @@ var nouns = []string{
 	"wolf", "wraith", "zenith",
 }
 
+// requestScheme is the scheme agents should use to reach this panel.
+func requestScheme(r *http.Request) string {
+	if auth.IsRequestSecure(r) {
+		return "https"
+	}
+	return "http"
+}
+
 func GenerateNickname() string {
 	return adjectives[rand.Intn(len(adjectives))] + "-" + nouns[rand.Intn(len(nouns))]
 }
@@ -93,9 +103,13 @@ func ProvisionAgentHandler(agent store.AgentStore, parserRegistry *registry.Regi
 		agentID := agentdata.GenerateAgentID()
 		token := agentdata.GenerateDeviceToken(req.AgentType)
 
-		nickname := req.Nickname
+		nickname := strings.TrimSpace(req.Nickname)
 		if nickname == "" {
 			nickname = GenerateNickname()
+		}
+		if len(nickname) > 64 {
+			api_response.Error(w, http.StatusBadRequest, "Nickname too long (max 64 chars)")
+			return
 		}
 
 		err := agent.AgentProvision(r.Context(), agentID, userID, token, nickname, req.AgentType)
@@ -115,7 +129,7 @@ func ProvisionAgentHandler(agent store.AgentStore, parserRegistry *registry.Regi
 
 		// Generate setup instructions
 		panelPath, _ := r.Context().Value(ctx.PanelPathKey).(string)
-		messages := getSetupInstructions(req.AgentType, token, r.Host, panelPath, publicKey)
+		messages := getSetupInstructions(req.AgentType, token, requestScheme(r), r.Host, panelPath, publicKey)
 
 		api_response.JSON(w, http.StatusOK, base.ProvisionResponse{
 			AgentID:   agentID,
@@ -158,7 +172,7 @@ func InstallAgentHandler(agent store.AgentStore) http.HandlerFunc {
 
 		// Generate setup instructions using existing token and SSH key
 		panelPath, _ := r.Context().Value(ctx.PanelPathKey).(string)
-		messages := getSetupInstructions(mgtTarget.AgentType, mgtTarget.Token, r.Host, panelPath, mgtTarget.BeszelPublicKey)
+		messages := getSetupInstructions(mgtTarget.AgentType, mgtTarget.Token, requestScheme(r), r.Host, panelPath, mgtTarget.BeszelPublicKey)
 
 		api_response.JSON(w, http.StatusOK, base.ProvisionResponse{
 			AgentID:   mgtTarget.AgentID,

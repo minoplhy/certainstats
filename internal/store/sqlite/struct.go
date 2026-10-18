@@ -5,6 +5,7 @@ import (
 	"certainstats/internal/store"
 	"database/sql"
 	"sync"
+	"sync/atomic"
 )
 
 // Store implements store.AgentStore, store.SessionStore,
@@ -14,6 +15,8 @@ type Store struct {
 	Providers *registry.Registry
 	db        *sql.DB
 	cache     sync.Map // token string → *store.AgentIdentity
+	// tokenGen advances on every token change so a lookup that raced it is not cached.
+	tokenGen atomic.Uint64
 }
 
 // Compile-time interface compliance checks.

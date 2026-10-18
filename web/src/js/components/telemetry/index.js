@@ -9,7 +9,7 @@ import { formatUptime } from './format/uptime.js';
 import { renderPartitions, renderClusterStats } from './feed/cluster_stats.js';
 import { initWebSocket, onFeedEvent } from './feed/live_feed.js';
 import { initRouter } from './page/router.js';
-import { initFloatingTooltips } from './ui/tooltips.js';
+import { initFloatingTooltips, renderTooltip } from './ui/tooltips.js';
 import { initScrollRestoration, initPage } from './page/page_init.js';
 
 window.CertainStatsTelemetry = {
@@ -23,7 +23,8 @@ window.CertainStatsTelemetry = {
   onFeedEvent,
   initScrollRestoration,
   initRouter,
-  initFloatingTooltips
+  initFloatingTooltips,
+  renderTooltip
 };
 
 onReady(initPage);

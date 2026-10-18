@@ -295,7 +295,7 @@ func (s *Service) Evaluate(ctx context.Context, agentID string) error {
 		return err
 	}
 	for _, eventID := range events {
-		go alertdelivery.Dispatch(context.Background(), s.Store, eventID)
+		alertdelivery.Go(s.Store, eventID)
 	}
 	return nil
 }

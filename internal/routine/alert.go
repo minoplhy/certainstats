@@ -26,7 +26,8 @@ func (e *Routine) TriggerAlert(ctx context.Context, rule store.Alert, state a.Ag
 	if err != nil {
 		return err
 	}
-	return alertdelivery.Dispatch(ctx, e.Store, attempt.EventID)
+	e.deliver(attempt.EventID)
+	return nil
 }
 func (e *Routine) ResolveAlert(ctx context.Context, rule store.Alert, state a.AgentState, info store.AgentInfo) error {
 	h, err := e.Store.AlertHistoryActive(ctx, rule.UserID, rule.AlertID, state.AgentID)
@@ -40,7 +41,8 @@ func (e *Routine) ResolveAlert(ctx context.Context, rule store.Alert, state a.Ag
 	if err != nil {
 		return err
 	}
-	return alertdelivery.Dispatch(ctx, e.Store, attempt.EventID)
+	e.deliver(attempt.EventID)
+	return nil
 }
 func (e *Routine) RetryFailedAlerts(ctx context.Context) {
 	attempts, err := e.Store.AlertAttemptsFailed(ctx)
@@ -73,9 +75,7 @@ func (e *Routine) RetryFailedAlerts(ctx context.Context) {
 		}
 		attempt, err := e.Store.AlertAttemptQueue(ctx, h.UserID, h.HistoryID, "firing", "")
 		if err == nil {
-			if err = alertdelivery.Dispatch(ctx, e.Store, attempt.EventID); err != nil {
-				log.Printf("Legacy alert dispatch: %v", err)
-			}
+			e.deliver(attempt.EventID)
 		}
 	}
 }
@@ -94,8 +94,15 @@ func (e *Routine) retryAttempt(ctx context.Context, attempt a.HistoryEvent) {
 	}
 	queued, err := e.Store.AlertAttemptQueue(ctx, h.UserID, h.HistoryID, attempt.Phase, attempt.EventID)
 	if err == nil {
-		if err = alertdelivery.Dispatch(ctx, e.Store, queued.EventID); err != nil {
-			log.Printf("Alert retry dispatch: %v", err)
-		}
+		e.deliver(queued.EventID)
 	}
+}
+
+// deliver sends attempts in the background so slow destinations never stall the central loop.
+func (e *Routine) deliver(eventID string) {
+	if e.Deliver != nil {
+		e.Deliver(eventID)
+		return
+	}
+	alertdelivery.Go(e.Store, eventID)
 }

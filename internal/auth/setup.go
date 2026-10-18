@@ -9,15 +9,13 @@ import (
 	"encoding/json"
 	"golang.org/x/crypto/bcrypt"
 	"net/http"
-	"os"
 	"strings"
 	"sync"
 )
 
 var (
-	setupToken          string
-	setupCredentialPath string
-	tokenMu             sync.RWMutex
+	setupToken string
+	tokenMu    sync.RWMutex
 )
 
 func SetSetupToken(tok string) {
@@ -36,9 +34,6 @@ func ClearSetupToken() {
 	tokenMu.Lock()
 	defer tokenMu.Unlock()
 	setupToken = ""
-	if setupCredentialPath != "" {
-		_ = os.Remove(setupCredentialPath)
-	}
 }
 
 func ValidateSetupToken(tok string) bool {
@@ -109,7 +104,7 @@ func RegisterFirstUserHandler(users store.UserStore) http.HandlerFunc {
 		}
 
 		if err := ValidatePassword(req.Password, req.PasswordConfirm); err != nil {
-			response.Error(w, http.StatusBadRequest, "Passwords do not match")
+			response.Error(w, http.StatusBadRequest, err.Error())
 			return
 		}
 
@@ -144,10 +139,4 @@ func RegisterFirstUserHandler(users store.UserStore) http.HandlerFunc {
 			"status": "success",
 		})
 	}
-}
-
-func SetSetupCredentialPath(path string) {
-	tokenMu.Lock()
-	defer tokenMu.Unlock()
-	setupCredentialPath = path
 }

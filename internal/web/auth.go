@@ -4,6 +4,7 @@ import (
 	agentdata "certainstats/internal/agent_data"
 	"certainstats/internal/auth"
 	log "certainstats/internal/logger"
+	"errors"
 	"net/http"
 
 	"golang.org/x/crypto/bcrypt"
@@ -11,8 +12,8 @@ import (
 
 func (h *WebHandler) SetupHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodGet {
-		token := r.URL.Query().Get("token")
-		pd := h.newPageData(r, "Initial Setup", "", map[string]string{"Token": token})
+		// The setup link printed at startup carries the credential and pre-fills it.
+		pd := h.newPageData(r, "Initial Setup", "", map[string]string{"Token": r.URL.Query().Get("token")})
 		h.Renderer.RenderHTTP(w, http.StatusOK, "setup.html", pd)
 		return
 	}
@@ -78,18 +79,14 @@ func (h *WebHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 		password := r.FormValue("password")
 		remember := r.FormValue("remember") == "true" || r.FormValue("remember") == "on" || r.FormValue("remember") == "1"
 
-		user, err := h.Store.GetByUsername(r.Context(), username)
+		user, err := auth.CheckCredentials(r.Context(), h.Store, username, password)
 		if err != nil {
-			pd := h.newPageData(r, "Sign In", "", map[string]any{"Username": r.FormValue("username")})
-			pd.FlashError = "Invalid username or password"
-			h.Renderer.RenderHTTP(w, http.StatusUnauthorized, "login.html", pd)
-			return
-		}
-
-		if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password)); err != nil {
-			pd := h.newPageData(r, "Sign In", "", map[string]any{"Username": r.FormValue("username")})
-			pd.FlashError = "Invalid username or password"
-			h.Renderer.RenderHTTP(w, http.StatusUnauthorized, "login.html", pd)
+			status, message := http.StatusUnauthorized, "Invalid username or password"
+			if !errors.Is(err, auth.ErrUnauthenticated) {
+				log.Printf("login: %v", err)
+				status, message = http.StatusInternalServerError, "Sign-in failed; retry"
+			}
+			h.loginError(w, r, message, status)
 			return
 		}
 

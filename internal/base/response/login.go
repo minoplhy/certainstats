@@ -9,4 +9,6 @@ type LoginRequest struct {
 type ChangePasswordRequest struct {
 	OldPassword string `json:"old_password"`
 	NewPassword string `json:"new_password"`
+	// ConfirmPassword must repeat NewPassword.
+	ConfirmPassword string `json:"confirm_password"`
 }

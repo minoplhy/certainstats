@@ -58,6 +58,7 @@ func BeszelWSHandler(db store.AgentStore, tdb *tsdb.DB, wsManager *ws.Manager, c
 			hub := ws.NewHub()
 			// The epoch scopes duplicate suppression of network results to this connection.
 			hub.ConnectionEpoch = nm.ID()
+			hub.AgentID = identity.AgentID
 			hub.SetConn(conn)
 			defer hub.Close()
 

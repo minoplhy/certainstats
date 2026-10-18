@@ -85,6 +85,18 @@ func (m *Manager) UnregisterHub(token string, hub *Hub) {
 	}
 }
 
+// CloseAgent closes every connection of an agent whose credentials were revoked.
+func (m *Manager) CloseAgent(agentID string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for token, h := range m.agents {
+		if h.AgentID == agentID {
+			h.Close()
+			delete(m.agents, token)
+		}
+	}
+}
+
 func (m *Manager) CloseAll() {
 	m.mu.Lock()
 	defer m.mu.Unlock()

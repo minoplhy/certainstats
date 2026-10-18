@@ -69,3 +69,19 @@ func TestLimiterBudgetAndBound(t *testing.T) {
 		t.Fatal("unbounded limiter state")
 	}
 }
+
+func TestLoginRequests(t *testing.T) {
+	saved := LoginLimits
+	defer func() { LoginLimits = saved }()
+	LoginLimits = &Limiter{entries: make(map[string]*client), requestRate: 10.0 / 60, requestBurst: 10}
+	handler := LoginRequests(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(204) })
+	for i := 1; i <= 11; i++ {
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest("POST", "/login", nil)
+		req.RemoteAddr = "203.0.113.9:1234"
+		handler.ServeHTTP(rec, req)
+		if want := map[bool]int{true: 204, false: 429}[i <= 10]; rec.Code != want {
+			t.Fatalf("attempt %d: got %d, want %d", i, rec.Code, want)
+		}
+	}
+}

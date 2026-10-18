@@ -81,10 +81,12 @@ func parsePublicTimeRange(r *http.Request, maxHoursAllowed uint) (TimeRange, str
 		}
 		raw = n
 	}
-	snapped := snapToStandardHours(raw)
-	if raw > uint64(maxHoursAllowed) || snapped > uint64(maxHoursAllowed) {
+	if raw > uint64(maxHoursAllowed) {
 		return TimeRange{}, "", false
 	}
+	// A dashboard limit between buckets caps the window at the limit itself.
+	// The key stays bounded: the limit is fixed for a dashboard version.
+	snapped := min(snapToStandardHours(raw), uint64(maxHoursAllowed))
 	now := time.Now()
 	tr := TimeRange{
 		StartMs: now.Add(-time.Duration(snapped) * time.Hour).UnixMilli(),

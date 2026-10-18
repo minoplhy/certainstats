@@ -1,16 +1,13 @@
 package notifications
 
 import (
-	"net/http"
 	"time"
 )
 
-// Use a single, global HTTP client with a strict timeout.
-// NEVER use the default http.Client in production, as it has no timeout
-// and will cause massive goroutine leaks if a destination server hangs.
-var httpClient = &http.Client{
-	Timeout: 10 * time.Second,
-}
+// Use a single, global HTTP client with a strict timeout and the webhook
+// redirect policy. NEVER use the default http.Client in production, as it has
+// no timeout and will cause massive goroutine leaks if a destination hangs.
+var httpClient = webhookClient()
 
 // NotificationContext carries all the context needed for rich alert messages.
 type NotificationContext struct {

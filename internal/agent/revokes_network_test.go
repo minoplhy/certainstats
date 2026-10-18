@@ -47,7 +47,7 @@ func TestRevokePreservesArchivedNetworkHistory(t *testing.T) {
 	r := httptest.NewRequest("DELETE", "/agent?agent_id=node", nil)
 	r = r.WithContext(context.WithValue(ctx, csctx.UserIDKey, "owner"))
 	w := httptest.NewRecorder()
-	RevokeAgentHandler(store, db, cache)(w, r)
+	RevokeAgentHandler(store, db, cache, nil)(w, r)
 	if w.Code != 200 {
 		t.Fatal(w.Code, w.Body)
 	}

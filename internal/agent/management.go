@@ -2,6 +2,7 @@ package agent
 
 import (
 	ctx "certainstats/internal/context"
+	log "certainstats/internal/logger"
 	api_response "certainstats/internal/response"
 	"certainstats/internal/store"
 	"net/http"
@@ -13,7 +14,8 @@ func ListAgentsManagementHandler(agents store.AgentStore) http.HandlerFunc {
 
 		list, err := agents.AgentListManagement(r.Context(), userID)
 		if err != nil {
-			api_response.Error(w, http.StatusInternalServerError, err.Error())
+			log.Printf("list agent management: %v", err)
+			api_response.Error(w, http.StatusInternalServerError, "Database error")
 			return
 		}
 
