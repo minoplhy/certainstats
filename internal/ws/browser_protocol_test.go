@@ -255,3 +255,23 @@ func TestBrowserMailboxRetainsLatestPulse(t *testing.T) {
 		t.Fatal("writer not disposed")
 	}
 }
+
+func TestIsWebSocketUpgrade(t *testing.T) {
+	for _, c := range []struct {
+		upgrade, connection string
+		want                bool
+	}{
+		{"websocket", "Upgrade", true},
+		{"WebSocket", "keep-alive, Upgrade", true},
+		{"", "", false},
+		{"websocket", "keep-alive", false},
+		{"h2c", "Upgrade", false},
+	} {
+		r := httptest.NewRequest("GET", "/api/ws", nil)
+		r.Header.Set("Upgrade", c.upgrade)
+		r.Header.Set("Connection", c.connection)
+		if isWebSocketUpgrade(r) != c.want {
+			t.Fatalf("Upgrade=%q Connection=%q: want %v", c.upgrade, c.connection, c.want)
+		}
+	}
+}

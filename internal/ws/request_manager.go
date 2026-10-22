@@ -3,6 +3,7 @@ package ws
 import (
 	log "certainstats/internal/logger"
 	"net/http"
+	"strings"
 
 	"github.com/fxamacker/cbor/v2"
 	"golang.org/x/net/websocket"
@@ -68,7 +69,8 @@ func (acr *AgentConnectRequest) Upgrade(w http.ResponseWriter, r *http.Request, 
 	log.Debugf("[WS] Raw connection details - Method: %s, URL: %s, RemoteAddr: %s", r.Method, r.URL.Path, r.RemoteAddr)
 
 	// If it's not a websocket upgrade request, it might be an availability check.
-	if r.Header.Get("Upgrade") != "websocket" {
+	// Upgrade without Connection: upgrade falls through so the handshake rejects it with 400.
+	if !strings.EqualFold(r.Header.Get("Upgrade"), "websocket") {
 		log.Debugf("[WS] Non-websocket request detected (availability check). Returning 200 OK.")
 		w.Header().Set("Content-Type", "text/plain")
 		w.WriteHeader(http.StatusOK)

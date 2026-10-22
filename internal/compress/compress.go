@@ -1,7 +1,10 @@
 package compress
 
 import (
+	"bufio"
 	"bytes"
+	"errors"
+	"net"
 	"net/http"
 	"strings"
 	"sync"
@@ -229,6 +232,44 @@ func (w *compressionResponseWriter) Close() error {
 
 	_, err := w.ResponseWriter.Write(w.buf.Bytes())
 	return err
+}
+
+// Hijack hands the raw connection to the caller (e.g. a WebSocket upgrade).
+// Nothing may have been written yet; afterwards Close is a no-op.
+func (w *compressionResponseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	if w.wroteHeader || w.writer != nil || w.buf.Len() > 0 {
+		return nil, nil, errors.New("compress: cannot hijack after response has been written")
+	}
+	w.bypassed = true
+	w.wroteHeader = true
+	return http.NewResponseController(w.ResponseWriter).Hijack()
+}
+
+// Flush pushes buffered data to the client, starting the response if it has not started yet.
+func (w *compressionResponseWriter) Flush() {
+	if !w.wroteHeader {
+		if w.buf.Len() > 0 {
+			w.startCompression()
+		} else {
+			// Nothing worth compressing yet: commit to an uncompressed response
+			w.bypassed = true
+			w.wroteHeader = true
+			if w.status != 0 {
+				w.ResponseWriter.WriteHeader(w.status)
+			} else {
+				w.ResponseWriter.WriteHeader(http.StatusOK)
+			}
+		}
+	}
+	if cw, ok := w.writer.(*closerWrapper); ok && cw.flush != nil {
+		_ = cw.flush()
+	}
+	_ = http.NewResponseController(w.ResponseWriter).Flush()
+}
+
+// Unwrap lets http.ResponseController reach the underlying writer.
+func (w *compressionResponseWriter) Unwrap() http.ResponseWriter {
+	return w.ResponseWriter
 }
 
 func (cw *closerWrapper) Close() error {

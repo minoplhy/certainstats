@@ -26,6 +26,10 @@ func UIWebSocketHandler(broadcaster *AgentBroadcaster, sessions store.SessionSto
 			apiresponse.Error(w, 401, "Unauthorized")
 			return
 		}
+		if !isWebSocketUpgrade(r) {
+			apiresponse.Error(w, http.StatusBadRequest, "WebSocket upgrade required")
+			return
+		}
 		if !requireBrowserProtocol(w, r, broadcaster.protobuf) {
 			return
 		}

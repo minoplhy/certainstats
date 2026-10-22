@@ -12,6 +12,13 @@ const BrowserProtocol = "certainstats.protobuf.v1"
 
 func ProtobufEnabled(value string) bool { return value == "true" }
 
+// isWebSocketUpgrade reports whether r is a WebSocket handshake. The x/net server
+// hijacks the connection before validating headers, so plain requests must be rejected first.
+func isWebSocketUpgrade(r *http.Request) bool {
+	return strings.EqualFold(r.Header.Get("Upgrade"), "websocket") &&
+		strings.Contains(strings.ToLower(r.Header.Get("Connection")), "upgrade")
+}
+
 func requireBrowserProtocol(w http.ResponseWriter, r *http.Request, protobuf bool) bool {
 	if !protobuf {
 		if len(r.Header.Values("Sec-WebSocket-Protocol")) == 0 {

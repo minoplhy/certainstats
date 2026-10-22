@@ -42,6 +42,10 @@ func PublicWebSocketHandler(dashboard store.DashboardStore, broadcaster *AgentBr
 			apiresponse.Error(w, http.StatusForbidden, "Public access disabled")
 			return
 		}
+		if !isWebSocketUpgrade(r) {
+			apiresponse.Error(w, http.StatusBadRequest, "WebSocket upgrade required")
+			return
+		}
 		if !requireBrowserProtocol(w, r, broadcaster.protobuf) {
 			return
 		}

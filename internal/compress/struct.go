@@ -34,4 +34,5 @@ type compressionResponseWriter struct {
 type closerWrapper struct {
 	io.Writer
 	close func() error
+	flush func() error
 }
