@@ -2,6 +2,7 @@ package collector
 
 import (
 	agentdata "certainstats/internal/agent_data"
+	"certainstats/internal/security"
 	"certainstats/internal/store"
 	"crypto/sha256"
 	"encoding/hex"
@@ -16,6 +17,8 @@ const MaxConnections = 256
 type Service struct {
 	Store  store.CollectorStore
 	Agents store.AgentStore
+	// Limits throttles connection attempts per IP; nil uses security.CollectorLimits.
+	Limits *security.Limiter
 	types  map[string]Type
 	conns  *registry
 }

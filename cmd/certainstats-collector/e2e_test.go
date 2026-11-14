@@ -19,6 +19,7 @@ import (
 	"certainstats/internal/collector"
 	ctxkeys "certainstats/internal/context"
 	"certainstats/internal/crowdsec"
+	"certainstats/internal/security"
 	"certainstats/internal/store/sqlite"
 
 	"github.com/go-chi/chi/v5"
@@ -118,6 +119,7 @@ func newE2E(t *testing.T) *e2e {
 	}
 	t.Cleanup(func() { cs.Close() })
 	svc := collector.NewService(db, db)
+	svc.Limits = security.NewIPLimiter(1e6, 1e6) // tests dial often from one IP
 	if err := svc.Register(&crowdsec.Type{Store: cs, Collectors: svc}); err != nil {
 		t.Fatal(err)
 	}
@@ -235,9 +237,26 @@ func TestLAPIDownIsReported(t *testing.T) {
 	creds := e.getenv("CROWDSEC_LAPI_CREDENTIALS")
 	os.WriteFile(creds, []byte("url: http://127.0.0.1:1\nlogin: certainstats\npassword: s3cret\n"), 0o600)
 	e.once(t)
-	st := e.get(t, "/"+e.id+"/crowdsec")
-	if st["status"] != "error" || !strings.Contains(st["error"].(string), "cannot reach the Local API") {
+	// cs_status is not acknowledged, so the collector can exit before the server reads it.
+	st := e.waitState(t, func(st map[string]any) bool { return st["status"] == "error" })
+	if msg, _ := st["error"].(string); !strings.Contains(msg, "cannot reach the Local API") {
 		t.Fatalf("state %v", st)
+	}
+}
+
+// waitState polls the collector's CrowdSec state until want accepts it.
+func (e *e2e) waitState(t *testing.T, want func(map[string]any) bool) map[string]any {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		st := e.get(t, "/"+e.id+"/crowdsec")
+		if want(st) {
+			return st
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("state never matched: %v", st)
+		}
+		time.Sleep(20 * time.Millisecond)
 	}
 }
 

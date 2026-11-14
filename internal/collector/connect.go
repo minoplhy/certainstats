@@ -18,7 +18,11 @@ import (
 
 // Connect is the collector WebSocket. The token is checked before the upgrade.
 func (s *Service) Connect(w http.ResponseWriter, r *http.Request) {
-	if !security.CollectorLimits.Allow(security.ClientIP(r), false) {
+	limits := s.Limits
+	if limits == nil {
+		limits = security.CollectorLimits
+	}
+	if !limits.Allow(security.ClientIP(r), false) {
 		security.Reject(w, http.StatusTooManyRequests, "Too many connection attempts")
 		return
 	}

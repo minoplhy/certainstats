@@ -14,6 +14,7 @@ import (
 
 	"certainstats/internal/collector/wire"
 	ctxkeys "certainstats/internal/context"
+	"certainstats/internal/security"
 	"certainstats/internal/store/sqlite"
 
 	"github.com/fxamacker/cbor/v2"
@@ -74,6 +75,7 @@ func newHarness(t *testing.T) *harness {
 		}
 	}
 	svc := NewService(db, db)
+	svc.Limits = security.NewIPLimiter(1e6, 1e6) // tests dial often from one IP
 	typ := &fakeType{}
 	if err := svc.Register(typ); err != nil {
 		t.Fatal(err)
@@ -283,5 +285,24 @@ func TestDisabledTypeAndFatalMessage(t *testing.T) {
 	c3.SetReadDeadline(time.Now().Add(5 * time.Second))
 	if err := websocket.Message.Receive(c3, &data); err == nil {
 		t.Fatal("an oversized frame must close the connection")
+	}
+}
+
+func TestConnectAttemptsAreLimited(t *testing.T) {
+	h := newHarness(t)
+	h.svc.Limits = security.NewIPLimiter(60, 2)
+	codes := []int{}
+	for i := 0; i < 3; i++ {
+		req, _ := http.NewRequest("GET", h.srv.URL+wire.ConnectPath, nil)
+		req.Header.Set(wire.HeaderToken, "csc_wrong")
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		codes = append(codes, resp.StatusCode)
+	}
+	if codes[0] != 401 || codes[1] != 401 || codes[2] != 429 {
+		t.Fatalf("status codes %v, want 401 401 429", codes)
 	}
 }
