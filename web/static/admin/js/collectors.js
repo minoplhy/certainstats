@@ -189,7 +189,7 @@
 
   // web/src/js/components/collectors/setup.js
   var RELEASES = "https://github.com/minoplhy/certainstats/releases/latest";
-  var IMAGE = "ghcr.io/minoplhy/certainstats:latest";
+  var IMAGE = "ghcr.io/minoplhy/certainstats-collector:latest";
   var CROWDSEC_CREDS = "/etc/certainstats/crowdsec-lapi.yaml";
   var TYPE_SETUP = {
     crowdsec: {
@@ -241,7 +241,7 @@
   function composeFile(token, types) {
     const env = envLines(token, types).map(([k, v]) => "      " + k + ': "' + v + '"').join("\n");
     const volumes = types.flatMap((type) => TYPE_SETUP[type]?.volumes || []);
-    let yaml = "services:\n  certainstats-collector:\n    image: " + IMAGE + '\n    command: ["./certainstats-collector"]\n    restart: unless-stopped\n    environment:\n' + env + "\n";
+    let yaml = "services:\n  certainstats-collector:\n    image: " + IMAGE + "\n    restart: unless-stopped\n    environment:\n" + env + "\n";
     if (volumes.length) yaml += "    volumes:\n" + volumes.map((v) => "      - " + v).join("\n") + "\n";
     if (types.includes("crowdsec")) yaml += "    # Join the network CrowdSec runs on, so the Local API is reachable.\n    # networks: [crowdsec]\n";
     return yaml;
@@ -252,7 +252,7 @@
     for (const type of types) for (const p of TYPE_SETUP[type]?.prepare || []) prepare.push(commandBlock(p.label, p.command));
     const tabs = [
       { name: "systemd", build: () => systemdSteps(token, types).map(([label, cmd]) => commandBlock(label, cmd)) },
-      { name: "Docker Compose", build: () => [...prepare, commandBlock("docker-compose.yml", composeFile(token, types)), commandBlock("Start it", "docker compose up -d certainstats-collector\ndocker compose logs -f certainstats-collector")] }
+      { name: "Docker Compose", build: () => [...prepare, commandBlock("docker-compose.yml", composeFile(token, types)), commandBlock("Check every prerequisite", "docker compose run --rm certainstats-collector --check"), commandBlock("Start it", "docker compose up -d certainstats-collector\ndocker compose logs -f certainstats-collector")] }
     ];
     const header = el("div", "instruction-tabs-header");
     header.setAttribute("role", "tablist");

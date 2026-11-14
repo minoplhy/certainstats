@@ -3,7 +3,7 @@ import { el, copy } from './shared.js';
 // Setup steps for a new collector, built from the types it collects.
 
 const RELEASES = 'https://github.com/minoplhy/certainstats/releases/latest';
-const IMAGE = 'ghcr.io/minoplhy/certainstats:latest';
+const IMAGE = 'ghcr.io/minoplhy/certainstats-collector:latest';
 const CROWDSEC_CREDS = '/etc/certainstats/crowdsec-lapi.yaml';
 
 // Each type adds its environment, host steps and container mounts.
@@ -62,7 +62,7 @@ export function systemdSteps(token, types) {
 export function composeFile(token, types) {
   const env = envLines(token, types).map(([k, v]) => '      ' + k + ': "' + v + '"').join('\n');
   const volumes = types.flatMap(type => TYPE_SETUP[type]?.volumes || []);
-  let yaml = 'services:\n  certainstats-collector:\n    image: ' + IMAGE + '\n    command: ["./certainstats-collector"]\n    restart: unless-stopped\n    environment:\n' + env + '\n';
+  let yaml = 'services:\n  certainstats-collector:\n    image: ' + IMAGE + '\n    restart: unless-stopped\n    environment:\n' + env + '\n';
   if (volumes.length) yaml += '    volumes:\n' + volumes.map(v => '      - ' + v).join('\n') + '\n';
   if (types.includes('crowdsec')) yaml += '    # Join the network CrowdSec runs on, so the Local API is reachable.\n    # networks: [crowdsec]\n';
   return yaml;
@@ -75,7 +75,7 @@ export function renderSetup(container, token, types) {
   for (const type of types) for (const p of TYPE_SETUP[type]?.prepare || []) prepare.push(commandBlock(p.label, p.command));
   const tabs = [
     {name: 'systemd', build: () => systemdSteps(token, types).map(([label, cmd]) => commandBlock(label, cmd))},
-    {name: 'Docker Compose', build: () => [...prepare, commandBlock('docker-compose.yml', composeFile(token, types)), commandBlock('Start it', 'docker compose up -d certainstats-collector\ndocker compose logs -f certainstats-collector')]}
+    {name: 'Docker Compose', build: () => [...prepare, commandBlock('docker-compose.yml', composeFile(token, types)), commandBlock('Check every prerequisite', 'docker compose run --rm certainstats-collector --check'), commandBlock('Start it', 'docker compose up -d certainstats-collector\ndocker compose logs -f certainstats-collector')]}
   ];
   const header = el('div', 'instruction-tabs-header');
   header.setAttribute('role', 'tablist');

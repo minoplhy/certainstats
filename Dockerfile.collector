@@ -1,0 +1,31 @@
+# certainstats-collector: runs on a monitored host and pushes data to CertainStats.
+# It keeps no state, so the image has no data directory and exposes no port.
+
+# Stage 1: build (runs natively on the build host, cross-compiles to the target)
+FROM --platform=$BUILDPLATFORM golang:1.26-alpine AS builder
+WORKDIR /app
+
+ARG TARGETOS
+ARG TARGETARCH
+ARG VERSION=dev
+
+COPY go.mod go.sum ./
+RUN --mount=type=cache,target=/go/pkg/mod \
+    go mod download
+
+COPY . .
+
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -ldflags="-w -s -X main.version=$VERSION" -o certainstats-collector ./cmd/certainstats-collector
+
+# Stage 2: runtime
+FROM alpine:latest
+RUN apk add --no-cache ca-certificates tzdata
+
+COPY --from=builder /app/certainstats-collector /usr/local/bin/certainstats-collector
+
+# Runs as root: credential files such as /etc/certainstats/crowdsec-lapi.yaml are
+# root-owned with mode 600 on the host and mounted read-only.
+# Flags pass straight through: docker run … --check, --once or --version.
+ENTRYPOINT ["certainstats-collector"]

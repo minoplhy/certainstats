@@ -54,8 +54,9 @@ The rest of the exchange belongs to the types. Wire types live in
    pass WebSocket upgrades and keep idle connections open longer than 30
    seconds, as Beszel agents already need.
 3. Install the collector, from the `certainstats-collector-linux-<arch>` release
-   files or the `ghcr.io/minoplhy/certainstats` image with
-   `command: ["./certainstats-collector"]`.
+   files or its own image, `ghcr.io/minoplhy/certainstats-collector`. The image's
+   entrypoint is the collector, so flags pass straight through, such as
+   `docker compose run --rm certainstats-collector --check`.
 4. Configure it through its environment:
 
    | Variable | Meaning |

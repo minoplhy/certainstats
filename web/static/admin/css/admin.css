@@ -292,6 +292,7 @@ dialog.modal[open] {
 .modal-body {
   padding: 4px 20px 16px;
   overflow-y: auto;
+  min-height: 0;
 }
 
 .modal-footer {
@@ -567,27 +568,58 @@ dialog.modal[open] {
 }
 
 .instruction-label {
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
-  color: var(--muted);
+  color: var(--text-2);
+}
+
+.collector-setup,
+.collector-setup [data-collectors-setup] {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.collector-setup > *,
+.instruction-tab-panel > * {
+  flex-shrink: 0;
+}
+
+.instruction-tab-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding-top: 4px;
+  counter-reset: step;
+}
+
+.instruction-tab-panel[hidden] {
+  display: none;
+}
+
+.instruction-tab-panel .instruction-label::before {
+  counter-increment: step;
+  content: counter(step) ". ";
+  color: var(--accent);
 }
 
 .instruction-command-box {
   background: var(--code-bg);
   border-radius: var(--r);
   position: relative;
-  padding: 14px 92px 14px 16px;
-  overflow-x: auto;
+  padding: 14px 76px 14px 16px;
 }
 
+/* Commands keep their real line breaks; long lines scroll sideways while Copy stays put. */
 .instruction-command-code {
   color: var(--code-fg);
   font-family: var(--font-mono);
   font-size: 12px;
   margin: 0;
   line-height: 1.6;
-  white-space: pre-wrap;
-  word-break: break-all;
+  white-space: pre;
+  word-break: normal;
+  overflow-x: auto;
 }
 
 .instruction-copy-btn {
@@ -715,6 +747,15 @@ dialog.modal[open] {
   font-weight: 500;
   cursor: pointer;
   white-space: nowrap;
+}
+
+.instruction-tab-btn:hover {
+  color: var(--text-2);
+}
+
+.instruction-tab-btn.active {
+  color: var(--text);
+  border-bottom-color: var(--accent);
 }
 
 .driver-select-card {
@@ -1390,7 +1431,8 @@ dialog.modal[open] {
   white-space: nowrap;
 }
 
-dialog.modal > form {
+dialog.modal > form,
+dialog.modal > [data-collectors-step] {
   display: flex;
   flex-direction: column;
   min-height: 0;
