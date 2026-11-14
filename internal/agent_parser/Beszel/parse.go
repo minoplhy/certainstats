@@ -36,10 +36,32 @@ func (b *BeszelStats) ParseToken(input any) (string, error) {
 	return token, nil
 }
 
+// gib converts Beszel's GB float fields to bytes.
+const gib = 1024 * 1024 * 1024
+
 func (b *BeszelStats) Parse(data []byte) (*agentparser.ParsedData, error) {
 	var combined CombinedData
 	if err := cbor.Unmarshal(data, &combined); err != nil {
 		return nil, fmt.Errorf("beszel unmarshal failed: %w", err)
+	}
+
+	// Raw key presence, used to tell "absent" from "zero".
+	outer := map[uint64]cbor.RawMessage{}
+	_ = cbor.Unmarshal(data, &outer)
+	rawStats := map[uint64]cbor.RawMessage{}
+	_ = cbor.Unmarshal(outer[0], &rawStats)
+
+	// Memory and swap: agents >= 0.21 send exact byte counts (MemBytes,
+	// SwapBytes). The GB floats are deprecated upstream and only used as a
+	// fallback for older agents.
+	hasMemBytes, hasSwapBytes := rawStats[41] != nil, rawStats[42] != nil
+	ramUsed := uint64(combined.Stats.MemUsed * gib)
+	if hasMemBytes {
+		ramUsed = combined.Stats.MemBytes[1]
+	}
+	swapTotal, swapUsed := uint64(combined.Stats.Swap*gib), uint64(combined.Stats.SwapUsed*gib)
+	if hasSwapBytes {
+		swapTotal, swapUsed = combined.Stats.SwapBytes[0], combined.Stats.SwapBytes[1]
 	}
 
 	// 1. Map Metadata
@@ -59,6 +81,8 @@ func (b *BeszelStats) Parse(data []byte) (*agentparser.ParsedData, error) {
 		if combined.Details.MemoryTotal > 0 {
 			//agentInfo.RamSize = combined.Details.MemoryTotal * 1024 * 1024
 			agentInfo.RamSize = combined.Details.MemoryTotal
+		} else if hasMemBytes {
+			agentInfo.RamSize = combined.Stats.MemBytes[0]
 		}
 
 		// Disk/Swap: Use Stats fields with standard GB assumption,
@@ -73,8 +97,8 @@ func (b *BeszelStats) Parse(data []byte) (*agentparser.ParsedData, error) {
 		if diskTotal > 0 {
 			agentInfo.DiskSize = uint64(diskTotal * 1024 * 1024 * 1024)
 		}
-		if combined.Stats.Swap > 0 {
-			agentInfo.SwapSize = uint64(combined.Stats.Swap * 1024 * 1024 * 1024)
+		if swapTotal > 0 {
+			agentInfo.SwapSize = swapTotal
 		}
 	}
 
@@ -119,18 +143,14 @@ func (b *BeszelStats) Parse(data []byte) (*agentparser.ParsedData, error) {
 		totalRX = float64(combined.Stats.Bandwidth[1])
 	}
 
-	outer := map[uint64]cbor.RawMessage{}
-	_ = cbor.Unmarshal(data, &outer)
-	rawStats := map[uint64]cbor.RawMessage{}
-	_ = cbor.Unmarshal(outer[0], &rawStats)
-	missing := map[string]bool{"agent_cpu_usage": rawStats[0] == nil, "agent_ram_used": rawStats[3] == nil, "agent_disk_used": rawStats[10] == nil, "agent_cpu_iowait": len(combined.Stats.CpuBreakdown) < 4, "agent_cpu_steal": len(combined.Stats.CpuBreakdown) < 4, "agent_swap_used": rawStats[7] == nil}
+	missing := map[string]bool{"agent_cpu_usage": rawStats[0] == nil, "agent_ram_used": rawStats[3] == nil && !hasMemBytes, "agent_disk_used": rawStats[10] == nil, "agent_cpu_iowait": len(combined.Stats.CpuBreakdown) < 4, "agent_cpu_steal": len(combined.Stats.CpuBreakdown) < 4, "agent_swap_used": rawStats[7] == nil && !hasSwapBytes}
 	telemetry := agentparser.Telemetry{
 		Missing:          missing,
 		NetworkMissing:   rawStats[26] == nil && rawStats[31] == nil,
 		Timestamp:        time.Now(),
 		CPUUsagePercent:  combined.Stats.Cpu,
-		RAMUsedBytes:     uint64(combined.Stats.MemUsed * 1024 * 1024 * 1024),
-		RAMSwapUsedBytes: uint64(combined.Stats.SwapUsed * 1024 * 1024 * 1024),
+		RAMUsedBytes:     ramUsed,
+		RAMSwapUsedBytes: swapUsed,
 		TXBytes:          totalTX,
 		RXBytes:          totalRX,
 		Disks:            disks,

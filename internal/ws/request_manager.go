@@ -16,8 +16,22 @@ const (
 	GetData WebSocketAction = 0
 	// Hub verification challenge
 	CheckFingerprint WebSocketAction = 1
+	// Request container logs from agent (unused here)
+	GetContainerLogs WebSocketAction = 2
+	// Request container info from agent (unused here)
+	GetContainerInfo WebSocketAction = 3
+	// Request SMART data from agent (unused here)
+	GetSmartData WebSocketAction = 4
+	// Request detailed systemd service info from agent (unused here)
+	GetSystemdInfo WebSocketAction = 5
+	// Request ZFS detail data from agent (unused here)
+	GetZfsData WebSocketAction = 6
 	// Network monitor configuration (Beszel 0.20+)
 	SyncNetworkMonitors WebSocketAction = 7
+	// Request the list of pending package updates from agent (unused here)
+	GetPackageUpdates WebSocketAction = 8
+	// Request recent logs for a systemd service from agent (unused here)
+	GetSystemdLogs WebSocketAction = 9
 )
 
 // StatsCacheTimeMs is the agent-side stats cache window requested with GetData.

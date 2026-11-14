@@ -256,3 +256,142 @@ func TestParse(t *testing.T) {
 		}
 	})
 }
+
+func TestParseByteMemoryFields(t *testing.T) {
+	parser := &BeszelStats{}
+	const gb = 1024 * 1024 * 1024
+
+	t.Run("byte fields win over deprecated GB fields", func(t *testing.T) {
+		data, err := cbor.Marshal(CombinedData{
+			Details: &Details{},
+			Stats: Stats{
+				MemUsed:   4.5,
+				Swap:      2.0,
+				SwapUsed:  1.5,
+				MemBytes:  [4]uint64{16*gb + 123, 4*gb + 7, 0, 0},
+				SwapBytes: [2]uint64{2*gb + 5, 1*gb + 3},
+			},
+		})
+		if err != nil {
+			t.Fatalf("failed to marshal cbor: %v", err)
+		}
+		parsed, err := parser.Parse(data)
+		if err != nil {
+			t.Fatalf("Parse failed: %v", err)
+		}
+		m := parsed.Metrics[0]
+		if m.RAMUsedBytes != 4*gb+7 {
+			t.Errorf("expected RAMUsedBytes %d, got %d", uint64(4*gb+7), m.RAMUsedBytes)
+		}
+		if m.RAMSwapUsedBytes != 1*gb+3 {
+			t.Errorf("expected RAMSwapUsedBytes %d, got %d", uint64(1*gb+3), m.RAMSwapUsedBytes)
+		}
+		if parsed.AgentInfo.SwapSize != 2*gb+5 {
+			t.Errorf("expected SwapSize %d, got %d", uint64(2*gb+5), parsed.AgentInfo.SwapSize)
+		}
+		// Details.MemoryTotal is 0 here, so RAM size falls back to MemBytes.
+		if parsed.AgentInfo.RamSize != 16*gb+123 {
+			t.Errorf("expected RamSize %d, got %d", uint64(16*gb+123), parsed.AgentInfo.RamSize)
+		}
+	})
+
+	t.Run("byte fields alone are not reported missing", func(t *testing.T) {
+		// A future agent that drops the deprecated GB keys entirely.
+		data, err := cbor.Marshal(map[int]any{
+			0: map[int]any{
+				0:  1.0,
+				41: [4]uint64{8 * gb, 3 * gb, 0, 0},
+				42: [2]uint64{2 * gb, 1 * gb},
+			},
+			1: map[int]any{5: 10},
+		})
+		if err != nil {
+			t.Fatalf("failed to marshal cbor: %v", err)
+		}
+		parsed, err := parser.Parse(data)
+		if err != nil {
+			t.Fatalf("Parse failed: %v", err)
+		}
+		m := parsed.Metrics[0]
+		if m.Missing["agent_ram_used"] || m.Missing["agent_swap_used"] {
+			t.Errorf("expected ram/swap present, got missing=%v", m.Missing)
+		}
+		if m.RAMUsedBytes != 3*gb || m.RAMSwapUsedBytes != 1*gb {
+			t.Errorf("expected ram/swap 3GiB/1GiB, got %d/%d", m.RAMUsedBytes, m.RAMSwapUsedBytes)
+		}
+	})
+
+	t.Run("neither form present is reported missing", func(t *testing.T) {
+		data, err := cbor.Marshal(map[int]any{0: map[int]any{0: 1.0}, 1: map[int]any{5: 10}})
+		if err != nil {
+			t.Fatalf("failed to marshal cbor: %v", err)
+		}
+		parsed, err := parser.Parse(data)
+		if err != nil {
+			t.Fatalf("Parse failed: %v", err)
+		}
+		m := parsed.Metrics[0]
+		if !m.Missing["agent_ram_used"] || !m.Missing["agent_swap_used"] {
+			t.Errorf("expected ram/swap missing, got missing=%v", m.Missing)
+		}
+	})
+}
+
+func TestParseCurrentAgentFields(t *testing.T) {
+	// Every field added up to Beszel v0.21.2 must decode without failing the payload.
+	signal := -55.0
+	gpu, err := cbor.Marshal(GPUData{Name: "RTX", MemoryUsed: 512, MemoryTotal: 8192, Usage: 42, Power: 90, Engines: map[string]float64{"render": 10}, PowerPkg: 12})
+	if err != nil {
+		t.Fatalf("failed to marshal gpu: %v", err)
+	}
+	combined := CombinedData{
+		SystemdServicesUpdated: true,
+		Info: Info{
+			Uptime:         1,
+			RootDiskName:   "root",
+			PackageUpdates: []uint16{12, 3},
+			WiFi:           map[string]WiFi{"wlan0": {SSID: "home", Signal: &signal}},
+			SystemdLogs:    true,
+		},
+		Details: &Details{ZfsInterval: 1, Sockets: 2, MemoryTotal: 1},
+		Stats: Stats{
+			GPUData:     map[string]cbor.RawMessage{"0": gpu},
+			Fans:        map[string]uint16{"fan1": 1200},
+			Batteries:   map[string]uint8{"BAT0": 80},
+			DiskIOTotal: [2]uint64{1, 2},
+			ZfsPools:    map[string]*ZfsPool{"tank": {Total: 100, Used: 40, ReadBytes: 1, WriteBytes: 2, Health: "ONLINE", Raw: true, HideUsage: true, HideIO: true, DisplayName: "Tank"}},
+			WiFi:        map[string]int8{"wlan0": -55},
+			ExtraFs:     map[string]*FsStats{"/data": {Total: 10, Used: 5, DiskReadBytes: 1, DiskWriteBytes: 2, DiskIoStats: [6]float64{1}, TotalRead: 3, TotalWrite: 4}},
+		},
+	}
+	data, err := cbor.Marshal(combined)
+	if err != nil {
+		t.Fatalf("failed to marshal cbor: %v", err)
+	}
+	if _, err = (&BeszelStats{}).Parse(data); err != nil {
+		t.Fatalf("Parse failed: %v", err)
+	}
+
+	var decoded CombinedData
+	if err = cbor.Unmarshal(data, &decoded); err != nil {
+		t.Fatalf("round-trip decode failed: %v", err)
+	}
+	if got := decoded.Stats.ZfsPools["tank"]; got == nil || *got != *combined.Stats.ZfsPools["tank"] {
+		t.Errorf("zfs pool round-trip mismatch: %+v", got)
+	}
+	if got := decoded.Info.WiFi["wlan0"]; got.SSID != "home" || got.Signal == nil || *got.Signal != signal {
+		t.Errorf("wifi round-trip mismatch: %+v", got)
+	}
+	if decoded.Details.Sockets != 2 || !decoded.Info.SystemdLogs || !decoded.SystemdServicesUpdated {
+		t.Errorf("scalar round-trip mismatch: %+v", decoded)
+	}
+
+	// GPUData must use upstream's key layout: 0=name, 3=usage, 4=power.
+	rawGPU := map[int]any{}
+	if err = cbor.Unmarshal(decoded.Stats.GPUData["0"], &rawGPU); err != nil {
+		t.Fatalf("gpu decode failed: %v", err)
+	}
+	if rawGPU[0] != "RTX" || rawGPU[3] != 42.0 || rawGPU[4] != 90.0 {
+		t.Errorf("unexpected gpu key layout: %v", rawGPU)
+	}
+}
