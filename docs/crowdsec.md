@@ -16,6 +16,12 @@ by the collector, which can be removed on its own.
 It drops each alert's `events` and `meta`, which carry raw log lines, before
 anything leaves the host.
 
+It asks for `include_capi=false`, as `cscli alerts list` does, so community
+blocklist and subscribed list pulls are left out. Each of those arrives as one
+alert holding thousands of decisions, and none is an attack seen on this host.
+An alert with more than 500 decisions is sent with the first 500. Batches are
+split by encoded size as well as count, so each fits one 1 MiB frame.
+
 Alerts are found by their start time, with `since` and `until` sent as durations
 before now. If a Local API rejects that form, the collector switches to RFC 3339
 timestamps. Each pass starts an hour before the cursor, because a long bucket

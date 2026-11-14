@@ -29,6 +29,10 @@ const (
 	minWindow  = time.Minute
 	ackTimeout = time.Minute
 	backfill   = 10 * 365 * 24 * time.Hour
+	// maxDecisions caps the decisions sent with one alert, so it always fits a frame.
+	maxDecisions = 500
+	// batchBudget leaves room in a frame for the envelope and the batch id.
+	batchBudget = cwire.MaxFrameBytes - 4096
 )
 
 type Module struct {
@@ -216,12 +220,16 @@ func (r *runner) pass(ctx context.Context, fromMs int64) {
 		if _, done := r.sent[a.UUID]; a.UUID != "" && done {
 			continue
 		}
+		if len(a.Decisions) > maxDecisions {
+			log.Printf("crowdsec: alert %s has %d decisions; sending the first %d", a.UUID, len(a.Decisions), maxDecisions)
+			a.Decisions = a.Decisions[:maxDecisions]
+		}
 		fillUntil(&a, now)
 		fresh = append(fresh, a)
 	}
 	sort.SliceStable(fresh, func(i, j int) bool { return fresh[i].StartAt < fresh[j].StartAt })
 	for len(fresh) > 0 && ctx.Err() == nil {
-		n := min(len(fresh), r.cfg.MaxBatch)
+		n := fit(fresh[:min(len(fresh), r.cfg.MaxBatch)], batchBudget)
 		if err := r.deliver(ctx, fresh[:n]); err != nil {
 			log.Printf("crowdsec: %v", err)
 			return
@@ -229,6 +237,19 @@ func (r *runner) pass(ctx context.Context, fromMs int64) {
 		fresh = fresh[n:]
 	}
 	r.forget()
+}
+
+// fit returns how many leading alerts encode within budget bytes, halving until
+// they do. One alert always goes; maxDecisions keeps it small enough.
+func fit(alerts []wire.Alert, budget int) int {
+	n := len(alerts)
+	for n > 1 {
+		if b, err := cbor.Marshal(alerts[:n]); err == nil && len(b) <= budget {
+			break
+		}
+		n /= 2
+	}
+	return n
 }
 
 // fetch narrows a window that fills a page, so nothing is skipped.

@@ -165,6 +165,9 @@ func (c *lapi) get(ctx context.Context, from, to time.Time, limit int) ([]wire.A
 		q.Set("until", c.timeParam(to, now))
 	}
 	q.Set("limit", strconv.Itoa(limit))
+	// Community blocklist and subscribed lists arrive as alerts holding thousands of
+	// decisions. They are not attacks seen here, so leave them out, as cscli does.
+	q.Set("include_capi", "false")
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.creds.URL+"/v1/alerts?"+q.Encode(), nil)
 	if err != nil {
 		return nil, 0, err
