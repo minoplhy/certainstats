@@ -1,0 +1,17 @@
+{{define "content"}}
+<div class="cs-page" data-cs-page>
+  {{template "crowdsec_hero" .}}
+  <div data-cs-main>
+    {{template "crowdsec_filters" .}}
+    {{template "crowdsec_panels" .}}
+    {{template "crowdsec_table" .}}
+  </div>
+  {{template "crowdsec_ip_view" .}}
+</div>
+{{template "collectors_modal" .}}
+{{template "confirm_modal" .}}
+
+<script src="{{.StaticPath}}/{{asset "admin/js/collectors.js"}}" integrity="{{integrity "admin/js/collectors.js"}}"></script>
+<script type="application/json" id="page-config" data-module="CertainStatsCrowdSec">{{bootstrap .}}</script>
+<script src="{{.StaticPath}}/{{asset "admin/js/crowdsec.js"}}" integrity="{{integrity "admin/js/crowdsec.js"}}"></script>
+{{end}}

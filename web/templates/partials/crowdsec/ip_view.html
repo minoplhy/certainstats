@@ -1,0 +1,37 @@
+{{define "crowdsec_ip_view"}}
+<section class="cs-ip" aria-labelledby="cs-ip-title" data-cs-ip hidden>
+  <div class="hero">
+    <div class="hero-eyebrow">
+      <button type="button" class="btn btn-ghost btn-sm" data-cs-ip-back>&larr; All alerts</button>
+    </div>
+    <h1 class="hero-title mono" id="cs-ip-title" data-cs-ip-title></h1>
+    <p class="page-subtitle" data-cs-ip-subtitle></p>
+    <div class="hero-stats">
+      <div class="hero-stat"><span class="hero-stat-label">First seen</span><span class="hero-stat-value"><span data-cs-ip-first>–</span></span></div>
+      <div class="hero-stat"><span class="hero-stat-label">Last seen</span><span class="hero-stat-value"><span data-cs-ip-last>–</span></span></div>
+      <div class="hero-stat"><span class="hero-stat-label">Alerts</span><span class="hero-stat-value"><span data-cs-ip-alerts>–</span></span></div>
+      <div class="hero-stat"><span class="hero-stat-label">Events</span><span class="hero-stat-value"><span data-cs-ip-events>–</span></span></div>
+    </div>
+    <div class="hero-actions">
+      <button type="button" class="btn btn-primary" data-cs-ip-filter>Filter by this IP</button>
+      <button type="button" class="btn btn-secondary" data-cs-ip-copy>Copy IP</button>
+    </div>
+  </div>
+  <p class="cs-status" role="status" aria-live="polite" data-cs-ip-message></p>
+  <article class="chart-card chart-card-wide">
+    <div class="chart-header-row">
+      <h2 class="chart-header-title">Alerts from this IP</h2>
+      <span class="muted mono" data-cs-ip-range></span>
+    </div>
+    <div class="chart-container">
+      <canvas class="chart-canvas" id="cs-ip-timeline" role="img" aria-label="Alerts from this IP over time" data-cs-ip-timeline></canvas>
+    </div>
+  </article>
+  <div class="cs-breakdowns">
+    <article class="chart-card cs-rank-card"><div class="chart-header-row"><h2 class="chart-header-title">Scenarios triggered</h2></div><div data-cs-ip-scenarios></div></article>
+    <article class="chart-card cs-rank-card"><div class="chart-header-row"><h2 class="chart-header-title">Machines hit</h2></div><div data-cs-ip-machines></div></article>
+  </div>
+  <div class="section-header"><h2 class="section-title">Decisions taken</h2><span class="muted mono" data-cs-ip-decision-count></span></div>
+  <div class="cs-decisions" data-cs-ip-decisions></div>
+</section>
+{{end}}

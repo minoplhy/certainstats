@@ -5,6 +5,7 @@ import (
 	"certainstats/internal/networkservice"
 	"certainstats/internal/store/sqlite"
 	"certainstats/internal/ws"
+	"context"
 
 	"github.com/prometheus/prometheus/tsdb"
 )
@@ -16,6 +17,8 @@ type Routine struct {
 	WS          *ws.Manager
 	Cache       *metrics.RealtimeCache
 	Broadcaster *ws.AgentBroadcaster
+	// Maintenance runs on the hourly cleanup, for stores outside the main database.
+	Maintenance []func(context.Context)
 	// Deliver sends a queued alert attempt; nil means alertdelivery.Go.
 	Deliver func(eventID string)
 

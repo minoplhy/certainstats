@@ -33,7 +33,9 @@ Choose one way to place the panel and public dashboards; mixing them stops start
 | `LOGIN_ATTEMPT_BURST` | `10` | Per-IP sign-in and setup attempt burst; further attempts get 429. |
 | `RETENTION_DURATION` | `0` (unlimited) | TSDB retention in Go duration syntax, e.g. `2160h`. |
 | `STORAGE_MAX_BYTES` | `0` (unlimited) | TSDB block retention size in bytes; not a whole-volume quota. |
+| `CROWDSEC_RAW_RETENTION` | `0` (unlimited) | How long CrowdSec alerts and decisions are kept in `crowdsec.db`, e.g. `4320h`. At least `1h`. See [CrowdSec](crowdsec.md). |
+| `CROWDSEC_ROLLUP_RETENTION` | `0` (unlimited) | How long CrowdSec hourly counts are kept. At least `1h`. |
 
-`ALLOWED_ORIGINS` adds explicit HTTP(S) origins to same-origin browser WebSockets. Empty configuration no longer permits arbitrary origins. Forwarded HTTPS indicators require a trusted proxy. Browser HTTP defaults are a ten-second header timeout, thirty-second read/write timeouts and sixty-second idle timeout. Forms/JSON are limited to 1 MiB; agent submissions remain 16 KiB.
+`ALLOWED_ORIGINS` adds explicit HTTP(S) origins to same-origin browser WebSockets. Empty configuration no longer permits arbitrary origins. Forwarded HTTPS indicators require a trusted proxy. Browser HTTP defaults are a ten-second header timeout, thirty-second read/write timeouts and sixty-second idle timeout. Forms/JSON are limited to 1 MiB; agent submissions remain 16 KiB. Collector frames are limited to 1 MiB; the collector's own settings are described in [collectors](collectors.md).
 
 The container uses Alpine's default root user; no fixed UID/GID or volume-ownership migration is required. Initial setup uses the link printed in the server log at first start. See [security and rollout](security-and-rollout.md) for CSRF, recovery, caching and staged deployment details.

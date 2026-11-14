@@ -17,7 +17,8 @@ COPY . .
 # Build the self-contained Go binary cross-compiling to target platform
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
-    CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -tags embed -ldflags="-w -s" -o certainstats ./cmd/certainstats
+    CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -tags embed -ldflags="-w -s" -o certainstats ./cmd/certainstats && \
+    CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -ldflags="-w -s" -o certainstats-collector ./cmd/certainstats-collector
 
 # Stage 2: Final Production Runtime Image
 FROM alpine:latest
@@ -26,6 +27,8 @@ RUN apk add --no-cache ca-certificates tzdata
 
 # Copy executable from builder stage
 COPY --from=backend-builder /app/certainstats .
+# The collector shares the image; run it with command: ["./certainstats-collector"].
+COPY --from=backend-builder /app/certainstats-collector .
 
 # Create directory for persistent database/TSDB data
 RUN mkdir -p /app/data

@@ -44,6 +44,10 @@ var PublicLimits = NewLimiter()
 // LoginLimits throttles sign-in and setup attempts per client IP.
 var LoginLimits = &Limiter{entries: make(map[string]*client), requestRate: envNumber("LOGIN_ATTEMPTS_PER_MINUTE", 10) / 60, requestBurst: envNumber("LOGIN_ATTEMPT_BURST", 10)}
 
+// CollectorLimits throttles collector connection attempts per client IP. Collectors
+// reconnect with backoff, so a legitimate host stays far below this.
+var CollectorLimits = &Limiter{entries: make(map[string]*client), requestRate: 30.0 / 60, requestBurst: 30}
+
 func (l *Limiter) Allow(ip string, build bool) bool {
 	l.mu.Lock()
 	defer l.mu.Unlock()

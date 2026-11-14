@@ -22,8 +22,10 @@ import (
 	"certainstats/internal/agent_parser/registry"
 	"certainstats/internal/alert"
 	"certainstats/internal/auth"
+	"certainstats/internal/collector"
 	"certainstats/internal/compress"
 	b_ctx "certainstats/internal/context"
+	"certainstats/internal/crowdsec"
 	"certainstats/internal/dashboard"
 	"certainstats/internal/lifecycle"
 	"certainstats/internal/metrics"
@@ -125,7 +127,28 @@ func main() {
 		}
 	}
 
+	// Collectors and their types. CrowdSec keeps its data in its own SQLite file.
+	rawKeep, err := retentionEnv("CROWDSEC_RAW_RETENTION")
+	if err != nil {
+		log.Fatalf("config: %v", err)
+	}
+	rollupKeep, err := retentionEnv("CROWDSEC_ROLLUP_RETENTION")
+	if err != nil {
+		log.Fatalf("config: %v", err)
+	}
+	crowdsecStore, err := crowdsec.Open(filepath.Join(dataDir, "crowdsec.db"))
+	if err != nil {
+		log.Fatalf("crowdsec store: %v", err)
+	}
+	defer crowdsecStore.Close()
+	collectors := collector.NewService(db, db)
+	crowdsecType := &crowdsec.Type{Store: crowdsecStore, Collectors: collectors, Retention: crowdsec.Retention{RawMs: rawKeep.Milliseconds(), RollupMs: rollupKeep.Milliseconds()}}
+	if err := collectors.Register(crowdsecType); err != nil {
+		log.Fatalf("collectors: %v", err)
+	}
+
 	routine := &routine.Routine{
+		Maintenance: []func(context.Context){crowdsecType.Maintain},
 		Store:       db,
 		Network:     networkService,
 		TSDB:        tdb,
@@ -275,6 +298,7 @@ func main() {
 		rt.Delete("/dashboards/{id}", webHandler.RequireAuthWeb(webHandler.DashboardDeleteHandler))
 
 		rt.Get("/network-monitors", webHandler.RequireAuthWeb(webHandler.NetworkMonitorsHandler))
+		rt.Get("/crowdsec", webHandler.RequireAuthWeb(webHandler.CrowdSecHandler))
 
 		rt.Get("/alerts", webHandler.RequireAuthWeb(webHandler.AlertsListHandler))
 		rt.Post("/alerts/create", webHandler.RequireAuthWeb(webHandler.AlertCreateHandler))
@@ -329,6 +353,9 @@ func main() {
 				mon.Delete("/{id}", requireAuth(db, networkService.Archive))
 			})
 			api.Get("/metrics", requireAuth(db, metrics.MetricsQueryHandler(db, tdb, metricsCache)))
+			api.Route("/collectors", func(col chi.Router) {
+				collectors.Routes(col, func(next http.Handler) http.Handler { return requireAuth(db, next.ServeHTTP) })
+			})
 
 			api.Get("/dashboards", requireAuth(db, dashboard.ListDashboardsHandler(db)))
 			api.Post("/dashboard", requireAuth(db, dashboard.CreateDashboardHandler(db)))
@@ -490,6 +517,7 @@ func main() {
 	}
 	uiBroadcaster.CloseAll()
 	wsManager.CloseAll()
+	collectors.Close()
 	select {
 	case <-routineDone:
 	case <-shutdownCtx.Done():

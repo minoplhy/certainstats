@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"time"
 )
 
 type Config struct {
@@ -173,4 +174,20 @@ func updateAllowedOrigins(panelURL, panelHost, publicURL, publicHost string) {
 	if len(origins) > 0 {
 		os.Setenv("ALLOWED_ORIGINS", strings.Join(origins, ","))
 	}
+}
+
+// retentionEnv reads a retention setting in Go duration syntax; empty or 0 keeps data forever.
+func retentionEnv(key string) (time.Duration, error) {
+	raw := strings.TrimSpace(os.Getenv(key))
+	if raw == "" || raw == "0" {
+		return 0, nil
+	}
+	d, err := time.ParseDuration(raw)
+	if err != nil || d < 0 {
+		return 0, fmt.Errorf("%s must be a Go duration such as 4320h, or 0 for unlimited", key)
+	}
+	if d > 0 && d < time.Hour {
+		return 0, fmt.Errorf("%s must be at least 1h", key)
+	}
+	return d, nil
 }

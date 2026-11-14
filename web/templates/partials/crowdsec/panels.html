@@ -1,0 +1,15 @@
+{{define "crowdsec_panels"}}
+<section class="page-section cs-panels" aria-label="Alert overview">
+  <article class="chart-card chart-card-wide">
+    <div class="chart-header-row">
+      <h2 class="chart-header-title">Alerts over time</h2>
+      <span class="muted mono" data-cs-timeline-note></span>
+    </div>
+    <p class="cs-status" role="status" aria-live="polite" data-cs-timeline-message></p>
+    <div class="chart-container">
+      <canvas class="chart-canvas" id="cs-timeline" role="img" aria-label="Alerts over time" data-cs-timeline></canvas>
+    </div>
+  </article>
+  <div class="cs-breakdowns" data-cs-breakdowns></div>
+</section>
+{{end}}

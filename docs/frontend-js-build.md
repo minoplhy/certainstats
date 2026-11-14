@@ -19,7 +19,7 @@ for it in `internal/web/static.go`, and every other path is a 404:
 |---|---|---|
 | `shared/` | What every page uses: `css/base.css`, fonts, `browser`, `disk_dom`, `requests`, `browser_protocol`, `telemetry`, `chart` | panel and public |
 | `auth/` | Sign-in and first-time setup: `css/auth.css`, `js/setup.js` | panel, without a session |
-| `admin/` | Panel pages: `css/admin.css`, `admin_core`, `admin_agents`, `network_monitors`, `admin_alerts`, `admin_modals`, `agent_management`, `dashboard_edit`, `incident_history`, `provision_renderer` | panel, signed-in only (`Cache-Control: private`) |
+| `admin/` | Panel pages: `css/admin.css`, `admin_core`, `admin_agents`, `network_monitors`, `collectors`, `crowdsec`, `admin_alerts`, `admin_modals`, `agent_management`, `dashboard_edit`, `incident_history`, `provision_renderer` | panel, signed-in only (`Cache-Control: private`) |
 | `public/` | Status pages: `css/public.css`, `public_dashboard` | public |
 
 So the public host can't fetch any admin or sign-in asset. On the panel, a
@@ -71,11 +71,14 @@ web/src/js/
       ui/  time/  feed/  chart/  page/  format/
     network_monitors/   -> admin/js/network_monitors.js  (CertainStatsNetworkMonitors)
       shared/  editor/  list/  panels/
+    collectors/         -> admin/js/collectors.js        (CertainStatsCollectors)
   pages/
     admin_agents/       -> admin/js/admin_agents.js      (CertainStatsAdminAgents)
       nav/  hub/  detail/  editing/
     public_dashboard/   -> public/js/public_dashboard.js (CertainStatsPublicDashboard)
       nav/  detail/  time/
+    crowdsec/           -> admin/js/crowdsec.js          (CertainStatsCrowdSec)
+      url/  panels/  filters/  table/  ip/
 ```
 
 The import graph from `index.js` decides what goes into a bundle and in what

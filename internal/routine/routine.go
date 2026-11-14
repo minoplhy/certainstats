@@ -140,6 +140,10 @@ func (e *Routine) runCleanup(ctx context.Context) {
 		}
 	}
 
+	for _, task := range e.Maintenance {
+		task(ctx)
+	}
+
 	// 1. Purge expired web sessions
 	if err := e.Store.SessionDeleteExpired(ctx); err != nil {
 		log.Printf("[Timer] Session cleanup error: %v", err)

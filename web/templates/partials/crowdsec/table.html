@@ -1,0 +1,26 @@
+{{define "crowdsec_table"}}
+<section class="page-section" aria-labelledby="cs-alerts-title">
+  <div class="section-header">
+    <h2 class="section-title" id="cs-alerts-title">Alerts</h2>
+    <span class="muted mono" data-cs-count></span>
+  </div>
+  <p class="cs-status" role="status" aria-live="polite" data-cs-table-message></p>
+  <div class="cs-table" role="table" aria-labelledby="cs-alerts-title" data-cs-table>
+    <div class="cs-table-head" role="row" data-cs-table-head></div>
+    <div data-cs-rows></div>
+  </div>
+  <div class="network-pagination">
+    <span class="muted mono" data-cs-page></span>
+    <button type="button" class="btn btn-secondary btn-sm" data-cs-prev>Previous</button>
+    <button type="button" class="btn btn-secondary btn-sm" data-cs-next>Next</button>
+    <label class="network-page-size">
+      <span class="muted">Rows</span>
+      <select class="form-select" data-cs-limit>
+        <option>25</option>
+        <option>50</option>
+        <option>100</option>
+      </select>
+    </label>
+  </div>
+</section>
+{{end}}
