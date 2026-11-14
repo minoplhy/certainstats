@@ -37,7 +37,7 @@ func BrowserProtection(next http.Handler) http.Handler {
 		w.Header().Set("X-Frame-Options", "DENY")
 		w.Header().Set("Referrer-Policy", "same-origin")
 		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'")
-		if strings.HasSuffix(r.URL.Path, "/submit") || strings.HasSuffix(r.URL.Path, "/api/beszel/agent-connect") {
+		if strings.HasSuffix(r.URL.Path, "/submit") || strings.HasSuffix(r.URL.Path, "/api/beszel/agent-connect") || strings.HasSuffix(r.URL.Path, "/api/collectors/connect") {
 			next.ServeHTTP(w, r)
 			return
 		}

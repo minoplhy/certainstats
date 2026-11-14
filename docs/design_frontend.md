@@ -276,12 +276,15 @@ web/templates/
 │   ├── public/                # cluster_cards, toolbar, grid_view (cards), list_view (status rows),
 │   │                          # public_inpage_detail
 │   ├── alerts/                # rules/targets/history tables, incidents banner, dialogs
+│   ├── collectors/            # modal: Collectors dialog (list, add, setup steps)
+│   ├── crowdsec/              # hero, filters, panels, table, ip_view
 │   └── settings/              # password_form, sessions_table
 ├── agents_list.html           # Agent Hub + in-page agent detail
 ├── agent_management.html      # Agent credentials (tokens, SSH keys, resets)
 ├── dashboards_list.html       # Status pages list
 ├── dashboard_edit.html        # Status page editor
 ├── alerts_list.html           # Alert rules, targets, incident history
+├── crowdsec.html              # CrowdSec alerts and the Collectors dialog
 ├── settings.html              # Password and signed-in devices
 ├── login.html
 ├── setup.html
@@ -290,7 +293,7 @@ web/templates/
 
 ### 5.2 Application Shell
 - **Brand**: SVG logo mark (a pulse line in a rounded teal square) with the "CertainStats" wordmark.
-- **Navigation**: Agent Hub, Dashboards, Alerts, Management, Settings. The active link has `aria-current="page"` and a teal underline. On mobile the links move to a horizontally scrolling subnav.
+- **Navigation**: Agent Hub, Dashboards, Network, CrowdSec, Alerts, Management, Settings. The active link has `aria-current="page"` and a teal underline. On mobile the links move to a horizontally scrolling subnav.
 - **Right side**: theme toggle and Log out.
 - **Navbar**: translucent and sticky. It gains a bottom border once the page scrolls (`.is-scrolled`).
 - **Footer**: copyright and server render time ("Rendered in 0.35ms").
@@ -304,6 +307,7 @@ web/templates/
 | `/agents/management` | `agent_management.html` | `agent_management.js`, `provision_renderer.js` | Expandable credential rows: masked token, SSH key, rename, install, uninstall, resets, delete; search |
 | `/dashboards` | `dashboards_list.html` | `admin_modals.js` | Status pages list |
 | `/dashboards/new`, `/dashboards/{id}` | `dashboard_edit.html` | `dashboard_edit.js` | Address, visibility rules, servers, order |
+| `/crowdsec` | `crowdsec.html` | `crowdsec.js`, `collectors.js` | CrowdSec alerts: headline, filters, timeline, breakdowns, alert table, IP view; Collectors dialog. See [CrowdSec](crowdsec.md) |
 | `/alerts` | `alerts_list.html` | `admin_alerts.js` | Rules, targets, incident history |
 | `/settings` | `settings.html` | `admin_modals.js` | Password change, signed-in devices |
 | `/login`, `/first-time-setup` | `login.html`, `setup.html` | — | Sign in, initial administrator account |

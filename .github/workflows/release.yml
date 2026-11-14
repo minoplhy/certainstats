@@ -64,6 +64,18 @@ jobs:
             fi
           done
 
+          # The collector runs on monitored hosts (CrowdSec and future collector types).
+          for goarch in amd64 arm64; do
+            binary_name="certainstats-collector-linux-$goarch"
+            echo "Compiling collector for linux/$goarch..."
+            GOOS=linux GOARCH=$goarch go build \
+              -ldflags="-w -s -X main.version=$TAG_NAME" \
+              -o "$binary_name" \
+              ./cmd/certainstats-collector
+            tar -czf "dist/${binary_name}.tar.gz" "$binary_name"
+            rm "$binary_name"
+          done
+
       - name: Create GitHub Release and Upload Assets
         uses: softprops/action-gh-release@v3
         with:

@@ -1,0 +1,80 @@
+{{define "collectors_modal"}}
+<dialog id="collectors-modal" class="modal modal-lg" aria-labelledby="collectors-title" data-collectors-modal>
+  <div data-collectors-step="list">
+    <div class="modal-header">
+      <div>
+        <h2 class="modal-title" id="collectors-title">Collectors</h2>
+        <p class="modal-subtitle">A collector runs on a host and sends data from software there, such as CrowdSec.</p>
+      </div>
+      {{template "modal_close"}}
+    </div>
+    <div class="modal-body">
+      <p class="collector-status" role="status" aria-live="polite" data-collectors-message></p>
+      <div class="collector-list" data-collectors-list></div>
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn btn-secondary" data-close-modal>Close</button>
+      <button type="button" class="btn btn-primary" data-collectors-add>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+        Add collector
+      </button>
+    </div>
+  </div>
+
+  <form data-collectors-step="create" hidden>
+    <div class="modal-header">
+      <div>
+        <h2 class="modal-title">Add a collector</h2>
+        <p class="modal-subtitle">You get a token and setup steps for the host next.</p>
+      </div>
+      {{template "modal_close"}}
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label" for="collector-name">Name</label>
+        <input type="text" id="collector-name" class="form-input" maxlength="64" required placeholder="e.g. edge-proxy" autocomplete="off" data-collectors-name>
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="collector-node">Node <span class="muted">(optional)</span></label>
+        <select id="collector-node" class="form-select" data-collectors-node>
+          <option value="">Not linked to a node</option>
+          {{range .Nodes}}<option value="{{.AgentID}}">{{.Nickname}}</option>{{end}}
+        </select>
+        <p class="form-hint">Link it when the collector runs on a machine CertainStats already monitors.</p>
+      </div>
+      <fieldset class="form-fieldset">
+        <legend class="form-label">What it collects</legend>
+        <div class="collector-type-options" data-collectors-types></div>
+      </fieldset>
+      <p class="collector-status" role="alert" data-collectors-form-message></p>
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn btn-secondary" data-collectors-back>Back</button>
+      <button type="submit" class="btn btn-primary" data-collectors-create>Create collector</button>
+    </div>
+  </form>
+
+  <div data-collectors-step="setup" hidden>
+    <div class="modal-header">
+      <div>
+        <h2 class="modal-title" data-collectors-setup-title>Collector created</h2>
+        <p class="modal-subtitle">Copy the token now; it is shown only once. Then follow the steps on the host.</p>
+      </div>
+      {{template "modal_close"}}
+    </div>
+    <div class="modal-body">
+      <div class="instruction-item">
+        <div class="instruction-label">Token</div>
+        <div class="instruction-copy-badge">
+          <code class="instruction-copy-val font-mono" data-collectors-token></code>
+          <button type="button" class="instruction-inline-copy-btn" data-collectors-copy-token>Copy</button>
+        </div>
+      </div>
+      <div data-collectors-setup></div>
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn btn-primary" data-collectors-done>Done</button>
+    </div>
+  </div>
+</dialog>
+{{end}}

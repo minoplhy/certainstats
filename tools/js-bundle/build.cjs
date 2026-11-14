@@ -13,6 +13,8 @@ const AREAS = {
   chart: 'shared',
   admin_core: 'admin',
   network_monitors: 'admin',
+  collectors: 'admin',
+  crowdsec: 'admin',
   admin_agents: 'admin',
   public_dashboard: 'public'
 };
