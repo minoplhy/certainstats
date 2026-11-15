@@ -1941,19 +1941,8 @@ dialog.modal.modal-confirm {
 .collector-backfill { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 13px; }
 .collector-backfill .form-input { width: auto; }
 .collector-type-options { display: flex; flex-wrap: wrap; gap: 8px; }
-.collectors-page .collector-list { gap: 0; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface); overflow: hidden; }
-.collectors-page .collector-list > .empty-state { margin: 0; border: 0; }
-.collectors-page .collector-row { grid-template-columns: minmax(0, 1fr) auto; gap: 6px 12px; padding: 12px 16px; border: 0; border-radius: 0; border-top: 1px solid var(--line); background: transparent; }
-.collectors-page .collector-row:first-child { border-top: 0; }
-.collectors-page .collector-row.is-offline { background: color-mix(in srgb, var(--bad-soft) 30%, transparent); }
-.collectors-page .collector-row > * { grid-column: 1 / -1; }
-.collectors-page .collector-row > .collector-row-head { grid-column: 1; }
-.collectors-page .collector-row > .collector-row-actions { grid-column: 2; grid-row: 1; align-self: center; }
-.collectors-page .collector-type { padding: 4px 0 4px 18px; background: transparent; }
-@media (max-width: 640px) {
-  .collectors-page .collector-row > .collector-row-head, .collectors-page .collector-row > .collector-row-actions { grid-column: 1 / -1; grid-row: auto; }
-  .collectors-page .collector-row-actions { justify-content: flex-start; }
-}
+.collectors-page .collector-type-state { color: var(--text-2); }
+.collectors-page .collector-backfill { flex-basis: 100%; padding-top: 6px; }
 
 /* CrowdSec page */
 .cs-toolbar { flex-wrap: wrap; row-gap: 10px; }

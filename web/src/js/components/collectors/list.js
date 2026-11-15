@@ -1,8 +1,17 @@
 import { el, button, api, timeAgo, typeState } from './shared.js';
 
-// The collector rows of the Collectors page: status, rename in place, per-type actions.
+const CHEVRON = '<svg class="mgmt-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>';
+
+function middleTrim(s, head, tail) {
+  return s.length > head + tail + 1 ? s.slice(0, head) + '…' + s.slice(-tail) : s;
+}
+
+// The Collectors page list, laid out like the Management page: one expandable
+// row per collector (name, status, types, ID), opening to its details and actions.
 export function createList(ctx) {
   const { ui, state } = ctx;
+  const openIds = new Set();
+  let query = '';
 
   function confirm(opts) {
     return window.CertainStatsModal?.confirm ? window.CertainStatsModal.confirm(opts) : Promise.resolve(false);
@@ -19,31 +28,59 @@ export function createList(ctx) {
     }
   }
 
-  function renameControl(c) {
-    const wrap = el('div', 'collector-name');
-    const title = el('strong', '', c.name);
-    const edit = button('Rename', 'btn btn-ghost btn-sm');
-    wrap.append(title, edit);
-    edit.addEventListener('click', () => {
-      const input = el('input', 'form-input form-input-sm');
-      input.value = c.name;
-      input.maxLength = 64;
-      input.setAttribute('aria-label', 'Collector name');
-      const save = button('Save', 'btn btn-primary btn-sm');
-      const cancel = button('Cancel', 'btn btn-secondary btn-sm', () => render());
-      const submit = () => act(() => api('collectors/' + c.collector_id, {method: 'PATCH', body: JSON.stringify({name: input.value})}), 'Collector renamed');
-      save.addEventListener('click', submit);
-      input.addEventListener('keydown', e => {
-        if (e.key === 'Enter') { e.preventDefault(); submit(); }
-        if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); render(); }
-      });
-      wrap.replaceChildren(input, save, cancel);
-      input.focus();
-    });
-    return wrap;
+  function copy(text, label) {
+    const done = ok => window.CertainStatsTelemetry?.showToast(ok ? label + ' copied' : 'Copy failed', ok);
+    if (navigator.clipboard?.writeText) navigator.clipboard.writeText(text).then(() => done(true), () => done(false));
+    else done(false);
   }
 
-  function backfillControl(c, row) {
+  function credRow(label, ...content) {
+    const row = el('div', 'cred-row');
+    const dd = el('dd', 'cred-value');
+    dd.append(...content);
+    row.append(el('dt', '', label), dd);
+    return row;
+  }
+
+  // nameRow shows the name with Rename; Rename swaps in the inline editor, as Management does.
+  function nameRow(c) {
+    const row = el('div', 'cred-row');
+    const dd = el('dd');
+    const read = el('div', 'cred-value');
+    const edit = el('div', 'inline-edit');
+    const label = el('label', 'sr-only', 'Collector name');
+    const input = el('input', 'form-input form-input-sm');
+    input.id = 'collector-name-' + c.collector_id;
+    label.htmlFor = input.id;
+    input.maxLength = 64;
+    input.autocomplete = 'off';
+    edit.hidden = true;
+    read.append(el('span', '', c.name), button('Rename', 'btn btn-ghost btn-sm', () => {
+      read.hidden = true;
+      edit.hidden = false;
+      input.value = c.name;
+      input.focus();
+      input.select();
+    }));
+    const cancel = () => { edit.hidden = true; read.hidden = false; };
+    const save = () => {
+      const name = input.value.trim();
+      if (!name) { window.CertainStatsTelemetry?.showToast('Name cannot be empty', false); return; }
+      if (name === c.name) { cancel(); return; }
+      act(() => api('collectors/' + c.collector_id, {method: 'PATCH', body: JSON.stringify({name})}), 'Collector renamed to ' + name);
+    };
+    input.addEventListener('keydown', e => {
+      if (e.key === 'Enter') { e.preventDefault(); save(); }
+      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); cancel(); }
+    });
+    edit.append(label, input, button('Save', 'btn btn-primary btn-sm', save), button('Cancel', 'btn btn-secondary btn-sm', cancel));
+    dd.append(read, edit);
+    row.append(el('dt', '', 'Name'), dd);
+    return row;
+  }
+
+  function backfill(c, dd) {
+    dd.querySelector('.collector-backfill')?.remove();
     const form = el('form', 'collector-backfill');
     const input = el('input', 'form-input form-input-sm');
     input.type = 'datetime-local';
@@ -59,67 +96,108 @@ export function createList(ctx) {
       const since = new Date(input.value).getTime();
       act(() => api('collectors/' + c.collector_id + '/crowdsec/resync', {method: 'POST', body: JSON.stringify({since_ms: since})}), 'The collector is reading again');
     });
-    row.append(form);
+    dd.append(form);
     input.focus();
   }
 
-  function typeLine(c, t, row) {
+  function typeRow(c, t) {
     const st = typeState(c, t);
-    const line = el('div', 'collector-type');
-    const dot = el('span', 'status-dot ' + (st.level === 'ok' ? 'online' : st.level === 'bad' ? 'offline' : 'warn'));
+    const row = el('div', 'cred-row');
+    const dd = el('dd', 'cred-value');
+    const dot = el('span', 'status-dot ' + (!t.enabled ? 'warn' : st.level === 'ok' ? 'online' : st.level === 'bad' ? 'offline' : 'warn'));
     dot.setAttribute('aria-hidden', 'true');
-    line.append(dot, el('span', 'collector-type-label', t.label), el('span', 'collector-type-state', st.text));
-    const actions = el('span', 'collector-type-actions');
-    if (t.type === 'crowdsec' && t.enabled && c.connected) actions.append(button('Read again…', 'btn btn-ghost btn-sm', () => backfillControl(c, row)));
-    actions.append(button(t.enabled ? 'Disable' : 'Enable', 'btn btn-ghost btn-sm', () => act(
+    dd.append(dot, el('span', 'collector-type-state', st.text));
+    if (t.type === 'crowdsec' && t.enabled && c.connected) dd.append(button('Read again…', 'btn btn-ghost btn-sm', () => backfill(c, dd)));
+    dd.append(button(t.enabled ? 'Disable' : 'Enable', 'btn btn-ghost btn-sm', () => act(
       () => api('collectors/' + c.collector_id + '/' + t.type, {method: t.enabled ? 'DELETE' : 'PUT'}),
       t.label + (t.enabled ? ' disabled' : ' enabled'))));
-    line.append(actions);
-    return line;
+    row.append(el('dt', '', t.label), dd);
+    return row;
   }
 
-  function row(c) {
-    const item = el('article', 'collector-row' + (c.connected ? '' : ' is-offline'));
-    const head = el('div', 'collector-row-head');
-    const dot = el('span', 'status-dot ' + (c.connected ? 'online' : 'offline'));
-    dot.setAttribute('aria-hidden', 'true');
-    const facts = el('div', 'collector-facts mono');
-    facts.append(
-      el('span', '', c.connected ? 'Connected' : (c.first_connected_at ? 'Offline' : 'Never connected')),
-      el('span', '', c.agent_name ? 'Node ' + c.agent_name : 'No node'),
-      el('span', '', c.version ? 'v' + c.version.replace(/^v/, '') : 'Version unknown'),
-      el('span', '', 'Seen ' + timeAgo(c.last_seen_at)));
-    head.append(dot, renameControl(c), facts);
-    const actions = el('div', 'collector-row-actions');
+  function item(c) {
+    const details = el('details', 'mgmt-item');
+    details.dataset.collectorId = c.collector_id;
+    details.dataset.search = [c.name, c.collector_id, c.agent_name || '', ...c.types.map(t => t.label)].join(' ').toLowerCase();
+    details.open = openIds.has(c.collector_id);
+    details.addEventListener('toggle', () => { if (details.open) openIds.add(c.collector_id); else openIds.delete(c.collector_id); });
+
+    const summary = el('summary', 'mgmt-summary');
+    summary.append(
+      el('span', 'mgmt-name', c.name),
+      el('span', 'badge ' + (c.connected ? 'badge-online' : 'badge-offline'), c.connected ? 'Connected' : (c.first_connected_at ? 'Offline' : 'Never connected')));
+    for (const t of c.types.filter(t => t.enabled)) summary.append(el('span', 'badge badge-accent', t.label));
+    const id = el('span', 'mgmt-id mono', middleTrim(c.collector_id, 8, 5));
+    id.title = c.collector_id;
+    summary.append(id);
+    summary.insertAdjacentHTML('beforeend', CHEVRON);
+
+    const panel = el('div', 'mgmt-panel');
+    const list = el('dl', 'cred-list');
+    list.append(
+      nameRow(c),
+      credRow('Collector ID', el('code', 'secret', c.collector_id), button('Copy', 'btn btn-ghost btn-sm', () => copy(c.collector_id, 'Collector ID'))),
+      credRow('Node', el('span', c.agent_name ? '' : 'muted', c.agent_name || 'Not linked')),
+      credRow('Version', el('span', c.version ? 'mono' : 'muted', c.version ? 'v' + c.version.replace(/^v/, '') : 'Unknown')),
+      credRow('Last seen', el('span', '', c.connected ? 'Connected now' : timeAgo(c.last_seen_at))));
+    for (const t of c.types) list.append(typeRow(c, t));
+
+    const actions = el('div', 'mgmt-actions');
     actions.append(
-      button('Install', 'btn btn-secondary btn-sm', () => ctx.showInstall(c)),
-      button('Reset token', 'btn btn-ghost btn-sm', async () => {
+      button('Install', 'btn btn-primary btn-sm', () => ctx.showInstall(c)),
+      button('Reset token', 'btn btn-secondary btn-sm', async () => {
         if (!await confirm({title: 'Reset the token of ' + c.name + '?', message: 'The collector disconnects at once and stays offline until its TOKEN setting is replaced.', label: 'Reset token', danger: true})) return;
         act(async () => {
           await api('collectors/' + c.collector_id + '/token', {method: 'POST'});
           ctx.showInstall(c);
         });
       }),
-      button('Remove', 'btn btn-ghost btn-sm btn-danger', async () => {
+      el('span', 'toolbar-spacer'),
+      button('Remove collector', 'btn btn-danger btn-sm', async () => {
         if (!await confirm({title: 'Remove ' + c.name + '?', message: 'Its token stops working at once. Data it already sent is kept.', label: 'Remove collector', danger: true, match: c.name})) return;
         act(() => api('collectors/' + c.collector_id, {method: 'DELETE'}), 'Collector removed');
       }));
-    item.append(head);
-    for (const t of c.types) item.append(typeLine(c, t, item));
-    item.append(actions);
-    return item;
+    panel.append(list, actions);
+    details.append(summary, panel);
+    return details;
+  }
+
+  function applySearch() {
+    let shown = 0;
+    for (const node of ui.list.querySelectorAll('.mgmt-item')) {
+      node.hidden = !!query && !node.dataset.search.includes(query);
+      if (!node.hidden) shown++;
+    }
+    const none = ui.list.querySelector('.mgmt-no-match');
+    if (none) none.hidden = shown > 0;
   }
 
   function render() {
     ui.list.replaceChildren();
+    ui.list.classList.toggle('mgmt-list', state.items.length > 0);
     if (!state.items.length) {
       const empty = el('div', 'empty-state');
-      empty.append(el('h3', 'empty-state-title', 'No collectors yet'), el('p', '', 'Add one to start sending data from a host.'));
+      empty.append(el('h2', 'empty-state-title', 'No collectors yet'), el('p', '', 'Add a collector to get a token and install steps for the host.'));
       ui.list.append(empty);
       return;
     }
-    for (const c of state.items) ui.list.append(row(c));
+    for (const c of state.items) ui.list.append(item(c));
+    const none = el('p', 'mgmt-no-match muted', 'No collectors match your search.');
+    none.hidden = true;
+    ui.list.append(none);
+    applySearch();
   }
 
-  return { render };
+  // busy is true while a rename or a "Read again" form is open, so the periodic
+  // refresh doesn't throw away what the user is typing.
+  function busy() {
+    return !!ui.list.querySelector('.inline-edit:not([hidden]), .collector-backfill');
+  }
+
+  function search(text) {
+    query = text.trim().toLowerCase();
+    applySearch();
+  }
+
+  return { render, busy, search };
 }

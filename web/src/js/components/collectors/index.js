@@ -25,7 +25,7 @@ async function refresh() {
     ctx.list.render();
     const n = state.items.length;
     const online = state.items.filter(c => c.connected).length;
-    ctx.ui.count.textContent = n ? (n === 1 ? '1 collector' : n + ' collectors') + ' · ' + online + ' connected' : 'None yet';
+    ctx.ui.count.textContent = (n === 1 ? '1 collector' : n + ' collectors') + (n ? ' · ' + online + ' connected' : '');
   }
   notify();
   return state.items;
@@ -74,7 +74,7 @@ function mount(root) {
   ctx = {
     root, state, refresh, showInstall,
     ui: {
-      count: q('count'), message: q('message'), list: q('list'), add: q('add'), refresh: q('refresh'), dialog: q('add-modal'),
+      count: q('count'), message: q('message'), list: q('list'), add: q('add'), search: q('search'), dialog: q('add-modal'),
       form: q('form'), name: q('name'), node: q('node'), types: q('types'), formMessage: q('form-message'), create: q('create')
     }
   };
@@ -82,7 +82,7 @@ function mount(root) {
   const ui = ctx.ui;
 
   ui.add.addEventListener('click', () => openAdd());
-  ui.refresh.addEventListener('click', () => load());
+  ui.search?.addEventListener('input', () => ctx.list.search(ui.search.value));
   ui.form.addEventListener('submit', async e => {
     e.preventDefault();
     const types = [...ui.types.querySelectorAll('input:checked')].map(i => i.value);
@@ -102,7 +102,7 @@ function mount(root) {
 
   load();
   // Collector status changes on its own; refresh it while the page is visible.
-  setInterval(() => { if (!document.hidden) refresh().catch(() => {}); }, 30000);
+  setInterval(() => { if (!document.hidden && !ctx.list.busy()) refresh().catch(() => {}); }, 30000);
 
   // ?add=crowdsec opens the add form with that type ticked, then leaves the URL clean.
   const params = new URLSearchParams(window.location.search);

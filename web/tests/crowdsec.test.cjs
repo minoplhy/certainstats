@@ -256,9 +256,10 @@ test('the Collectors page lists collectors and ?add= opens the add form with tha
   const dom = new JSDOM(html, {url: 'http://x/panel/collectors?add=crowdsec', runScripts: 'outside-only'});
   const w = dom.window;
   open.push(w);
-  const posted = [];
+  const posted = [], patched = [];
   w.fetch = async (input, init = {}) => {
     const u = new URL(input, 'http://x');
+    if (init.method === 'PATCH') { patched.push([u.pathname, JSON.parse(init.body)]); return {ok: true, status: 200, json: async () => ({})}; }
     if (u.pathname === '/panel/api/collectors' && init.method === 'POST') {
       posted.push(JSON.parse(init.body));
       return {ok: true, status: 200, json: async () => ({collector_id: 'col_new', name: 'new'})};
@@ -274,7 +275,41 @@ test('the Collectors page lists collectors and ?add= opens the add form with tha
   w.setInterval = () => 0;
   w.eval(COLLECTORS);
   await settle();
-  assert.equal(w.document.querySelectorAll('.collector-row').length, 1);
+  // Laid out like the Management page: an expandable row per collector.
+  const item = w.document.querySelector('details.mgmt-item');
+  assert.ok(w.document.querySelector('[data-collectors-list]').classList.contains('mgmt-list'));
+  assert.equal(w.document.querySelectorAll('details.mgmt-item').length, 1);
+  assert.equal(item.querySelector('.mgmt-name').textContent, 'edge');
+  assert.match(item.querySelector('summary').textContent, /Connected/);
+  assert.match(item.querySelector('summary').textContent, /CrowdSec/);
+  const labels = [...item.querySelectorAll('.cred-row dt')].map(d => d.textContent);
+  assert.deepEqual(labels, ['Name', 'Collector ID', 'Node', 'Version', 'Last seen', 'CrowdSec']);
+  const actions = [...item.querySelectorAll('.mgmt-actions button')].map(b => b.textContent);
+  assert.deepEqual(actions, ['Install', 'Reset token', 'Remove collector']);
+
+  // Search hides rows that don't match.
+  const search = w.document.querySelector('[data-collectors-search]');
+  search.value = 'nomatch';
+  search.dispatchEvent(new w.Event('input'));
+  assert.equal(item.hidden, true);
+  assert.equal(w.document.querySelector('.mgmt-no-match').hidden, false);
+  search.value = 'edg';
+  search.dispatchEvent(new w.Event('input'));
+  assert.equal(item.hidden, false);
+
+  // Rename works as on Management: Rename opens the inline editor; Escape cancels, Enter saves.
+  const renameBtn = [...item.querySelectorAll('.cred-row button')].find(b => b.textContent === 'Rename');
+  renameBtn.click();
+  const edit = item.querySelector('.inline-edit'), input = edit.querySelector('input');
+  assert.equal(edit.hidden, false);
+  assert.equal(input.value, 'edge');
+  input.dispatchEvent(new w.KeyboardEvent('keydown', {key: 'Escape', bubbles: true}));
+  assert.equal(edit.hidden, true);
+  renameBtn.click();
+  input.value = 'edge-2';
+  input.dispatchEvent(new w.KeyboardEvent('keydown', {key: 'Enter', bubbles: true}));
+  await settle();
+  assert.deepEqual(patched, [['/panel/api/collectors/col_a', {name: 'edge-2'}]]);
   assert.match(w.document.querySelector('[data-collectors-count]').textContent, /1 collector · 1 connected/);
   assert.equal(w.location.search, '', 'the add parameter is cleared');
   assert.deepEqual(modals[0], ['open', 'collectors-add-modal']);

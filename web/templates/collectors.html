@@ -1,21 +1,30 @@
 {{define "content"}}
 <div class="collectors-page" data-collectors-page>
   <section class="hero">
-    <div class="hero-eyebrow"><span>Collectors</span><span aria-hidden="true">·</span><span data-collectors-count>Loading…</span></div>
-    <h1 class="hero-title">Collectors</h1>
-    <p class="page-subtitle">A collector runs on a host and sends data from software there, such as CrowdSec.</p>
-    <div class="hero-actions">
-      <button type="button" class="btn btn-primary" data-collectors-add>
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
-        Add collector
-      </button>
-      <button type="button" class="btn btn-ghost" data-collectors-refresh>Refresh</button>
+    <div class="hero-eyebrow">
+      <a href="{{.PanelPath}}/crowdsec">&larr; CrowdSec</a>
+      <span aria-hidden="true">·</span>
+      <span data-collectors-count>Loading…</span>
     </div>
+    <h1 class="hero-title">Collectors</h1>
+    <p class="page-subtitle">A collector runs on a host and sends data from software there, such as CrowdSec. Treat its token like a password.</p>
   </section>
-  <section class="page-section" aria-label="Collectors">
-    <p class="collector-status" role="status" aria-live="polite" data-collectors-message></p>
-    <div class="collector-list" data-collectors-list></div>
-  </section>
+
+  <div class="toolbar-bar">
+    <label class="toolbar-search">
+      <span class="sr-only">Search collectors</span>
+      <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      <input type="search" placeholder="Search by name, ID, node or type" autocomplete="off" data-collectors-search>
+    </label>
+    <span class="toolbar-spacer"></span>
+    <button type="button" class="btn btn-primary" data-collectors-add>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+      Add collector
+    </button>
+  </div>
+
+  <p class="collector-status" role="status" aria-live="polite" data-collectors-message></p>
+  <div data-collectors-list></div>
 </div>
 {{template "collectors_add_modal" .}}
 {{template "reinstall_modal" .}}
