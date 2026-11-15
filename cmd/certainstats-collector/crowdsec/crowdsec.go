@@ -41,6 +41,10 @@ type Module struct {
 	client    *lapi
 	// Now is replaceable in tests.
 	Now func() time.Time
+	// started is when the process began; reached is set once the Local API answered.
+	// Together they tell a Local API still starting up from one that is down.
+	started time.Time
+	reached bool
 }
 
 var _ module.Module = (*Module)(nil)
@@ -50,7 +54,7 @@ func New(getenv func(string) string, version string) *Module {
 	if path == "" {
 		path = DefaultCredentials
 	}
-	return &Module{credsPath: path, version: version, Now: time.Now}
+	return &Module{credsPath: path, version: version, Now: time.Now, started: time.Now()}
 }
 
 func (m *Module) Name() string   { return wire.TypeName }
@@ -95,10 +99,34 @@ type runner struct {
 	last    *wire.Status
 	pending []cwire.Envelope // frames that arrived while waiting for an ack
 	batch   int
+	once    bool
+	// failures counts passes in a row that could not read the Local API.
+	failures int
+}
+
+// startGrace is how long after start an unreachable Local API counts as still
+// starting (CrowdSec can take a while) rather than as an error.
+const startGrace = 2 * time.Minute
+
+// retryDelay is the wait after the nth failed pass in a row: 5 s, doubling, up to poll.
+func retryDelay(n int, poll time.Duration) time.Duration {
+	d := 5 * time.Second
+	for i := 1; i < n && d < poll; i++ {
+		d *= 2
+	}
+	return min(d, poll)
+}
+
+func (r *runner) nextWait() time.Duration {
+	poll := time.Duration(r.cfg.PollSeconds) * time.Second
+	if r.failures > 0 {
+		return retryDelay(r.failures, poll)
+	}
+	return poll
 }
 
 func (m *Module) Run(ctx context.Context, send module.Send, inbox <-chan cwire.Envelope, once bool) error {
-	r := &runner{m: m, send: send, inbox: inbox, sent: map[string]int64{}}
+	r := &runner{m: m, send: send, inbox: inbox, sent: map[string]int64{}, once: once}
 	if err := r.waitConfig(ctx); err != nil {
 		return err
 	}
@@ -107,7 +135,7 @@ func (m *Module) Run(ctx context.Context, send module.Send, inbox <-chan cwire.E
 		if once || ctx.Err() != nil {
 			return nil
 		}
-		since, ok := r.wait(ctx, time.Duration(r.cfg.PollSeconds)*time.Second)
+		since, ok := r.wait(ctx, r.nextWait())
 		if !ok {
 			return nil
 		}
@@ -179,6 +207,29 @@ func resyncOf(env cwire.Envelope) (int64, bool) {
 	return max(rs.SinceMs, 0), true
 }
 
+// starting reports whether a failure to reach the Local API should be treated as
+// CrowdSec still starting up: never reached yet, within startGrace, not --once.
+func (r *runner) starting() bool {
+	return !r.once && !r.m.reached && r.m.Now().Sub(r.m.started) < startGrace
+}
+
+// reachErr records the outcome of reading the Local API and reports it, keeping
+// quiet while CrowdSec may still be starting.
+func (r *runner) reachErr(err error) {
+	if err == nil {
+		r.failures = 0
+		r.m.reached = true
+		r.report(nil)
+		return
+	}
+	r.failures++
+	if r.starting() {
+		log.Printf("crowdsec: waiting for the Local API (%v); retrying in %s", err, r.nextWait())
+		return
+	}
+	r.report(err)
+}
+
 // report sends cs_status when it changes.
 func (r *runner) report(err error) {
 	st := wire.Status{Reachable: err == nil}
@@ -202,6 +253,8 @@ func (r *runner) report(err error) {
 // pass reads every alert that started after fromMs and sends what is new.
 func (r *runner) pass(ctx context.Context, fromMs int64) {
 	if err := r.m.ensureClient(); err != nil {
+		// A missing or unreadable credentials file is not a start-up race: report at once.
+		r.failures++
 		r.report(err)
 		return
 	}
@@ -211,7 +264,7 @@ func (r *runner) pass(ctx context.Context, fromMs int64) {
 		from = now.Add(-backfill)
 	}
 	alerts, err := r.fetch(ctx, from, now, 0)
-	r.report(err)
+	r.reachErr(err)
 	if err != nil {
 		return
 	}

@@ -22,6 +22,15 @@ alert holding thousands of decisions, and none is an attack seen on this host.
 An alert with more than 500 decisions is sent with the first 500. Batches are
 split by encoded size as well as count, so each fits one 1 MiB frame.
 
+CrowdSec can take a while to start, and Compose's `depends_on` only waits for its
+container, not its Local API. For the first 2 minutes after the collector
+starts, until the Local API first answers, an unreachable Local API is logged
+as `waiting for the Local API` and not reported to CertainStats. The collector
+retries after 5 seconds, then doubles the wait up to the poll interval. After
+that, or once the Local API has answered, an outage is reported at once and
+retried the same way. `--once` always reports at once. A Compose healthcheck
+with `depends_on: condition: service_healthy` shortens the wait further.
+
 Alerts are found by their start time, with `since` and `until` sent as durations
 before now. If a Local API rejects that form, the collector switches to RFC 3339
 timestamps. Each pass starts an hour before the cursor, because a long bucket
