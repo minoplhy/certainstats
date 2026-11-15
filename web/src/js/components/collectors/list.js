@@ -1,6 +1,6 @@
 import { el, button, api, timeAgo, typeState } from './shared.js';
 
-// The collector rows of the dialog: status, rename in place, per-type actions.
+// The collector rows of the Collectors page: status, rename in place, per-type actions.
 export function createList(ctx) {
   const { ui, state } = ctx;
 

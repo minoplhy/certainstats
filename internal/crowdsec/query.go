@@ -111,8 +111,9 @@ func bucketWidth(span int64, rollup bool) int64 {
 
 type Timeline struct {
 	Coverage
-	WidthMs int64      `json:"width_ms"`
-	Points  [][2]int64 `json:"points"`
+	WidthMs int64 `json:"width_ms"`
+	// Points are [bucket start, alerts, decisions issued by those alerts].
+	Points [][3]int64 `json:"points"`
 }
 
 func (s *Store) Timeline(ctx context.Context, userID string, f Filter) (*Timeline, error) {
@@ -124,30 +125,32 @@ func (s *Store) Timeline(ctx context.Context, userID string, f Filter) (*Timelin
 	w := bucketWidth(f.End-f.Start, rollup)
 	off := f.TZOffset * 60_000
 	where, args := f.where(userID, rollup, true, "")
-	query := `SELECT ((started_at + ?) / ?) * ? - ?, COUNT(*) FROM alerts WHERE ` + where + ` GROUP BY 1`
+	query := `SELECT ((started_at + ?) / ?) * ? - ?, COUNT(*), COALESCE(SUM((SELECT COUNT(*) FROM decisions WHERE decisions.alert_id = alerts.id)), 0)
+		FROM alerts WHERE ` + where + ` GROUP BY 1`
 	if rollup {
-		query = `SELECT ((hour + ?) / ?) * ? - ?, SUM(alerts) FROM rollup_hourly WHERE ` + where + ` GROUP BY 1`
+		query = `SELECT ((hour + ?) / ?) * ? - ?, SUM(alerts), SUM(decisions) FROM rollup_hourly WHERE ` + where + ` GROUP BY 1`
 	}
 	rows, err := s.read.QueryContext(ctx, query, append([]any{off, w, w, off}, args...)...)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	counts := map[int64]int64{}
+	counts := map[int64][2]int64{}
 	for rows.Next() {
-		var b, n int64
-		if err := rows.Scan(&b, &n); err != nil {
+		var b, n, d int64
+		if err := rows.Scan(&b, &n, &d); err != nil {
 			return nil, err
 		}
-		counts[b] = n
+		counts[b] = [2]int64{n, d}
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	out := &Timeline{Coverage: cov, WidthMs: w, Points: [][2]int64{}}
+	out := &Timeline{Coverage: cov, WidthMs: w, Points: [][3]int64{}}
 	first := ((f.Start+off)/w)*w - off
 	for b := first; b < f.End && len(out.Points) < 1000; b += w {
-		out.Points = append(out.Points, [2]int64{b, counts[b]})
+		c := counts[b]
+		out.Points = append(out.Points, [3]int64{b, c[0], c[1]})
 	}
 	return out, nil
 }

@@ -70,7 +70,7 @@ On top of the [steps every collector needs](collectors.md#setting-one-up):
 Not needed: an open port, a bouncer key, or access to CrowdSec's log files.
 
 When the Local API is unreachable the collector stays connected and reports the
-error, which the Collectors dialog and the page headline show.
+error, which the Collectors page and the CrowdSec page headline show.
 
 ## Messages
 
@@ -98,8 +98,11 @@ never hold up agent ingestion or the main state database. It has three tables:
   `start_at`, never when it arrived. `action` lists the distinct decision types
   (`ban`, `ban+captcha`) or `none`.
 - `decisions`: every decision of every alert, with its expiry.
-- `rollup_hourly`: alert and event counts per owner, hour, scenario, country,
-  machine and action, written in the same transaction as each new alert.
+- `rollup_hourly`: alert, event and decision counts per owner, hour, scenario,
+  country, machine and action, written in the same transaction as each new
+  alert. The `decisions` column was added later (schema version 1, in
+  `PRAGMA user_version`); on upgrade it is filled from the raw alerts still
+  kept, so hours whose raw alerts were already pruned count 0 decisions.
 
 ### Retention
 
@@ -131,7 +134,7 @@ Paths are relative to the panel's `/api`.
 | GET | `/collectors/{id}/crowdsec` | The collector's CrowdSec status, cursor and machine |
 | POST | `/collectors/{id}/crowdsec/resync` | Ask the connected collector to read again from `since_ms` |
 | GET | `/collectors/crowdsec/summary` | Alerts, events, unique IPs, active decisions by type, and coverage |
-| GET | `/collectors/crowdsec/timeline` | Alert counts per bucket, at most 1,000 buckets, zero-filled |
+| GET | `/collectors/crowdsec/timeline` | `[bucket start, alerts, decisions]` per bucket, at most 1,000 buckets, zero-filled; decisions are those the bucket's alerts issued |
 | GET | `/collectors/crowdsec/groups/{field}` | Top values for one field; `limit` 1 to 100 |
 | GET | `/collectors/crowdsec/alerts` | Paged alerts: `page`, `limit` (25, 50, 100), `sort`, `order` |
 | GET | `/collectors/crowdsec/alerts/{id}` | One alert with all decisions |
@@ -149,14 +152,23 @@ error, never zeros.
 ## The page
 
 `/crowdsec` opens with a sentence headline and figures: alerts, unique IPs,
-active bans now and collectors reporting. Below are the filter bar (search,
-"Add filter", removable chips, the shared time picker and an **All** range
-starting at the oldest data), the alert timeline (brush to zoom), four
-breakdowns whose field can each be changed, and the alert table. Clicking a value
-in a breakdown filters in place; its second button excludes it. Table cells have
-copy and filter buttons, columns sort, and a row expands to show every decision.
-Clicking an IP opens its own view. The range, filters, sort, page, breakdown
-fields and open IP all live in the URL, so any view can be linked and Back works.
+active bans now and collectors reporting. **Collectors** links to the
+Collectors page. Below is a one-row filter bar:
+- search;
+- **+ Filter**, a popover with field, is / is not and value;
+- one range dropdown holding the quick ranges, a custom range and **All**, a
+  range starting at the oldest data.
+
+Active filters show as removable chips under the bar. Then come:
+- the timeline of alerts and the decisions they issued, as two series (brush to zoom);
+- four breakdowns whose field can each be changed;
+- the alert table.
+
+Clicking a value in a breakdown filters in place, and its second button
+excludes it. Table cells have copy and filter buttons, columns sort, and a row
+expands to show every decision. Clicking an IP opens its own view. The range,
+filters, sort, page, breakdown fields and open IP all live in the URL, so any
+view can be linked and Back works.
 
 ## Verification
 
@@ -165,5 +177,6 @@ late alerts, filters, raw and rollup agreement, owner isolation and pruning.
 `go test ./cmd/certainstats-collector/...` runs the collector against a fake
 Local API: backfill, JWT reuse and renewal, restarts without duplicates, window
 splitting, an unreachable Local API, `--check` and resync.
-`node --test web/tests/crowdsec.test.cjs` covers the URL state, the headline and
-the page's filtering, sorting, row details, IP view and range controls.
+`node --test web/tests/crowdsec.test.cjs` covers the URL state, the headline,
+the page's filtering (including the + Filter popover), sorting, row details, IP
+view, range controls, the two timeline series and the Collectors page.

@@ -65,6 +65,7 @@ var schema = []string{
 		action     TEXT NOT NULL,
 		alerts     INTEGER NOT NULL,
 		events     INTEGER NOT NULL,
+		decisions  INTEGER NOT NULL DEFAULT 0,
 		PRIMARY KEY (user_id, hour, scenario, country, machine_id, action)
 	) WITHOUT ROWID`,
 }
@@ -96,6 +97,10 @@ func Open(path string) (*Store, error) {
 			return nil, fmt.Errorf("crowdsec schema: %w", err)
 		}
 	}
+	if err := migrate(write); err != nil {
+		write.Close()
+		return nil, fmt.Errorf("crowdsec migrate: %w", err)
+	}
 	read, err := sql.Open("sqlite", dsn(path))
 	if err != nil {
 		write.Close()
@@ -103,6 +108,47 @@ func Open(path string) (*Store, error) {
 	}
 	read.SetMaxOpenConns(4)
 	return &Store{write: write, read: read}, nil
+}
+
+// migrate upgrades a database made by an older version, tracked in user_version.
+// Version 1 adds rollup_hourly.decisions and fills it from the raw alerts still
+// kept; hours whose raw alerts were already pruned keep 0.
+func migrate(db *sql.DB) error {
+	var version int
+	if err := db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil {
+		return err
+	}
+	if version >= 1 {
+		return nil
+	}
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	var has int
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('rollup_hourly') WHERE name = 'decisions'`).Scan(&has); err != nil {
+		return err
+	}
+	if has == 0 {
+		if _, err := tx.Exec(`ALTER TABLE rollup_hourly ADD COLUMN decisions INTEGER NOT NULL DEFAULT 0`); err != nil {
+			return err
+		}
+	}
+	if _, err := tx.Exec(`WITH counted AS (
+			SELECT a.user_id, a.started_at - ((a.started_at % 3600000) + 3600000) % 3600000 AS hour,
+				a.scenario, a.country, a.machine_id, a.action, COUNT(*) AS n
+			FROM decisions d JOIN alerts a ON a.id = d.alert_id
+			GROUP BY 1, 2, 3, 4, 5, 6)
+		UPDATE rollup_hourly SET decisions = counted.n FROM counted
+		WHERE rollup_hourly.user_id = counted.user_id AND rollup_hourly.hour = counted.hour AND rollup_hourly.scenario = counted.scenario
+			AND rollup_hourly.country = counted.country AND rollup_hourly.machine_id = counted.machine_id AND rollup_hourly.action = counted.action`); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`PRAGMA user_version = 1`); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (s *Store) Close() error {
@@ -152,9 +198,9 @@ func (s *Store) Insert(ctx context.Context, userID, collectorID string, alerts [
 				return 0, 0, 0, err
 			}
 		}
-		if _, err := tx.ExecContext(ctx, `INSERT INTO rollup_hourly (user_id, hour, scenario, country, machine_id, action, alerts, events) VALUES (?, ?, ?, ?, ?, ?, 1, ?)
-			ON CONFLICT(user_id, hour, scenario, country, machine_id, action) DO UPDATE SET alerts = alerts + 1, events = events + excluded.events`,
-			userID, hourOf(row.StartedAt), row.Scenario, row.Country, row.Machine, row.Action, row.Events); err != nil {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO rollup_hourly (user_id, hour, scenario, country, machine_id, action, alerts, events, decisions) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)
+			ON CONFLICT(user_id, hour, scenario, country, machine_id, action) DO UPDATE SET alerts = alerts + 1, events = events + excluded.events, decisions = decisions + excluded.decisions`,
+			userID, hourOf(row.StartedAt), row.Scenario, row.Country, row.Machine, row.Action, row.Events, len(row.Decisions)); err != nil {
 			return 0, 0, 0, err
 		}
 		stored++

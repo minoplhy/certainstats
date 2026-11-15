@@ -102,7 +102,7 @@ function page(url) {
     const path = u.pathname.replace('/panel/api/collectors/crowdsec/', '');
     let body;
     if (path === 'summary') body = {source: 'raw', alerts: 2, events: 17, unique_ips: 2, active: {ban: 1}, raw_since: 1, rollup_since: 1};
-    else if (path === 'timeline') body = {source: 'raw', width_ms: 300000, points: [[Date.now() - 300000, 2]]};
+    else if (path === 'timeline') body = {source: 'raw', width_ms: 300000, points: [[Date.now() - 300000, 2, 3]]};
     else if (path.startsWith('groups/')) {
       const field = path.slice(7);
       body = {field, total: 2, items: field === 'scenario' ? [{value: 'crowdsecurity/ssh-bf', alerts: 1, events: 6}, {value: 'crowdsecurity/http-probing', alerts: 1, events: 11}] : [{value: field === 'country' ? 'NL' : 'x', alerts: 2, events: 17}]};
@@ -115,7 +115,12 @@ function page(url) {
   const charts = [];
   w.CertainStatsChart = {renderMultiChart: (id, opts) => { const c = {id, opts, updates: 0, updateSeries() { this.updates++; }}; charts.push(c); return c; }};
   const pickers = [];
-  w.CertainStatsTelemetry = {initCustomTimePicker: (el, opts) => { const p = {opts, states: [], setState(s) { this.states.push(s); }}; pickers.push(p); return p; }, showToast() {}};
+  w.CertainStatsTelemetry = {initCustomTimePicker: (el, opts) => {
+    const p = {opts, states: [], cur: {hours: opts.activeHours, customRange: null, all: !!opts.allTime?.active},
+      getState() { return this.cur; }, setState(s) { this.states.push(s); this.cur = {...this.cur, ...s}; }};
+    pickers.push(p);
+    return p;
+  }, showToast() {}};
   const collectors = [{collector_id: 'col_a', name: 'edge', connected: true, types: [{type: 'crowdsec', label: 'CrowdSec', enabled: true, reported_on: true, status: 'ok'}]}];
   const opened = [];
   w.CertainStatsCollectors = {subscribe: fn => fn(collectors, []), refresh: async () => collectors, open: o => opened.push(o || {})};
@@ -197,9 +202,87 @@ test('brushing the timeline sets a custom range and All asks for coverage first'
   assert.equal(params.get('start'), '1000');
   assert.equal(params.get('end'), '5000');
   assert.deepEqual({...h.pickers[0].states.at(-1).customRange}, {start: 1000, end: 5000});
-  h.q('[data-cs-all-time]').click();
+  assert.equal(h.pickers[0].opts.compact, true);
+  h.pickers[0].opts.allTime.onSelect();
   await settle();
   assert.equal(new URL(h.w.location.href).searchParams.get('all'), '1');
-  assert.equal(h.q('[data-cs-all-time]').getAttribute('aria-pressed'), 'true');
+  assert.equal(h.pickers[0].getState().all, true);
   assert.equal(h.q('[data-cs-headline]').textContent, '2 alerts in all time, most from ssh-bf.');
+});
+
+test('the timeline draws alerts and decisions', async () => {
+  const h = page('http://x/panel/crowdsec');
+  await settle();
+  const series = h.charts[0].opts.seriesList;
+  assert.deepEqual(Array.from(series, s => s.label), ['Alerts', 'Decisions']);
+  assert.equal(series[0].data[0].value, 2);
+  assert.equal(series[1].data[0].value, 3);
+  assert.equal(h.q('[data-cs-timeline-alerts]').textContent, '2');
+  assert.equal(h.q('[data-cs-timeline-decisions]').textContent, '3');
+});
+
+test('the + Filter popover adds include and exclude filters', async () => {
+  const h = page('http://x/panel/crowdsec');
+  await settle();
+  const toggle = h.q('[data-cs-filter-toggle]'), pop = h.q('[data-cs-filter-popover]');
+  assert.equal(pop.hidden, true);
+  toggle.click();
+  assert.equal(pop.hidden, false);
+  assert.equal(toggle.getAttribute('aria-expanded'), 'true');
+  h.q('[data-cs-filter-field]').value = 'scenario';
+  h.q('[data-cs-filter-value]').value = 'crowdsecurity/ssh-bf';
+  pop.dispatchEvent(new h.w.Event('submit', {cancelable: true}));
+  await settle();
+  assert.equal(pop.hidden, true);
+  assert.equal(new URL(h.w.location.href).searchParams.get('scenario'), 'crowdsecurity/ssh-bf');
+
+  toggle.click();
+  h.q('[data-cs-filter-field]').value = 'country';
+  pop.querySelector('input[name="cs-filter-op"][value="not"]').checked = true;
+  h.q('[data-cs-filter-value]').value = 'CN';
+  pop.dispatchEvent(new h.w.Event('submit', {cancelable: true}));
+  await settle();
+  assert.equal(new URL(h.w.location.href).searchParams.get('not_country'), 'CN');
+  assert.match(h.q('[data-cs-chips]').textContent, /Country\s*is not\s*CN/);
+
+  toggle.click();
+  pop.dispatchEvent(new h.w.KeyboardEvent('keydown', {key: 'Escape', bubbles: true}));
+  assert.equal(pop.hidden, true);
+});
+
+test('the Collectors page lists collectors and ?add= opens the add form with that type', async () => {
+  const page = fs.readFileSync('web/templates/collectors.html', 'utf8').replace(/\{\{[^}]*\}\}/g, '');
+  const html = '<body data-panel-path="/panel">' + page + partial('collectors/add_modal.html') + '</body>';
+  const dom = new JSDOM(html, {url: 'http://x/panel/collectors?add=crowdsec', runScripts: 'outside-only'});
+  const w = dom.window;
+  open.push(w);
+  const posted = [];
+  w.fetch = async (input, init = {}) => {
+    const u = new URL(input, 'http://x');
+    if (u.pathname === '/panel/api/collectors' && init.method === 'POST') {
+      posted.push(JSON.parse(init.body));
+      return {ok: true, status: 200, json: async () => ({collector_id: 'col_new', name: 'new'})};
+    }
+    if (u.pathname === '/panel/api/collectors') return {ok: true, status: 200, json: async () => ({
+      items: [{collector_id: 'col_a', name: 'edge', connected: true, last_seen_at: Date.now(), types: [{type: 'crowdsec', label: 'CrowdSec', enabled: true, reported_on: true, status: 'ok'}]}],
+      types: [{type: 'crowdsec', label: 'CrowdSec'}, {type: 'other', label: 'Other'}]
+    })};
+    return {ok: false, status: 404, json: async () => ({error: 'not found'})};
+  };
+  const modals = [];
+  w.CertainStatsModal = {open: d => modals.push(['open', d.id]), close: d => modals.push(['close', d.id]), confirm: async () => false};
+  w.setInterval = () => 0;
+  w.eval(COLLECTORS);
+  await settle();
+  assert.equal(w.document.querySelectorAll('.collector-row').length, 1);
+  assert.match(w.document.querySelector('[data-collectors-count]').textContent, /1 collector · 1 connected/);
+  assert.equal(w.location.search, '', 'the add parameter is cleared');
+  assert.deepEqual(modals[0], ['open', 'collectors-add-modal']);
+  const ticked = [...w.document.querySelectorAll('[data-collectors-types] input:checked')].map(i => i.value);
+  assert.deepEqual(ticked, ['crowdsec']);
+  w.document.querySelector('[data-collectors-name]').value = 'new';
+  w.document.querySelector('[data-collectors-form]').dispatchEvent(new w.Event('submit', {cancelable: true}));
+  await settle();
+  assert.deepEqual(posted, [{name: 'new', agent_id: '', types: ['crowdsec']}]);
+  assert.ok(modals.some(m => m[0] === 'close' && m[1] === 'collectors-add-modal'));
 });

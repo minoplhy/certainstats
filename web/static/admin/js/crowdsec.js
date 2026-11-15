@@ -289,7 +289,10 @@
     return m / 1440 + " d";
   }
   function drawTimeline(existing, canvasId, data, range, onZoom) {
-    const series = [{ label: "Alerts", color: "--s1", fill: true, data: data.points.map((p) => ({ timestamp: p[0], value: p[1] })) }];
+    const series = [
+      { label: "Alerts", color: "--s1", fill: true, data: data.points.map((p) => ({ timestamp: p[0], value: p[1] })) },
+      { label: "Decisions", color: "--s2", fill: false, data: data.points.map((p) => ({ timestamp: p[0], value: p[2] || 0 })) }
+    ];
     const customRange = { start: range.start, end: range.end };
     const hours = Math.max(1, Math.round((range.end - range.start) / 36e5));
     const stepMs = data.width_ms || null;
@@ -311,9 +314,12 @@
   function renderTimeline(data, onZoom) {
     const ui = state.ui;
     state.charts.timeline = drawTimeline(state.charts.timeline, "cs-timeline", data, state.range, onZoom);
-    const total = data.points.reduce((n, p) => n + p[1], 0);
+    const alerts = data.points.reduce((n, p) => n + p[1], 0);
+    const decisions = data.points.reduce((n, p) => n + (p[2] || 0), 0);
+    if (ui.timelineAlerts) ui.timelineAlerts.textContent = formatCount(alerts);
+    if (ui.timelineDecisions) ui.timelineDecisions.textContent = formatCount(decisions);
     ui.timelineNote.textContent = "per " + widthLabel(data.width_ms) + (data.source === "rollup" ? " · hourly summary" : "");
-    ui.timelineMessage.textContent = total ? "" : "No alerts in this range.";
+    ui.timelineMessage.textContent = alerts || decisions ? "" : "No alerts in this range.";
   }
 
   // web/src/js/pages/crowdsec/panels/breakdowns.js
@@ -411,6 +417,45 @@
     }
     ui.chips.hidden = ui.chips.children.length === 0;
   }
+  var PLACEHOLDERS = {
+    ip: "e.g. 203.0.113.7",
+    range: "e.g. 203.0.113.0/24",
+    scenario: "e.g. crowdsecurity/ssh-bf",
+    country: "e.g. NL",
+    machine: "Machine name",
+    asn: "e.g. 64500",
+    action: "ban, captcha or none",
+    collector: "Collector name"
+  };
+  function bindPopover() {
+    const ui = state.ui;
+    const pop = ui.filterPopover;
+    const setOpen = (open) => {
+      pop.hidden = !open;
+      ui.filterToggle.setAttribute("aria-expanded", String(open));
+      if (open) ui.filterValue.focus();
+    };
+    ui.filterToggle.addEventListener("click", () => setOpen(pop.hidden));
+    pop.querySelector("[data-cs-filter-cancel]")?.addEventListener("click", () => {
+      setOpen(false);
+      ui.filterToggle.focus();
+    });
+    pop.addEventListener("keydown", (e) => {
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      setOpen(false);
+      ui.filterToggle.focus();
+    });
+    document.addEventListener("click", (e) => {
+      if (!pop.hidden && !pop.contains(e.target) && !ui.filterToggle.contains(e.target)) setOpen(false);
+    });
+    const placeholder = () => {
+      ui.filterValue.placeholder = PLACEHOLDERS[ui.filterField.value] || "Value";
+    };
+    ui.filterField.addEventListener("change", placeholder);
+    placeholder();
+    return setOpen;
+  }
   function bindFilters(onChange) {
     const ui = state.ui;
     const v = () => state.view;
@@ -425,17 +470,33 @@
         onChange();
       }, 350);
     });
-    ui.addFilter.addEventListener("submit", (event) => {
+    const setOpen = bindPopover();
+    ui.filterPopover.addEventListener("submit", (event) => {
       event.preventDefault();
       const value = ui.filterValue.value.trim();
       if (!value) return;
-      addFilter(v(), ui.filterField.value, value, ui.filterOp.value === "not");
+      const exclude = ui.filterPopover.querySelector('input[name="cs-filter-op"]:checked')?.value === "not";
+      addFilter(v(), ui.filterField.value, value, exclude);
       ui.filterValue.value = "";
+      setOpen(false);
       onChange();
     });
     state.picker = window.CertainStatsTelemetry.initCustomTimePicker(ui.timePicker, {
       storageKey: "certainstats_crowdsec_hours",
       activeHours: v().hours,
+      compact: true,
+      allTime: {
+        active: v().all,
+        // "All" starts at the oldest data, which load() looks up.
+        onSelect: () => {
+          const view = v();
+          view.all = true;
+          view.start = null;
+          view.end = null;
+          view.page = 1;
+          onChange();
+        }
+      },
       onApply: ({ hours, customRange }) => {
         const view = v();
         view.all = false;
@@ -446,24 +507,16 @@
         onChange();
       }
     });
-    if (v().start && v().end) state.picker.setState({ hours: v().hours, customRange: { start: v().start, end: v().end } });
-    ui.allTime.addEventListener("click", () => {
-      const view = v();
-      view.all = !view.all;
-      if (!view.all) {
-        view.start = null;
-        view.end = null;
-      }
-      view.page = 1;
-      onChange();
-    });
+    if (v().start && v().end) state.picker.setState({ hours: v().hours, customRange: { start: v().start, end: v().end }, all: v().all });
   }
   function syncRangeControls() {
-    const ui = state.ui;
-    const all = state.view.all;
-    ui.allTime.setAttribute("aria-pressed", String(all));
-    ui.allTime.classList.toggle("is-active", all);
-    ui.timePicker.classList.toggle("is-dimmed", all);
+    const p = state.picker;
+    if (!p) return;
+    const v = state.view;
+    const cur = p.getState();
+    const custom = v.start && v.end ? { start: v.start, end: v.end } : null;
+    const same = cur.all === v.all && cur.hours === v.hours && (cur.customRange ? custom && cur.customRange.start === custom.start && cur.customRange.end === custom.end : !custom);
+    if (!same) p.setState({ hours: v.hours, customRange: custom, all: v.all });
   }
 
   // web/src/js/pages/crowdsec/table/row.js
@@ -683,21 +736,22 @@
     statIps: "stat-ips",
     statBans: "stat-bans",
     statCollectors: "stat-collectors",
-    collectorsBtn: "collectors",
     refresh: "refresh",
     empty: "empty",
-    addCollector: "add-collector",
     main: "main",
     search: "search",
     addFilter: "add-filter",
     filterField: "filter-field",
     filterOp: "filter-op",
     filterValue: "filter-value",
+    filterToggle: "filter-toggle",
+    filterPopover: "filter-popover",
     timePicker: "time-picker",
-    allTime: "all-time",
     chips: "chips",
     expired: "expired",
     timelineNote: "timeline-note",
+    timelineAlerts: "timeline-alerts",
+    timelineDecisions: "timeline-decisions",
     timelineMessage: "timeline-message",
     breakdowns: "breakdowns",
     count: "count",
@@ -735,6 +789,7 @@
   var actions = {
     filter(field, value, exclude = false) {
       addFilter(state.view, field, value, exclude);
+      if ([...state.ui.filterField.options].some((o) => o.value === field)) state.ui.filterField.value = field;
       update();
     },
     openIP(ip) {
@@ -837,7 +892,7 @@
     v.start = Math.floor(start);
     v.end = Math.floor(end);
     v.page = 1;
-    state.picker?.setState({ hours: v.hours, customRange: { start: v.start, end: v.end } });
+    state.picker?.setState({ hours: v.hours, customRange: { start: v.start, end: v.end }, all: false });
     update();
   }
   function bindCollectors() {
@@ -848,8 +903,6 @@
       state.collectorsLoaded = true;
       renderHero();
     });
-    state.ui.collectorsBtn.addEventListener("click", () => dialog.open());
-    state.ui.addCollector.addEventListener("click", () => dialog.open({ create: true, type: "crowdsec" }));
     dialog.refresh().catch((e) => {
       state.ui.headline.textContent = "Collectors could not be loaded: " + e.message;
     });
@@ -887,7 +940,7 @@
         update();
       });
       const v = state.view;
-      state.picker?.setState({ hours: v.hours, customRange: v.start && v.end ? { start: v.start, end: v.end } : null });
+      state.picker?.setState({ hours: v.hours, customRange: v.start && v.end ? { start: v.start, end: v.end } : null, all: v.all });
       load();
     });
     bindCollectors();

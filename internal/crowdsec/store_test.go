@@ -120,12 +120,15 @@ func TestInsertDeduplicatesAndRollsUp(t *testing.T) {
 	if stored != 0 || dup != 2 {
 		t.Fatalf("same collector redelivery: stored=%d dup=%d", stored, dup)
 	}
-	var hours, alerts int64
-	if err := s.read.QueryRow(`SELECT COUNT(*), SUM(alerts) FROM rollup_hourly WHERE user_id = 'u1'`).Scan(&hours, &alerts); err != nil {
+	var hours, alerts, decisions, raw int64
+	if err := s.read.QueryRow(`SELECT COUNT(*), SUM(alerts), SUM(decisions) FROM rollup_hourly WHERE user_id = 'u1'`).Scan(&hours, &alerts, &decisions); err != nil {
 		t.Fatal(err)
 	}
-	if hours != 2 || alerts != 3 {
-		t.Fatalf("rollup rows=%d alerts=%d, want 2 and 3", hours, alerts)
+	if err := s.read.QueryRow(`SELECT COUNT(*) FROM decisions`).Scan(&raw); err != nil {
+		t.Fatal(err)
+	}
+	if hours != 2 || alerts != 3 || decisions != raw {
+		t.Fatalf("rollup rows=%d alerts=%d decisions=%d (raw %d), want 2, 3 and raw", hours, alerts, decisions, raw)
 	}
 	var hour int64
 	if err := s.read.QueryRow(`SELECT hour FROM rollup_hourly WHERE scenario = 'crowdsecurity/ssh-bf'`).Scan(&hour); err != nil {
@@ -171,12 +174,13 @@ func TestQueries(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var total int64
+	var total, decisions int64
 	for _, p := range tl.Points {
 		total += p[1]
+		decisions += p[2]
 	}
-	if total != 2 || tl.WidthMs != 5*60_000 || len(tl.Points) != 288 {
-		t.Fatalf("timeline total=%d width=%d points=%d", total, tl.WidthMs, len(tl.Points))
+	if total != 2 || decisions != 2 || tl.WidthMs != 5*60_000 || len(tl.Points) != 288 {
+		t.Fatalf("timeline total=%d decisions=%d width=%d points=%d", total, decisions, tl.WidthMs, len(tl.Points))
 	}
 
 	g, err := s.Groups(ctx, "u1", filterFor(t, day), fields[5], 10) // asn
@@ -217,6 +221,22 @@ func TestRollupAgreesWithRaw(t *testing.T) {
 	b, _ := s.Summary(ctx, "u1", short, 0)
 	if a.Source != "rollup" || a.Alerts != b.Alerts || a.Events != b.Events || a.UniqueIPs != nil {
 		t.Fatalf("rollup %+v raw %+v", a, b)
+	}
+	sumTimeline := func(f Filter) (alerts, decisions int64, source string) {
+		tl, err := s.Timeline(ctx, "u1", f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, p := range tl.Points {
+			alerts += p[1]
+			decisions += p[2]
+		}
+		return alerts, decisions, tl.Source
+	}
+	ra, rd, rs := sumTimeline(long)
+	sa, sd, _ := sumTimeline(short)
+	if rs != "rollup" || ra != sa || rd != sd || rd == 0 {
+		t.Fatalf("timeline rollup alerts=%d decisions=%d, raw alerts=%d decisions=%d", ra, rd, sa, sd)
 	}
 	// An IP filter needs raw alerts even for a long range.
 	c, _ := s.Summary(ctx, "u1", filterFor(t, "start=1790000000000&end=1794355200000&ip=203.0.113.7"), 0)
@@ -286,5 +306,39 @@ func TestNormalizeGoTimeFormat(t *testing.T) {
 	row := normalize("col_a", &a, ms("2026-11-10T14:00:00Z"))
 	if row.StartedAt != ms("2026-11-10T10:14:58.123Z") || row.StoppedAt != ms("2026-11-10T10:15:00Z") {
 		t.Fatalf("times %d %d", row.StartedAt, row.StoppedAt)
+	}
+}
+
+func TestMigrateBackfillsRollupDecisions(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "crowdsec.db")
+	s, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	if _, _, _, err := s.Insert(ctx, "u1", "col_a", fixture(t), ms("2026-11-10T13:00:00Z")); err != nil {
+		t.Fatal(err)
+	}
+	// Turn it back into a version 0 database: no decisions column.
+	for _, stmt := range []string{`ALTER TABLE rollup_hourly DROP COLUMN decisions`, `PRAGMA user_version = 0`} {
+		if _, err := s.write.Exec(stmt); err != nil {
+			t.Fatal(err)
+		}
+	}
+	s.Close()
+	s, err = Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	var rolled, raw int64
+	if err := s.read.QueryRow(`SELECT SUM(decisions) FROM rollup_hourly`).Scan(&rolled); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.read.QueryRow(`SELECT COUNT(*) FROM decisions`).Scan(&raw); err != nil {
+		t.Fatal(err)
+	}
+	if raw == 0 || rolled != raw {
+		t.Fatalf("backfilled decisions=%d, raw=%d", rolled, raw)
 	}
 }

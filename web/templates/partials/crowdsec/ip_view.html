@@ -21,7 +21,11 @@
   <article class="chart-card chart-card-wide">
     <div class="chart-header-row">
       <h2 class="chart-header-title">Alerts from this IP</h2>
-      <span class="muted mono" data-cs-ip-range></span>
+      <div class="chart-legend-pills">
+        <span class="chart-legend-item"><span class="chart-legend-dot sw-s1" aria-hidden="true"></span>Alerts</span>
+        <span class="chart-legend-item"><span class="chart-legend-dot sw-s2" aria-hidden="true"></span>Decisions</span>
+        <span class="muted mono" data-cs-ip-range></span>
+      </div>
     </div>
     <div class="chart-container">
       <canvas class="chart-canvas" id="cs-ip-timeline" role="img" aria-label="Alerts from this IP over time" data-cs-ip-timeline></canvas>

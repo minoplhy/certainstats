@@ -56,3 +56,22 @@ test('blocked storage uses six hours and still allows preset changes and keyboar
   assert.equal(h.handlers.size, count);
   root._timePicker.destroy();h.pickers[1].destroy();h.dom.window.close();
 });
+test('compact mode shows one labelled trigger and an All choice', () => {
+  const h = harness(), root = h.containers[0];
+  h.pickers.forEach(p => p.destroy());
+  const selected = [], applied = [];
+  const p = h.window.CertainStatsTelemetry.initCustomTimePicker(root, {compact: true, activeHours: 168, allTime: {active: false, onSelect: () => selected.push(1)}, onApply: s => applied.push(s)});
+  assert.equal(root.querySelector('.quick-range-pill'), null);
+  const label = () => root.querySelector('[id$="time-picker-label"]').textContent;
+  assert.equal(label(), 'Last 7 days');
+  root.querySelector('[data-all]').click();
+  assert.equal(selected.length, 1); assert.equal(applied.length, 0);
+  assert.equal(label(), 'All time'); assert.equal(p.getState().all, true);
+  root.querySelector('.dropdown-range-btn[data-val="1"]').click();
+  assert.equal(label(), 'Last 1 hour'); assert.equal(p.getState().all, false); assert.equal(applied.at(-1).hours, 1);
+  p.setState({hours: 8760, customRange: null, all: false});
+  assert.equal(label(), 'Last 1 year');
+  p.setState({hours: 8760, customRange: null, all: true});
+  assert.equal(label(), 'All time');
+  p.destroy(); h.dom.window.close();
+});

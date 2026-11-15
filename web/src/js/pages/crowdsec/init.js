@@ -11,9 +11,10 @@ import { bindIPView, loadIPView } from './ip/view.js';
 
 const ROLES = {
   collectorCount: 'collector-count', headline: 'headline', statAlerts: 'stat-alerts', statIps: 'stat-ips', statBans: 'stat-bans',
-  statCollectors: 'stat-collectors', collectorsBtn: 'collectors', refresh: 'refresh', empty: 'empty', addCollector: 'add-collector',
+  statCollectors: 'stat-collectors', refresh: 'refresh', empty: 'empty',
   main: 'main', search: 'search', addFilter: 'add-filter', filterField: 'filter-field', filterOp: 'filter-op', filterValue: 'filter-value',
-  timePicker: 'time-picker', allTime: 'all-time', chips: 'chips', expired: 'expired', timelineNote: 'timeline-note',
+  filterToggle: 'filter-toggle', filterPopover: 'filter-popover', timePicker: 'time-picker', chips: 'chips', expired: 'expired',
+  timelineNote: 'timeline-note', timelineAlerts: 'timeline-alerts', timelineDecisions: 'timeline-decisions',
   timelineMessage: 'timeline-message', breakdowns: 'breakdowns', count: 'count', tableMessage: 'table-message', tableHead: 'table-head',
   rows: 'rows', page: 'page', prev: 'prev', next: 'next', limit: 'limit', ip: 'ip', ipBack: 'ip-back', ipTitle: 'ip-title',
   ipSubtitle: 'ip-subtitle', ipFirst: 'ip-first', ipLast: 'ip-last', ipAlerts: 'ip-alerts', ipEvents: 'ip-events', ipFilter: 'ip-filter',
@@ -32,7 +33,12 @@ function update() {
 }
 
 const actions = {
-  filter(field, value, exclude = false) { addFilter(state.view, field, value, exclude); update(); },
+  filter(field, value, exclude = false) {
+    addFilter(state.view, field, value, exclude);
+    // The "+ Filter" form opens on the last field used.
+    if ([...state.ui.filterField.options].some(o => o.value === field)) state.ui.filterField.value = field;
+    update();
+  },
   openIP(ip) { state.view.ip = ip; update(); window.scrollTo({top: 0}); },
   closeIP() { state.view.ip = ''; update(); },
   filterIP(ip) { state.view.ip = ''; addFilter(state.view, 'ip', ip, false); update(); }
@@ -121,7 +127,7 @@ function zoom(start, end) {
   v.start = Math.floor(start);
   v.end = Math.floor(end);
   v.page = 1;
-  state.picker?.setState({hours: v.hours, customRange: {start: v.start, end: v.end}});
+  state.picker?.setState({hours: v.hours, customRange: {start: v.start, end: v.end}, all: false});
   update();
 }
 
@@ -133,8 +139,6 @@ function bindCollectors() {
     state.collectorsLoaded = true;
     renderHero();
   });
-  state.ui.collectorsBtn.addEventListener('click', () => dialog.open());
-  state.ui.addCollector.addEventListener('click', () => dialog.open({create: true, type: 'crowdsec'}));
   dialog.refresh().catch(e => { state.ui.headline.textContent = 'Collectors could not be loaded: ' + e.message; });
   // Collector status changes on its own; refresh it while the page is visible.
   setInterval(() => { if (!document.hidden) dialog.refresh().catch(() => {}); }, 30000);
@@ -155,7 +159,7 @@ export function init(root, config) {
     state.view = parseView(window.location.search, state.view.hours);
     buildCards((slot, field) => { state.view.groups[slot] = field; update(); });
     const v = state.view;
-    state.picker?.setState({hours: v.hours, customRange: v.start && v.end ? {start: v.start, end: v.end} : null});
+    state.picker?.setState({hours: v.hours, customRange: v.start && v.end ? {start: v.start, end: v.end} : null, all: v.all});
     load();
   });
   bindCollectors();

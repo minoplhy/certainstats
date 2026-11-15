@@ -31,7 +31,38 @@ export function renderChips(onChange) {
   ui.chips.hidden = ui.chips.children.length === 0;
 }
 
-// bindFilters wires search, the add-filter form, the time picker and "All".
+const PLACEHOLDERS = {
+  ip: 'e.g. 203.0.113.7', range: 'e.g. 203.0.113.0/24', scenario: 'e.g. crowdsecurity/ssh-bf', country: 'e.g. NL',
+  machine: 'Machine name', asn: 'e.g. 64500', action: 'ban, captcha or none', collector: 'Collector name'
+};
+
+// bindPopover opens and closes the "+ Filter" form: outside clicks and Escape close it.
+function bindPopover() {
+  const ui = state.ui;
+  const pop = ui.filterPopover;
+  const setOpen = open => {
+    pop.hidden = !open;
+    ui.filterToggle.setAttribute('aria-expanded', String(open));
+    if (open) ui.filterValue.focus();
+  };
+  ui.filterToggle.addEventListener('click', () => setOpen(pop.hidden));
+  pop.querySelector('[data-cs-filter-cancel]')?.addEventListener('click', () => { setOpen(false); ui.filterToggle.focus(); });
+  pop.addEventListener('keydown', e => {
+    if (e.key !== 'Escape') return;
+    e.preventDefault();
+    setOpen(false);
+    ui.filterToggle.focus();
+  });
+  document.addEventListener('click', e => {
+    if (!pop.hidden && !pop.contains(e.target) && !ui.filterToggle.contains(e.target)) setOpen(false);
+  });
+  const placeholder = () => { ui.filterValue.placeholder = PLACEHOLDERS[ui.filterField.value] || 'Value'; };
+  ui.filterField.addEventListener('change', placeholder);
+  placeholder();
+  return setOpen;
+}
+
+// bindFilters wires search, the add-filter popover and the time picker (with "All").
 export function bindFilters(onChange) {
   const ui = state.ui;
   const v = () => state.view;
@@ -46,18 +77,34 @@ export function bindFilters(onChange) {
       onChange();
     }, 350);
   });
-  ui.addFilter.addEventListener('submit', event => {
+  const setOpen = bindPopover();
+  ui.filterPopover.addEventListener('submit', event => {
     event.preventDefault();
     const value = ui.filterValue.value.trim();
     if (!value) return;
-    addFilter(v(), ui.filterField.value, value, ui.filterOp.value === 'not');
+    const exclude = ui.filterPopover.querySelector('input[name="cs-filter-op"]:checked')?.value === 'not';
+    addFilter(v(), ui.filterField.value, value, exclude);
     ui.filterValue.value = '';
+    setOpen(false);
     onChange();
   });
 
   state.picker = window.CertainStatsTelemetry.initCustomTimePicker(ui.timePicker, {
     storageKey: 'certainstats_crowdsec_hours',
     activeHours: v().hours,
+    compact: true,
+    allTime: {
+      active: v().all,
+      // "All" starts at the oldest data, which load() looks up.
+      onSelect: () => {
+        const view = v();
+        view.all = true;
+        view.start = null;
+        view.end = null;
+        view.page = 1;
+        onChange();
+      }
+    },
     onApply: ({hours, customRange}) => {
       const view = v();
       view.all = false;
@@ -68,20 +115,17 @@ export function bindFilters(onChange) {
       onChange();
     }
   });
-  if (v().start && v().end) state.picker.setState({hours: v().hours, customRange: {start: v().start, end: v().end}});
-  ui.allTime.addEventListener('click', () => {
-    const view = v();
-    view.all = !view.all;
-    if (!view.all) { view.start = null; view.end = null; }
-    view.page = 1;
-    onChange();
-  });
+  if (v().start && v().end) state.picker.setState({hours: v().hours, customRange: {start: v().start, end: v().end}, all: v().all});
 }
 
+// syncRangeControls keeps the picker's label in step with the view (Back, zoom).
 export function syncRangeControls() {
-  const ui = state.ui;
-  const all = state.view.all;
-  ui.allTime.setAttribute('aria-pressed', String(all));
-  ui.allTime.classList.toggle('is-active', all);
-  ui.timePicker.classList.toggle('is-dimmed', all);
+  const p = state.picker;
+  if (!p) return;
+  const v = state.view;
+  const cur = p.getState();
+  const custom = v.start && v.end ? {start: v.start, end: v.end} : null;
+  const same = cur.all === v.all && cur.hours === v.hours &&
+    (cur.customRange ? custom && cur.customRange.start === custom.start && cur.customRange.end === custom.end : !custom);
+  if (!same) p.setState({hours: v.hours, customRange: custom, all: v.all});
 }

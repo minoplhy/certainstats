@@ -2,12 +2,16 @@
 <section class="page-section cs-panels" aria-label="Alert overview">
   <article class="chart-card chart-card-wide">
     <div class="chart-header-row">
-      <h2 class="chart-header-title">Alerts over time</h2>
-      <span class="muted mono" data-cs-timeline-note></span>
+      <h2 class="chart-header-title">Alerts and decisions over time</h2>
+      <div class="chart-legend-pills">
+        <span class="chart-legend-item"><span class="chart-legend-dot sw-s1" aria-hidden="true"></span>Alerts <span class="chart-legend-val" data-cs-timeline-alerts>–</span></span>
+        <span class="chart-legend-item"><span class="chart-legend-dot sw-s2" aria-hidden="true"></span>Decisions <span class="chart-legend-val" data-cs-timeline-decisions>–</span></span>
+        <span class="muted mono" data-cs-timeline-note></span>
+      </div>
     </div>
     <p class="cs-status" role="status" aria-live="polite" data-cs-timeline-message></p>
     <div class="chart-container">
-      <canvas class="chart-canvas" id="cs-timeline" role="img" aria-label="Alerts over time" data-cs-timeline></canvas>
+      <canvas class="chart-canvas" id="cs-timeline" role="img" aria-label="Alerts and decisions over time" data-cs-timeline></canvas>
     </div>
   </article>
   <div class="cs-breakdowns" data-cs-breakdowns></div>

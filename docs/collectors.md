@@ -7,8 +7,8 @@ from agents: an agent reports a machine's own metrics, a collector reports what
 other software on it sees. A collector can be linked to the node it runs on, but
 it never appears in the Agent Hub, on public dashboards or in node counts.
 
-Collectors are private and owner scoped. They are managed from the Collectors
-dialog, opened from the CrowdSec page.
+Collectors are private and owner scoped. They are managed on the Collectors
+page (`/collectors`, in the main navigation), which the CrowdSec page links to.
 
 ## How it connects
 
@@ -48,11 +48,12 @@ The rest of the exchange belongs to the types. Wire types live in
 
 ## Setting one up
 
-1. In CertainStats, open the Collectors dialog, choose **Add collector**, give it
+1. In CertainStats, open the Collectors page, choose **Add collector**, give it
    a name, optionally the node it runs on, and tick the types it collects. The
    install dialog that agents use opens with the Hub URL, the token and setup
    steps for systemd and Docker Compose. **Install** on the collector's row opens
    it again at any time; resetting the token opens it with the new token.
+   `/collectors?add=crowdsec` opens the add form with CrowdSec ticked.
 2. The panel URL must be reachable from the host. A reverse proxy in front must
    pass WebSocket upgrades and keep idle connections open longer than 30
    seconds, as Beszel agents already need.
@@ -75,7 +76,7 @@ The rest of the exchange belongs to the types. Wire types live in
 that fails. `--once` runs one collection pass and exits. `--version` prints the
 version.
 
-The dialog shows where each collector stands, per type: "Waiting for first
+The page lists one row per collector and shows where it stands, per type: "Waiting for first
 connection", "Offline", "Connected, CrowdSec not switched on
 (COLLECT_CROWDSEC=true)", "Connected, <error>", or "Reporting".
 

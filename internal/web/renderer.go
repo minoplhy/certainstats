@@ -212,6 +212,7 @@ func NewRenderer(protobuf bool) (*TemplateRenderer, error) {
 		"alerts_list.html",
 		"settings.html",
 		"crowdsec.html",
+		"collectors.html",
 	}
 
 	var partialFiles []string

@@ -23,7 +23,7 @@
     </div>
   </div>
   <div class="hero-actions">
-    <button type="button" class="btn btn-secondary" data-cs-collectors>Collectors</button>
+    <a class="btn btn-secondary" href="{{.PanelPath}}/collectors">Collectors</a>
     <button type="button" class="btn btn-ghost" data-cs-refresh>Refresh</button>
   </div>
 </section>
@@ -31,6 +31,6 @@
 <div class="empty-state" data-cs-empty hidden>
   <h2 class="empty-state-title">Connect your first CrowdSec host</h2>
   <p>A collector on the server that runs CrowdSec's Local API sends its alerts here. Nothing changes in CrowdSec itself.</p>
-  <button type="button" class="btn btn-primary" data-cs-add-collector>Add collector</button>
+  <a class="btn btn-primary" href="{{.PanelPath}}/collectors?add=crowdsec">Add collector</a>
 </div>
 {{end}}

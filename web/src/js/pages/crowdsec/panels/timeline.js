@@ -8,9 +8,13 @@ function widthLabel(ms) {
   return (m / 1440) + ' d';
 }
 
-// drawTimeline draws one alert-count series on canvasId and returns the chart.
+// drawTimeline draws alerts and the decisions they issued on canvasId and returns the chart.
+// Points are [bucket start, alerts, decisions].
 export function drawTimeline(existing, canvasId, data, range, onZoom) {
-  const series = [{label: 'Alerts', color: '--s1', fill: true, data: data.points.map(p => ({timestamp: p[0], value: p[1]}))}];
+  const series = [
+    {label: 'Alerts', color: '--s1', fill: true, data: data.points.map(p => ({timestamp: p[0], value: p[1]}))},
+    {label: 'Decisions', color: '--s2', fill: false, data: data.points.map(p => ({timestamp: p[0], value: p[2] || 0}))}
+  ];
   const customRange = {start: range.start, end: range.end};
   const hours = Math.max(1, Math.round((range.end - range.start) / 3600000));
   // Buckets are width_ms apart; without it the chart reads wide buckets as outages.
@@ -28,7 +32,10 @@ export function drawTimeline(existing, canvasId, data, range, onZoom) {
 export function renderTimeline(data, onZoom) {
   const ui = state.ui;
   state.charts.timeline = drawTimeline(state.charts.timeline, 'cs-timeline', data, state.range, onZoom);
-  const total = data.points.reduce((n, p) => n + p[1], 0);
+  const alerts = data.points.reduce((n, p) => n + p[1], 0);
+  const decisions = data.points.reduce((n, p) => n + (p[2] || 0), 0);
+  if (ui.timelineAlerts) ui.timelineAlerts.textContent = formatCount(alerts);
+  if (ui.timelineDecisions) ui.timelineDecisions.textContent = formatCount(decisions);
   ui.timelineNote.textContent = 'per ' + widthLabel(data.width_ms) + (data.source === 'rollup' ? ' · hourly summary' : '');
-  ui.timelineMessage.textContent = total ? '' : 'No alerts in this range.';
+  ui.timelineMessage.textContent = alerts || decisions ? '' : 'No alerts in this range.';
 }

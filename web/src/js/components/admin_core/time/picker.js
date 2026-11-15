@@ -2,6 +2,18 @@ import { TIME_RANGES } from '../../../lib/time_ranges.js';
 
 let timePickerInstance = 0;
 
+// longLabel names a quick range for the compact trigger: 168 → "7 days".
+function longLabel(hours) {
+  const plural = (n, unit) => n + ' ' + unit + (n === 1 ? '' : 's');
+  if (hours % 8760 === 0) return plural(hours / 8760, 'year');
+  if (hours >= 48 && hours % 24 === 0) return plural(hours / 24, 'day');
+  return plural(hours, 'hour');
+}
+
+function shortTime(ms) {
+  return new Date(ms).toLocaleString(undefined, {month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'});
+}
+
 // Initialize Dropdown & Custom Range Date-Time Picker
 export function initCustomTimePicker(containerId, options = {}) {
   const container = typeof containerId === 'string' ? document.getElementById(containerId) : containerId;
@@ -23,6 +35,11 @@ export function initCustomTimePicker(containerId, options = {}) {
   if (!TIME_RANGES.some(r => r.value === activeHours)) activeHours = 6;
   let customRange = null; // { start, end }
   const onApply = options.onApply || function () {};
+  // compact shows one trigger labelled with the current range instead of the pill bar.
+  // allTime ({active, onSelect}) adds an "All" choice the caller resolves itself.
+  const compact = !!options.compact;
+  const allTime = options.allTime || null;
+  let allActive = !!allTime?.active;
 
   if (options.isPublic && maxDays <= 0) {container.hidden=true;return;}
   let ranges = TIME_RANGES;
@@ -46,27 +63,37 @@ export function initCustomTimePicker(containerId, options = {}) {
     return `${d.getFullYear()}-${ten(d.getMonth() + 1)}-${ten(d.getDate())}T${ten(d.getHours())}:${ten(d.getMinutes())}`;
   }
 
+  function triggerLabel() {
+    if (!compact) return customRange ? 'Custom range' : 'Custom';
+    if (allActive) return 'All time';
+    if (customRange) return shortTime(customRange.start) + ' – ' + shortTime(customRange.end);
+    return 'Last ' + longLabel(activeHours);
+  }
+
   function render() {
+    const quickActive = r => !allActive && !customRange && activeHours === r.value;
     container.innerHTML = `
-      <div class="time-controls-wrapper">
-        <div class="time-range-bar">
+      <div class="time-controls-wrapper${compact ? ' is-compact' : ''}">
+        ${compact ? '' : `<div class="time-range-bar">
           ${ranges.map(r => `
-            <button type="button" class="time-range-btn quick-range-pill ${!customRange && activeHours === r.value ? 'active' : ''}" data-val="${r.value}">
+            <button type="button" class="time-range-btn quick-range-pill ${quickActive(r) ? 'active' : ''}" data-val="${r.value}">
               ${r.label}
             </button>
           `).join('')}
-        </div>
+        </div>`}
         <div class="time-picker">
-          <button type="button" id="${prefix}time-picker-trigger" class="btn btn-secondary btn-sm${customRange ? ' is-active' : ''}" aria-haspopup="true" aria-expanded="false" aria-controls="${prefix}time-picker-dropdown">
-            <span id="${prefix}time-picker-label">${customRange ? 'Custom range' : 'Custom'}</span>
+          <button type="button" id="${prefix}time-picker-trigger" class="btn btn-secondary btn-sm${!compact && customRange ? ' is-active' : ''}" aria-haspopup="true" aria-expanded="false" aria-controls="${prefix}time-picker-dropdown"${compact ? ' aria-label="Time range: ' + triggerLabel() + '"' : ''}>
+            ${compact ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>' : ''}
+            <span id="${prefix}time-picker-label">${triggerLabel()}</span>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
           </button>
           <div id="${prefix}time-picker-dropdown" class="time-picker-dropdown-panel" style="display: none;">
             <div class="picker-label">Quick ranges</div>
             <div class="picker-grid">
               ${ranges.map(r => `
-                <button type="button" class="btn btn-secondary btn-sm dropdown-range-btn${!customRange && activeHours === r.value ? ' is-active' : ''}" data-val="${r.value}">${r.label}</button>
+                <button type="button" class="btn btn-secondary btn-sm dropdown-range-btn${quickActive(r) ? ' is-active' : ''}" data-val="${r.value}">${r.label}</button>
               `).join('')}
+              ${allTime ? `<button type="button" class="btn btn-secondary btn-sm dropdown-all-btn${allActive ? ' is-active' : ''}" data-all aria-pressed="${allActive}">All</button>` : ''}
             </div>
             <div class="picker-label">Custom range</div>
             <div class="picker-fields">
@@ -142,12 +169,26 @@ export function initCustomTimePicker(containerId, options = {}) {
         const val = parseInt(this.getAttribute('data-val'), 10);
         activeHours = val;
         customRange = null;
+        allActive = false;
         remember(val);
         if (dropdown) hidePickerDropdown(dropdown);
         render();
         onApply({ hours: val, customRange: null });
       };
     });
+
+    const allBtn = container.querySelector('[data-all]');
+    if (allBtn) {
+      allBtn.onclick = function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        allActive = true;
+        customRange = null;
+        if (dropdown) hidePickerDropdown(dropdown);
+        render();
+        allTime.onSelect?.();
+      };
+    }
 
     const applyBtn = control('apply-custom-range');
     if (applyBtn) {
@@ -160,6 +201,7 @@ export function initCustomTimePicker(containerId, options = {}) {
           return;
         }
         customRange = { start: startMs, end: endMs };
+        allActive = false;
         if (dropdown) hidePickerDropdown(dropdown);
         render();
         onApply({ hours: activeHours, customRange: customRange });
@@ -170,6 +212,7 @@ export function initCustomTimePicker(containerId, options = {}) {
     if (clearBtn) {
       clearBtn.onclick = function () {
         customRange = null;
+        allActive = false;
         if (dropdown) hidePickerDropdown(dropdown);
         render();
         onApply({ hours: activeHours, customRange: null });
@@ -200,12 +243,17 @@ export function initCustomTimePicker(containerId, options = {}) {
   container.addEventListener('keydown', keydown);
   render();
 
-  const getState = () => ({hours: activeHours, customRange: customRange ? {...customRange} : null});
+  const getState = () => {
+    const out = {hours: activeHours, customRange: customRange ? {...customRange} : null};
+    if (allTime) out.all = allActive;
+    return out;
+  };
   const picker = {
     getState,
     setState: function (state, silent = true) {
       if (ranges.some(r => r.value === state.hours)) activeHours = state.hours;
       customRange = state.customRange ? {...state.customRange} : null;
+      if ('all' in state) allActive = !!state.all && !!allTime;
       render();
       if (!silent) onApply(getState());
     },

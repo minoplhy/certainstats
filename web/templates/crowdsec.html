@@ -8,9 +8,6 @@
   </div>
   {{template "crowdsec_ip_view" .}}
 </div>
-{{template "collectors_modal" .}}
-{{template "reinstall_modal" .}}
-{{template "confirm_modal" .}}
 
 <script src="{{.StaticPath}}/{{asset "admin/js/collectors.js"}}" integrity="{{integrity "admin/js/collectors.js"}}"></script>
 <script type="application/json" id="page-config" data-module="CertainStatsCrowdSec">{{bootstrap .}}</script>

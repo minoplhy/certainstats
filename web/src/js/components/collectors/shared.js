@@ -1,4 +1,4 @@
-// Small helpers shared by the collectors dialog.
+// Small helpers shared by the Collectors page.
 
 export function el(tag, className, text) {
   const node = document.createElement(tag);

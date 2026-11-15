@@ -198,14 +198,14 @@
     state.items = data.items || [];
     state.types = data.types || [];
     state.loaded = true;
-    ctx?.list.render();
+    if (ctx) {
+      ctx.list.render();
+      const n = state.items.length;
+      const online = state.items.filter((c) => c.connected).length;
+      ctx.ui.count.textContent = n ? (n === 1 ? "1 collector" : n + " collectors") + " · " + online + " connected" : "None yet";
+    }
     notify();
     return state.items;
-  }
-  function step(name) {
-    ctx.root.querySelectorAll("[data-collectors-step]").forEach((node) => {
-      node.hidden = node.dataset.collectorsStep !== name;
-    });
   }
   function showInstall(collector) {
     const modal = document.getElementById("reinstall-modal");
@@ -229,63 +229,75 @@
       ctx.ui.types.append(label);
     }
   }
+  async function openAdd(type) {
+    if (!state.loaded) await refresh().catch(() => {
+    });
+    const ui = ctx.ui;
+    ui.name.value = "";
+    ui.node.value = "";
+    ui.formMessage.textContent = "";
+    renderTypeOptions(type);
+    window.CertainStatsModal?.open(ui.dialog);
+    ui.name.focus();
+  }
   function mount(root) {
-    const q = (name) => root.querySelector("[data-collectors-" + name + "]");
+    const q = (name) => document.querySelector("[data-collectors-" + name + "]");
     ctx = {
       root,
       state,
       refresh,
+      showInstall,
       ui: {
+        count: q("count"),
         message: q("message"),
         list: q("list"),
         add: q("add"),
+        refresh: q("refresh"),
+        dialog: q("add-modal"),
+        form: q("form"),
         name: q("name"),
         node: q("node"),
         types: q("types"),
         formMessage: q("form-message"),
-        back: q("back"),
         create: q("create")
       }
     };
-    ctx.showInstall = showInstall;
     ctx.list = createList(ctx);
-    const form = root.querySelector('form[data-collectors-step="create"]');
-    ctx.ui.add.addEventListener("click", () => open({ create: true }));
-    ctx.ui.back.addEventListener("click", () => step("list"));
-    root.addEventListener("close", () => step("list"));
-    form.addEventListener("submit", async (e) => {
+    const ui = ctx.ui;
+    ui.add.addEventListener("click", () => openAdd());
+    ui.refresh.addEventListener("click", () => load());
+    ui.form.addEventListener("submit", async (e) => {
       e.preventDefault();
-      const types = [...ctx.ui.types.querySelectorAll("input:checked")].map((i) => i.value);
-      ctx.ui.formMessage.textContent = "";
-      ctx.ui.create.disabled = true;
+      const types = [...ui.types.querySelectorAll("input:checked")].map((i) => i.value);
+      ui.formMessage.textContent = "";
+      ui.create.disabled = true;
       try {
-        const created = await api("collectors", { method: "POST", body: JSON.stringify({ name: ctx.ui.name.value, agent_id: ctx.ui.node.value, types }) });
-        step("list");
+        const created = await api("collectors", { method: "POST", body: JSON.stringify({ name: ui.name.value, agent_id: ui.node.value, types }) });
+        window.CertainStatsModal?.close(ui.dialog);
         refresh().catch(() => {
         });
         showInstall(created);
       } catch (err) {
-        ctx.ui.formMessage.textContent = err.message;
+        ui.formMessage.textContent = err.message;
       } finally {
-        ctx.ui.create.disabled = false;
+        ui.create.disabled = false;
       }
     });
-  }
-  async function open(opts = {}) {
-    if (!ctx) return;
-    window.CertainStatsModal?.open(ctx.root);
-    if (opts.create) {
-      if (!state.loaded) await refresh().catch(() => {
+    load();
+    setInterval(() => {
+      if (!document.hidden) refresh().catch(() => {
       });
-      ctx.ui.name.value = "";
-      ctx.ui.node.value = "";
-      ctx.ui.formMessage.textContent = "";
-      renderTypeOptions(opts.type);
-      step("create");
-      ctx.ui.name.focus();
-      return;
+    }, 3e4);
+    const params = new URLSearchParams(window.location.search);
+    if (params.has("add")) {
+      const type = params.get("add") || "";
+      params.delete("add");
+      const rest = params.toString();
+      history.replaceState(null, "", window.location.pathname + (rest ? "?" + rest : ""));
+      openAdd(type);
     }
-    step("list");
+  }
+  async function load() {
     ctx.ui.message.textContent = state.loaded ? "" : "Loading collectors…";
     try {
       await refresh();
@@ -294,6 +306,14 @@
       ctx.ui.message.textContent = "Collectors could not be loaded: " + e.message;
     }
   }
+  function open(opts = {}) {
+    if (ctx) {
+      if (opts.create) openAdd(opts.type);
+      return;
+    }
+    const add = opts.create ? "?add=" + encodeURIComponent(opts.type || "") : "";
+    window.location.assign(panelPath() + "/collectors" + add);
+  }
   function subscribe(fn) {
     listeners.add(fn);
     if (state.loaded) fn(state.items, state.types);
@@ -301,7 +321,7 @@
   }
   window.CertainStatsCollectors = { open, refresh, subscribe, typeState, timeAgo };
   function init() {
-    const root = document.querySelector("[data-collectors-modal]");
+    const root = document.querySelector("[data-collectors-page]");
     if (root) mount(root);
   }
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);

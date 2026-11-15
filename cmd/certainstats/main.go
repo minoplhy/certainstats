@@ -299,6 +299,7 @@ func main() {
 
 		rt.Get("/network-monitors", webHandler.RequireAuthWeb(webHandler.NetworkMonitorsHandler))
 		rt.Get("/crowdsec", webHandler.RequireAuthWeb(webHandler.CrowdSecHandler))
+		rt.Get("/collectors", webHandler.RequireAuthWeb(webHandler.CollectorsHandler))
 
 		rt.Get("/alerts", webHandler.RequireAuthWeb(webHandler.AlertsListHandler))
 		rt.Post("/alerts/create", webHandler.RequireAuthWeb(webHandler.AlertCreateHandler))

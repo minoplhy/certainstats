@@ -5,35 +5,42 @@
     <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
     <input type="search" placeholder="Search IP, scenario, machine, network" autocomplete="off" data-cs-search>
   </label>
-  <form class="cs-add-filter" data-cs-add-filter>
-    <label><span class="sr-only">Field</span>
-      <select class="form-select" data-cs-filter-field>
-        <option value="ip">IP</option>
-        <option value="range">Range</option>
-        <option value="scenario">Scenario</option>
-        <option value="country">Country</option>
-        <option value="machine">Machine</option>
-        <option value="asn">ASN</option>
-        <option value="action">Action</option>
-        <option value="collector">Collector</option>
-      </select>
-    </label>
-    <label><span class="sr-only">Match</span>
-      <select class="form-select" data-cs-filter-op>
-        <option value="is">is</option>
-        <option value="not">is not</option>
-      </select>
-    </label>
-    <label><span class="sr-only">Value</span>
-      <input type="text" class="form-input" placeholder="Value" maxlength="200" required autocomplete="off" data-cs-filter-value>
-    </label>
-    <button type="submit" class="btn btn-secondary">Add filter</button>
-  </form>
-  <span class="toolbar-spacer"></span>
-  <div class="cs-range">
-    <div data-cs-time-picker></div>
-    <button type="button" class="btn btn-secondary btn-sm" aria-pressed="false" data-cs-all-time>All</button>
+  <div class="cs-filter-menu">
+    <button type="button" class="btn btn-secondary btn-sm" aria-haspopup="dialog" aria-expanded="false" aria-controls="cs-filter-popover" data-cs-filter-toggle>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+      Filter
+    </button>
+    <form class="cs-filter-popover" id="cs-filter-popover" role="dialog" aria-label="Add a filter" hidden data-cs-filter-popover data-cs-add-filter>
+      <label class="cs-filter-row"><span class="cs-filter-label">Field</span>
+        <select class="form-select form-input-sm" data-cs-filter-field>
+          <option value="ip">IP</option>
+          <option value="range">Range</option>
+          <option value="scenario">Scenario</option>
+          <option value="country">Country</option>
+          <option value="machine">Machine</option>
+          <option value="asn">ASN</option>
+          <option value="action">Action</option>
+          <option value="collector">Collector</option>
+        </select>
+      </label>
+      <fieldset class="cs-filter-row">
+        <legend class="cs-filter-label">Match</legend>
+        <div class="cs-seg" role="radiogroup">
+          <label><input type="radio" name="cs-filter-op" value="is" checked data-cs-filter-op><span>is</span></label>
+          <label><input type="radio" name="cs-filter-op" value="not"><span>is not</span></label>
+        </div>
+      </fieldset>
+      <label class="cs-filter-row"><span class="cs-filter-label">Value</span>
+        <input type="text" class="form-input form-input-sm" placeholder="e.g. 203.0.113.7" maxlength="200" required autocomplete="off" data-cs-filter-value>
+      </label>
+      <div class="cs-filter-actions">
+        <button type="button" class="btn btn-ghost btn-sm" data-cs-filter-cancel>Cancel</button>
+        <button type="submit" class="btn btn-primary btn-sm">Add filter</button>
+      </div>
+    </form>
   </div>
+  <span class="toolbar-spacer"></span>
+  <div class="cs-range" data-cs-time-picker></div>
 </div>
 <div class="cs-chips" aria-label="Active filters" data-cs-chips></div>
 <div class="banner is-warn" role="status" data-cs-expired hidden></div>

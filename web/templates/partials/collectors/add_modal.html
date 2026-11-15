@@ -1,30 +1,9 @@
-{{define "collectors_modal"}}
-<dialog id="collectors-modal" class="modal modal-lg" aria-labelledby="collectors-title" data-collectors-modal>
-  <div data-collectors-step="list">
+{{define "collectors_add_modal"}}
+<dialog id="collectors-add-modal" class="modal" aria-labelledby="collectors-add-title" data-collectors-add-modal>
+  <form data-collectors-form>
     <div class="modal-header">
       <div>
-        <h2 class="modal-title" id="collectors-title">Collectors</h2>
-        <p class="modal-subtitle">A collector runs on a host and sends data from software there, such as CrowdSec.</p>
-      </div>
-      {{template "modal_close"}}
-    </div>
-    <div class="modal-body">
-      <p class="collector-status" role="status" aria-live="polite" data-collectors-message></p>
-      <div class="collector-list" data-collectors-list></div>
-    </div>
-    <div class="modal-footer">
-      <button type="button" class="btn btn-secondary" data-close-modal>Close</button>
-      <button type="button" class="btn btn-primary" data-collectors-add>
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
-        Add collector
-      </button>
-    </div>
-  </div>
-
-  <form data-collectors-step="create" hidden>
-    <div class="modal-header">
-      <div>
-        <h2 class="modal-title">Add a collector</h2>
+        <h2 class="modal-title" id="collectors-add-title">Add a collector</h2>
         <p class="modal-subtitle">You get a token and setup steps for the host next.</p>
       </div>
       {{template "modal_close"}}
@@ -49,7 +28,7 @@
       <p class="collector-status" role="alert" data-collectors-form-message></p>
     </div>
     <div class="modal-footer">
-      <button type="button" class="btn btn-secondary" data-collectors-back>Back</button>
+      <button type="button" class="btn btn-secondary" data-close-modal>Cancel</button>
       <button type="submit" class="btn btn-primary" data-collectors-create>Create collector</button>
     </div>
   </form>
