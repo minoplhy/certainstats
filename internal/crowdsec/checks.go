@@ -36,13 +36,20 @@ type Param struct {
 
 // DBSignals is what CrowdSec's database says about a component.
 type DBSignals struct {
-	LastSeenMs int64            `json:"last_seen_ms,omitempty"`
-	Validated  bool             `json:"validated,omitempty"`
-	Revoked    bool             `json:"revoked,omitempty"`
-	MetricsMs  int64            `json:"metrics_ms,omitempty"`
-	Held       map[string]int64 `json:"held,omitempty"`
-	Dropped    int64            `json:"dropped,omitempty"`
-	Processed  int64            `json:"processed,omitempty"`
+	LastSeenMs int64 `json:"last_seen_ms,omitempty"`
+	Validated  bool  `json:"validated,omitempty"`
+	Revoked    bool  `json:"revoked,omitempty"`
+	MetricsMs  int64 `json:"metrics_ms,omitempty"`
+	// Held is nil when the bouncer sent no usage metrics, and empty when its
+	// metrics carried no decision counts at all (a failing ipset sends none).
+	Held map[string]int64 `json:"held"`
+	// HoldsDecisions is set once the bouncer has sent decision counts or packet
+	// counts. Only a firewall bouncer counts packets, and it keeps every decision
+	// in a set, so an empty report from it means it holds nothing. A bouncer in
+	// live mode counts neither and is not judged on counts it never sends.
+	HoldsDecisions bool  `json:"holds_decisions,omitempty"`
+	Dropped        int64 `json:"dropped,omitempty"`
+	Processed      int64 `json:"processed,omitempty"`
 }
 
 func (s DBSignals) heldTotal() int64 {
@@ -261,10 +268,17 @@ func evalHeld(in evalInput) verdict {
 		return verdict{}
 	}
 	v := verdict{Judged: true, Sample: db.MetricsMs, Value: 100}
-	// Only origins the bouncer reports are compared, worst first.
+	// Origins the bouncer reports are compared, worst first. A report with no
+	// decision counts at all, from a bouncer known to hold decisions, holds
+	// nothing: every active origin is compared.
 	origins := make([]string, 0, len(db.Held))
 	for origin := range db.Held {
 		origins = append(origins, origin)
+	}
+	if len(db.Held) == 0 && db.HoldsDecisions {
+		for origin := range in.Active {
+			origins = append(origins, origin)
+		}
 	}
 	sort.Strings(origins)
 	for _, origin := range origins {

@@ -124,6 +124,9 @@ func (s *Store) SaveReport(ctx context.Context, userID, collectorID string, rep 
 		}
 		signals := map[string]json.RawMessage{}
 		_ = json.Unmarshal([]byte(stored), &signals) // other sources' signals are kept
+		var before DBSignals
+		_ = json.Unmarshal(signals[SourceDB], &before) // nothing stored yet reads as zero
+		sig.HoldsDecisions = len(sig.Held) > 0 || sig.Processed > 0 || sig.Dropped > 0 || before.HoldsDecisions
 		signals[SourceDB] = json.RawMessage(jsonText(sig))
 		if _, err := tx.ExecContext(ctx, `INSERT INTO components (user_id, collector_id, kind, name, version, ip, type, os, signals, first_seen_ms, updated_ms)
 			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)

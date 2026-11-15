@@ -41,7 +41,8 @@ func crowdsecDB(t *testing.T, now time.Time, withMetrics bool) string {
 			sqliteTime(now.Add(-30*time.Second)), now.Add(-3*time.Hour).UTC().String()),
 		fmt.Sprintf(`INSERT INTO bouncers (name, api_key, revoked, ip_address, type, version, last_pull) VALUES
 			('fw-edge', 'key-hash', 0, '10.0.0.5', 'cs-firewall-bouncer', 'v0.0.38', '%s'),
-			('old-nginx', 'key-hash', 1, '10.0.0.7', 'crowdsec-nginx-bouncer', 'v1.0', NULL)`, sqliteTime(now.Add(-8*time.Second))),
+			('old-nginx', 'key-hash', 1, '10.0.0.7', 'crowdsec-nginx-bouncer', 'v1.0', NULL),
+			('fw-edge@10.0.0.8', 'key-hash', 0, '10.0.0.8', 'cs-firewall-bouncer', 'v0.0.38', '%[1]s')`, sqliteTime(now.Add(-8*time.Second))),
 	}
 	// 30 active bans from crowdsec on distinct IPs plus one duplicate, one expired,
 	// one simulated, one captcha, one on a country, and a subscribed list.
@@ -69,7 +70,9 @@ func crowdsecDB(t *testing.T, now time.Time, withMetrics bool) string {
 					{"name":"active_decisions","unit":"ip","value":1,"labels":{"origin":"lists:firehol_level1","ip_type":"ipv4"}},
 					{"name":"dropped","unit":"packet","value":412,"labels":{"origin":"crowdsec","ip_type":"ipv4"}},
 					{"name":"dropped","unit":"byte","value":90000,"labels":{"origin":"crowdsec","ip_type":"ipv4"}},
-					{"name":"processed","unit":"packet","value":51000,"labels":{"ip_type":"ipv4"}}]}]}')`,
+					{"name":"processed","unit":"packet","value":51000,"labels":{"ip_type":"ipv4"}}]}]}'),
+				('RC', 'fw-edge@10.0.0.8', '%[3]s', '{"name":"fw-edge","type":"cs-firewall-bouncer","metrics":[{"meta":{"utc_now_timestamp":1,"window_size_seconds":900},"items":[
+					{"name":"processed","unit":"packet","value":48000,"labels":{"ip_type":"ipv4"}}]}]}')`,
 				sqliteTime(now.Add(-20*time.Minute)), sqliteTime(now.Add(-6*time.Minute)), sqliteTime(now.Add(-5*time.Minute))))
 	}
 	for _, stmt := range stmts {
@@ -161,8 +164,8 @@ func TestHealthReadsCrowdSecDatabase(t *testing.T) {
 		t.Fatalf("active decisions %v", h.Active)
 	}
 	comps := e.components(t)
-	if len(comps) != 5 {
-		t.Fatalf("want 3 machines and 2 bouncers, got %d", len(comps))
+	if len(comps) != 6 {
+		t.Fatalf("want 3 machines and 3 bouncers, got %d", len(comps))
 	}
 	near := func(got int64, want time.Time) bool { d := got - want.UnixMilli(); return d > -2000 && d < 2000 }
 	web1 := comps["machine:web-01"]
@@ -202,8 +205,17 @@ func TestHealthReadsCrowdSecDatabase(t *testing.T) {
 	if strings.Contains(fmt.Sprint(e.get(t, "/crowdsec/components")), "must-not-leave") || strings.Contains(string(fw.Signals[csserver.SourceDB]), "must-not-leave") {
 		t.Fatal("the raw metrics payload must not leave the host")
 	}
-	if read(comps["bouncer:old-nginx"]); !sig.Revoked || sig.LastSeenMs != 0 {
+	if !sig.HoldsDecisions {
+		t.Fatal("fw-edge sent decision counts")
+	}
+	// Without usage metrics there are no counts; with metrics that carry none
+	// (a firewall bouncer whose ipset fails) the counts are there and empty, and
+	// its packet counts mark it as a bouncer that holds decisions.
+	if read(comps["bouncer:old-nginx"]); !sig.Revoked || sig.LastSeenMs != 0 || sig.Held != nil {
 		t.Fatalf("old-nginx %+v", sig)
+	}
+	if read(comps["bouncer:fw-edge@10.0.0.8"]); sig.Held == nil || len(sig.Held) != 0 || sig.Processed != 48000 || !sig.HoldsDecisions {
+		t.Fatalf("fw-edge@10.0.0.8 must report holding nothing: %+v", sig)
 	}
 
 	// Nothing about the file changed, and no journal or lock file was left behind.
@@ -225,7 +237,7 @@ func TestHealthPartsAndOlderCrowdSec(t *testing.T) {
 	e.with(map[string]string{"CROWDSEC_HEALTH": "true", "CROWDSEC_DB": crowdsecDB(t, now, false)})
 	e.once(t)
 	h := e.waitHealth(t, func(h *csserver.CollectorHealth) bool { return h.ReportedMs > 0 })
-	if h.Error != "" || strings.Join(h.Parts, ",") != "machines,bouncers,decisions" || len(e.components(t)) != 5 {
+	if h.Error != "" || strings.Join(h.Parts, ",") != "machines,bouncers,decisions" || len(e.components(t)) != 6 {
 		t.Fatalf("without a metrics table: %+v", h)
 	}
 

@@ -110,9 +110,10 @@ func (r *healthRig) history(id string) *alert.AlertHistory {
 }
 
 // shared is a collector with one machine and a bouncer key used from two
-// addresses; the first entry holds nothing unless healthy.
+// addresses. Unless healthy, the first entry's metrics carry no decision counts
+// at all, as a firewall bouncer's do when its ipset fails.
 func shared(now, metricsAt int64, healthy bool) wire.Health {
-	brokenHeld := map[string]int64{"crowdsec": 0}
+	brokenHeld := map[string]int64{}
 	if healthy {
 		brokenHeld = map[string]int64{"crowdsec": 1204, "CAPI": 30000}
 	}
@@ -168,18 +169,25 @@ func TestRuleOnASharedKeyFiresAndRecovers(t *testing.T) {
 	// The popup shows it red, naming the rule.
 	srv := rig.server()
 	_, out := call(t, srv, "u1", "GET", "/crowdsec/components", "")
-	var broken map[string]any
+	var broken, good map[string]any
 	for _, i := range out["items"].([]any) {
-		if i.(map[string]any)["name"] == "fw@10.0.0.5" {
+		switch i.(map[string]any)["name"] {
+		case "fw@10.0.0.5":
 			broken = i.(map[string]any)
+		case "fw@10.0.0.6":
+			good = i.(map[string]any)
 		}
 	}
 	firing := broken["firing"].([]any)
 	if broken["state"] != StateAlert || broken["group"] != "fw" || len(firing) != 1 || firing[0].(map[string]any)["rule"] != "rule alert_1" {
 		t.Fatalf("popup row: %v", broken)
 	}
-	if held := broken["held"].(map[string]any); held["crowdsec"] != float64(0) || broken["active"].(map[string]any)["crowdsec"] != float64(1300) {
-		t.Fatalf("per-origin held and active: %v", broken)
+	// Metrics with no decision counts reach the popup as an empty count, not as none.
+	if held, ok := broken["held"].(map[string]any); !ok || len(held) != 0 {
+		t.Fatalf("held of an entry whose metrics carry no counts: %v", broken)
+	}
+	if held := good["held"].(map[string]any); held["crowdsec"] != float64(1204) || good["active"].(map[string]any)["crowdsec"] != float64(1300) {
+		t.Fatalf("per-origin held and active: %v", good)
 	}
 
 	// Fixed: one recovery.
@@ -194,6 +202,64 @@ func TestRuleOnASharedKeyFiresAndRecovers(t *testing.T) {
 	}
 	if len(got) != 2 || !strings.Contains(got[1], `"status":"RESOLVED"`) {
 		t.Fatalf("recovery webhook: %v", got)
+	}
+}
+
+// The store keeps an empty decision count apart from none, and remembers that a
+// bouncer holds decisions (it sent decision or packet counts), so the held check
+// can tell a failing set from a bouncer in live mode that never counts.
+func TestHoldsDecisionsIsRemembered(t *testing.T) {
+	rig := newHealthRig(t)
+	rig.collector("col_a", "u1", "edge")
+	now := time.Now().UnixMilli()
+	send := func(at int64, fw map[string]int64) map[string]DBSignals {
+		rig.report("col_a", "u1", at, wire.Health{Components: []wire.Component{
+			{Kind: wire.KindBouncer, Name: "fw", LastSeenMs: at, MetricsMs: at, Held: fw},
+			// A firewall bouncer whose set was broken from the start: packets, never decision counts.
+			{Kind: wire.KindBouncer, Name: "fw-new", LastSeenMs: at, MetricsMs: at, Held: map[string]int64{}, Processed: 12134},
+			{Kind: wire.KindBouncer, Name: "nginx", LastSeenMs: at, MetricsMs: at, Held: map[string]int64{}},
+			{Kind: wire.KindBouncer, Name: "quiet", LastSeenMs: at},
+		}})
+		list, err := rig.typ.Store.Components(context.Background(), "u1")
+		if err != nil {
+			t.Fatal(err)
+		}
+		out := map[string]DBSignals{}
+		for _, c := range list {
+			out[c.Name] = c.db()
+		}
+		return out
+	}
+	got := send(now, map[string]int64{"crowdsec": 5})
+	if !got["fw"].HoldsDecisions || !got["fw-new"].HoldsDecisions || got["nginx"].HoldsDecisions || got["nginx"].Held == nil || got["quiet"].Held != nil {
+		t.Fatalf("first report: %+v", got)
+	}
+	got = send(now+minute, map[string]int64{})
+	if fw := got["fw"]; !fw.HoldsDecisions || fw.Held == nil || len(fw.Held) != 0 {
+		t.Fatalf("fw sent counts before, so an empty report is remembered as such: %+v", fw)
+	}
+	if got["nginx"].HoldsDecisions {
+		t.Fatal("nginx never sent decision or packet counts")
+	}
+}
+
+// A lone firewall bouncer whose metrics never carried decision counts fires a
+// held rule: its packet counts show it holds decisions, and it holds none.
+func TestHeldRuleFiresOnALoneFirewallWithNoCounts(t *testing.T) {
+	rig := newHealthRig(t)
+	rig.collector("col_a", "u1", "deltarune")
+	rig.rule("alert_1", "u1", "crowdsec_held", 50, "", alert.CrowdSecSubject{CollectorID: "col_a", Scope: alert.ScopeAll})
+	now := time.Now().UnixMilli()
+	for i := int64(0); i < 2; i++ {
+		at := now + i*15*minute
+		rig.report("col_a", "u1", at, wire.Health{Active: map[string]int64{"crowdsec": 40, "CAPI": 15000}, Components: []wire.Component{
+			{Kind: wire.KindBouncer, Name: "fw", Type: "crowdsec-firewall-bouncer", LastSeenMs: at, MetricsMs: at - minute, Held: map[string]int64{}, Processed: 12134},
+		}})
+		rig.tick(at)
+	}
+	open := rig.open()
+	if len(open) != 1 || open[0].SubjectID != "col_a/bouncer/fw" {
+		t.Fatalf("want one held incident on fw, got %+v", open)
 	}
 }
 

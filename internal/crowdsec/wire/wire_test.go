@@ -3,6 +3,8 @@ package wire
 import (
 	"testing"
 	"time"
+
+	"github.com/fxamacker/cbor/v2"
 )
 
 func TestParseTime(t *testing.T) {
@@ -25,6 +27,24 @@ func TestParseTime(t *testing.T) {
 	for _, v := range []string{"", "yesterday", "0001-01-01 00:00:00 +0000 UTC", "0001-01-01T00:00:00Z"} {
 		if _, ok := ParseTime(v); ok {
 			t.Errorf("ParseTime(%q) must fail", v)
+		}
+	}
+}
+
+// Empty decision counts (metrics carrying none) and no counts (no metrics) must
+// arrive as sent: the checks treat them differently.
+func TestHeldKeepsEmptyApartFromNone(t *testing.T) {
+	for _, held := range []map[string]int64{nil, {}, {"crowdsec": 3}} {
+		raw, err := cbor.Marshal(Component{Kind: KindBouncer, Name: "fw", Held: held})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var got Component
+		if err := cbor.Unmarshal(raw, &got); err != nil {
+			t.Fatal(err)
+		}
+		if (got.Held == nil) != (held == nil) || len(got.Held) != len(held) {
+			t.Errorf("held %#v arrived as %#v", held, got.Held)
 		}
 	}
 }

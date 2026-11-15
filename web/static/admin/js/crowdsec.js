@@ -837,7 +837,7 @@
   function heldText(c) {
     if (!c.held) return null;
     const origins = Object.keys(c.held).sort();
-    if (!origins.length) return "0";
+    if (!origins.length) return "None in its last metrics report";
     return origins.map((o) => o + ": " + formatCount(c.held[o]) + " of " + formatCount(c.active?.[o] || 0) + " active").join("\n");
   }
   function componentFacts(c, many) {

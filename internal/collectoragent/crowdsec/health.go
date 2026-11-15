@@ -218,14 +218,13 @@ func (h *health) bouncerMetrics(ctx context.Context) (map[string]bouncerMetrics,
 			log.Debugf("crowdsec: health: usage metrics of %s not understood: %v", name.String, err)
 			return nil
 		}
-		m := bouncerMetrics{at: dbTimeMs(at)}
+		// held is never nil for a report that was understood: one with no
+		// active_decisions items (a firewall bouncer whose ipset fails) holds nothing.
+		m := bouncerMetrics{at: dbTimeMs(at), held: map[string]int64{}}
 		for _, window := range p.Metrics {
 			for _, item := range window.Items {
 				switch {
 				case item.Name == "active_decisions":
-					if m.held == nil {
-						m.held = map[string]int64{}
-					}
 					m.held[item.Labels["origin"]] += int64(item.Value)
 				case item.Name == "dropped" && item.Unit == "packet":
 					m.dropped += int64(item.Value)

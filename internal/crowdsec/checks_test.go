@@ -132,6 +132,73 @@ func TestHeldComparesWithTheLocalAPI(t *testing.T) {
 	}
 }
 
+func TestHeldTreatsEmptyDecisionMetricsAsZero(t *testing.T) {
+	now := int64(1_800_000_000_000)
+	ec := evalContext{Parts: allParts(), Now: now, Active: map[string]int64{"crowdsec": 100, "small": 3}}
+	empty := DBSignals{LastSeenMs: now, MetricsMs: now - minute, Held: map[string]int64{}, HoldsDecisions: true}
+	b := component(wire.KindBouncer, "fw", empty)
+	b.evaluate(ec)
+	if finding(b, "held") != nil {
+		t.Fatal("one empty report is not enough")
+	}
+
+	ec.Now = now + minute
+	empty.LastSeenMs, empty.MetricsMs = ec.Now, ec.Now
+	setSignals(b, empty)
+	b.evaluate(ec)
+	f := finding(b, "held")
+	if f == nil || !strings.Contains(f.Detail, "Holds 0 of 100 crowdsec decisions") {
+		t.Fatalf("second empty report should count as zero held: %+v", f)
+	}
+
+	// One report is enough below, so a pass is not just a streak still building.
+	once := checks["held"].defaults()
+	once["reports"] = 1
+	if r := component(wire.KindBouncer, "fw-once", empty).run(checks["held"], once, ec, "x"); !r.Bad {
+		t.Fatalf("one-report values must flag the empty report: %+v", r)
+	}
+	// A bouncer that has never sent decision counts (one in live mode) is not
+	// judged on what it does not report.
+	live := DBSignals{LastSeenMs: ec.Now, MetricsMs: ec.Now, Held: map[string]int64{}}
+	if r := component(wire.KindBouncer, "nginx", live).run(checks["held"], once, ec, "x"); r.Bad {
+		t.Fatalf("a bouncer that never counts decisions must not be flagged: %+v", r)
+	}
+
+	// Empty or below-threshold Local API decision sets have nothing to compare.
+	for name, active := range map[string]map[string]int64{"no active": {}, "below min_active": {"small": 3}} {
+		c := component(wire.KindBouncer, "fw-"+name, empty)
+		if r := c.run(checks["held"], once, evalContext{Parts: allParts(), Now: ec.Now, Active: active}, "x"); r.Bad {
+			t.Fatalf("%s must not produce a finding: %+v", name, r)
+		}
+	}
+}
+
+// A firewall bouncer whose ipset fails sends metrics with no decision counts at
+// all; next to a sibling holding thousands it is flagged, even if it never sent
+// counts before, since its siblings show the same software counts them.
+func TestSiblingsFlagAnEntryWithNoDecisionCounts(t *testing.T) {
+	now := int64(1_800_000_000_000)
+	broken := component(wire.KindBouncer, "fw@10.0.0.5", DBSignals{LastSeenMs: now, MetricsMs: now - minute, Held: map[string]int64{}})
+	good := component(wire.KindBouncer, "fw@10.0.0.6", DBSignals{LastSeenMs: now, MetricsMs: now - minute, Held: map[string]int64{"crowdsec": 1204, "CAPI": 30000}})
+	comps := []*Component{broken, good}
+	ec := evalContext{Parts: map[string]bool{wire.PartBouncers: true, wire.PartMetrics: true}, Now: now, Groups: groupBouncers(comps)}
+	for i := 0; i < 2; i++ {
+		setSignals(broken, DBSignals{LastSeenMs: ec.Now, MetricsMs: ec.Now, Held: map[string]int64{}})
+		broken.evaluate(ec)
+		ec.Now += minute
+	}
+	f := finding(broken, "siblings")
+	if f == nil || !strings.HasPrefix(f.Detail, "Holds 0 of the 31204 decisions its sibling fw@10.0.0.6 holds") {
+		t.Fatalf("an entry with no decision counts: %+v", f)
+	}
+	// Without usage metrics at all there is nothing to compare.
+	quiet := component(wire.KindBouncer, "fw@10.0.0.7", DBSignals{LastSeenMs: now})
+	ec.Groups = groupBouncers([]*Component{quiet, good})
+	if r := quiet.run(checks["siblings"], checks["siblings"].defaults(), ec, "x"); r.Judged {
+		t.Fatal("a bouncer sending no usage metrics is not compared")
+	}
+}
+
 func TestSiblingsOnASharedKey(t *testing.T) {
 	now := int64(1_800_000_000_000)
 	broken := component(wire.KindBouncer, "fw@10.0.0.5", DBSignals{LastSeenMs: now, MetricsMs: now - minute, Held: map[string]int64{"crowdsec": 0, "CAPI": 0}})

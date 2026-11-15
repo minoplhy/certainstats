@@ -333,7 +333,8 @@ function healthData(now) {
   const entry = (id, ip, held, state, extra = {}) => ({id, collector_id: 'col_a', collector: 'edge', kind: 'bouncer', name: 'fw@' + ip, group: 'fw', type: 'cs-firewall-bouncer',
     version: 'v0.0.38', ip, state, muted: false, last_seen_ms: now - 5000, metrics_ms: now - 60000, held, active: {crowdsec: 1300, CAPI: 30000},
     dropped: 412, processed: 51000, findings: [], firing: [], ...extra});
-  const broken = entry(3, '10.0.0.5', {crowdsec: 0, CAPI: 0}, 'caution', {findings: [{check: 'siblings', label: 'Bouncer behind its siblings',
+  // A failing ipset sends metrics with no decision counts at all.
+  const broken = entry(3, '10.0.0.5', {}, 'caution', {active: {}, findings: [{check: 'siblings', label: 'Bouncer behind its siblings',
     detail: 'Holds 0 of the 31204 decisions its sibling fw@10.0.0.6 holds; its ipset or nftables set may be failing, check its log'}]});
   const good = entry(4, '10.0.0.6', {crowdsec: 1204, CAPI: 30000}, 'ok');
   const nginx = {...entry(5, '10.0.0.7', null, 'ok'), name: 'nginx', group: 'nginx', type: 'crowdsec-nginx-bouncer', metrics_ms: 0, held: null, active: null};
@@ -371,7 +372,7 @@ test('machines and bouncers open in their own popup, as two Management-style lis
   const entries = [...bouncers[0].querySelectorAll('.cs-comp-entry')];
   assert.deepEqual(entries.map(e => e.querySelector('.cs-comp-entry-head .mono').textContent), ['fw@10.0.0.5', 'fw@10.0.0.6']);
   const broken = facts(entries[0]), good = facts(entries[1]);
-  assert.equal(broken['Decisions held'], 'CAPI: 0 of 30,000 active\ncrowdsec: 0 of 1,300 active');
+  assert.equal(broken['Decisions held'], 'None in its last metrics report');
   assert.equal(good['Decisions held'], 'CAPI: 30,000 of 30,000 active\ncrowdsec: 1,204 of 1,300 active');
   assert.match(broken.Status, /its ipset or nftables set may be failing/);
   assert.equal(good['Packets dropped'], '412');
@@ -433,7 +434,7 @@ test('popup rows are updated in place on refresh, and an open row stays open', a
   const web = h.q('[data-cs-machines] > details.mgmt-item');
   group.open = true;
   // The broken entry recovers, nginx is removed from CrowdSec.
-  health.items[2] = {...health.items[2], state: 'ok', findings: [], held: {crowdsec: 1204, CAPI: 30000}};
+  health.items[2] = {...health.items[2], state: 'ok', findings: [], held: {crowdsec: 1204, CAPI: 30000}, active: {crowdsec: 1300, CAPI: 30000}};
   health.items.splice(4, 1);
   h.q('[data-cs-refresh]').click();
   await settle();

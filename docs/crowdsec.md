@@ -151,8 +151,8 @@ nothing and never changes the headline.
 | --- | --- | --- | --- |
 | `heartbeat` | machines | quiet for 5 minutes | the agent runs and reaches the Local API |
 | `pull` | bouncers | quiet for 60 minutes | the bouncer runs and fetches decisions |
-| `held` | bouncers | holds under 50% of at least 20 active decisions of an origin it reports, on 2 metric reports in a row | it may not be applying decisions |
-| `siblings` | bouncers sharing a key | holds under 10% of what its largest sibling holds, that sibling holding at least 1,000, on 2 metric reports in a row | its ipset or nftables set may be failing |
+| `held` | bouncers | holds under 50% of at least 20 active decisions of an origin it reports, on 2 metric reports in a row; metrics with no `active_decisions` items at all count as holding 0 of every active origin, once the bouncer is known to hold decisions: it has sent decision counts before, or it counts packets, which only a firewall bouncer does (a bouncer in live mode does neither and is not judged) | it may not be applying decisions |
+| `siblings` | bouncers sharing a key | holds under 10% of what its largest sibling holds, that sibling holding at least 1,000, on 2 metric reports in a row; metrics with no decision counts at all (what a failing ipset sends) count as holding 0 | its ipset or nftables set may be failing |
 
 **Shared keys.** When one bouncer key is used from several addresses, CrowdSec
 creates one entry per address named `name@ip`. Those entries apply the same

@@ -130,8 +130,10 @@ type Component struct {
 	Revoked    bool  `cbor:"revoked,omitempty"`
 	// MetricsMs is when a bouncer last pushed usage metrics; zero means it never did.
 	MetricsMs int64 `cbor:"metrics_ms,omitempty"`
-	// Held counts the decisions the bouncer says it holds, by origin.
-	Held      map[string]int64 `cbor:"held,omitempty"`
+	// Held counts the decisions the bouncer says it holds, by origin. It is nil
+	// without usage metrics and empty when they carry no decision counts, so it
+	// is sent even when empty.
+	Held      map[string]int64 `cbor:"held"`
 	Dropped   int64            `cbor:"dropped,omitempty"`
 	Processed int64            `cbor:"processed,omitempty"`
 }
