@@ -276,3 +276,15 @@ func TestPrune(t *testing.T) {
 		t.Fatalf("after rollup prune: %+v %v", res, err)
 	}
 }
+
+// CrowdSec's Local API writes start_at and stop_at with Go's time.String().
+func TestNormalizeGoTimeFormat(t *testing.T) {
+	a := fixture(t)[0]
+	a.StartAt = "2026-11-10 10:14:58.123456789 +0000 UTC"
+	a.StopAt = "2026-11-10 17:15:00 +0700 +07"
+	a.CreatedAt = "2026-11-10T13:15:02Z" // stored hours later; must not become the alert time
+	row := normalize("col_a", &a, ms("2026-11-10T14:00:00Z"))
+	if row.StartedAt != ms("2026-11-10T10:14:58.123Z") || row.StoppedAt != ms("2026-11-10T10:15:00Z") {
+		t.Fatalf("times %d %d", row.StartedAt, row.StoppedAt)
+	}
+}

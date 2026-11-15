@@ -19,6 +19,7 @@ import (
 	"certainstats/internal/collector"
 	ctxkeys "certainstats/internal/context"
 	"certainstats/internal/crowdsec"
+	cswire "certainstats/internal/crowdsec/wire"
 	"certainstats/internal/security"
 	"certainstats/internal/store/sqlite"
 
@@ -71,7 +72,7 @@ func (f *fakeLAPI) handler(t *testing.T) http.Handler {
 		defer f.mu.Unlock()
 		out := []map[string]any{}
 		for _, a := range f.alerts {
-			start, _ := time.Parse(time.RFC3339, a["start_at"].(string))
+			start, _ := cswire.ParseTime(a["start_at"].(string))
 			if !start.Before(since.Add(-time.Second)) && !start.After(until.Add(time.Second)) && len(out) < limit {
 				out = append(out, a)
 			}
@@ -216,6 +217,44 @@ func TestCollectorEndToEnd(t *testing.T) {
 	e.once(t)
 	if sum := e.get(t, "/crowdsec/summary?hours=24"); sum["alerts"] != float64(451) {
 		t.Fatalf("new alert not stored: %v", sum["alerts"])
+	}
+}
+
+// TestBackfillGoTimeFormat feeds start_at the way CrowdSec's Local API writes it
+// (Go's time.String()), with created_at hours later, over several days and batches.
+func TestBackfillGoTimeFormat(t *testing.T) {
+	e := newE2E(t)
+	now := time.Now().UTC().Truncate(time.Second)
+	var newest time.Time
+	for i := 0; i < 450; i++ {
+		start := now.Add(-time.Duration(450-i) * 12 * time.Minute) // about 90 hours back
+		a := lapiAlert(i, start)
+		a["start_at"] = start.String()
+		a["stop_at"] = start.Add(time.Minute).String()
+		a["created_at"] = start.Add(3 * time.Hour).Format(time.RFC3339) // stored late, as a long bucket is
+		e.lapi.alerts = append(e.lapi.alerts, a)
+		newest = start
+	}
+	e.once(t)
+	if sum := e.get(t, "/crowdsec/summary?hours=168"); sum["alerts"] != float64(450) {
+		t.Fatalf("backfill stored %v alerts, want 450", sum["alerts"])
+	}
+	// The cursor follows real start times, not created_at.
+	st := e.get(t, "/"+e.id+"/crowdsec")
+	if st["cursor"] != float64(newest.UnixMilli()) {
+		t.Fatalf("cursor %v, want newest start %d", st["cursor"], newest.UnixMilli())
+	}
+	page := e.get(t, "/crowdsec/alerts?hours=168&sort=time") // newest first
+	items, _ := page["items"].([]any)
+	if len(items) == 0 {
+		t.Fatal("no alerts listed")
+	}
+	if top := items[0].(map[string]any); top["started_at"] != float64(newest.UnixMilli()) || top["stopped_at"] != float64(newest.Add(time.Minute).UnixMilli()) {
+		t.Fatalf("newest alert times: %v", top)
+	}
+	e.once(t)
+	if sum := e.get(t, "/crowdsec/summary?hours=168"); sum["alerts"] != float64(450) {
+		t.Fatalf("second pass duplicated alerts: %v", sum["alerts"])
 	}
 }
 

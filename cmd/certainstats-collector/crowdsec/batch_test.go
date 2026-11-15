@@ -1,7 +1,9 @@
 package crowdsec
 
 import (
+	"sort"
 	"strconv"
+	"strings"
 	"testing"
 
 	"certainstats/internal/crowdsec/wire"
@@ -43,5 +45,22 @@ func TestCappedAlertFitsAFrame(t *testing.T) {
 	b, err := cbor.Marshal([]wire.Alert{a})
 	if err != nil || len(b) > batchBudget {
 		t.Fatalf("one alert with %d decisions is %d bytes (%v)", maxDecisions, len(b), err)
+	}
+}
+
+func TestAlertOrderUsesRealTime(t *testing.T) {
+	alerts := []wire.Alert{
+		{UUID: "later-other-zone", StartAt: "2026-11-15 10:45:00 +0700 +07"}, // 03:45 UTC
+		{UUID: "fraction", StartAt: "2026-11-15 03:44:29.5 +0000 UTC"},
+		{UUID: "first", StartAt: "2026-11-15 03:44:29 +0000 UTC"},
+		{UUID: "created-only", CreatedAt: "2026-11-15T03:00:00Z"},
+	}
+	sort.SliceStable(alerts, func(i, j int) bool { return alertMs(alerts[i]) < alertMs(alerts[j]) })
+	var got []string
+	for _, a := range alerts {
+		got = append(got, a.UUID)
+	}
+	if strings.Join(got, ",") != "created-only,first,fraction,later-other-zone" {
+		t.Fatalf("order %v", got)
 	}
 }

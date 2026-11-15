@@ -4,6 +4,38 @@
 // dropped on the host.
 package wire
 
+import (
+	"strings"
+	"time"
+)
+
+// goTimeLayout is time.Time.String(), which CrowdSec's Local API uses for an
+// alert's start_at and stop_at (created_at is RFC 3339).
+const goTimeLayout = "2006-01-02 15:04:05.999999999 -0700 MST"
+
+// ParseTime reads a Local API timestamp in either RFC 3339 or Go's String()
+// form. Zero, unparsable or pre-2000 values are not ok.
+func ParseTime(v string) (time.Time, bool) {
+	v = strings.TrimSpace(v)
+	if v == "" {
+		return time.Time{}, false
+	}
+	// String() appends the monotonic clock reading (" m=+1.23") when present.
+	if i := strings.Index(v, " m="); i > 0 {
+		v = v[:i]
+	}
+	t, err := time.Parse(time.RFC3339Nano, v)
+	if err != nil {
+		if t, err = time.Parse(goTimeLayout, v); err != nil {
+			return time.Time{}, false
+		}
+	}
+	if t.Year() < 2000 {
+		return time.Time{}, false
+	}
+	return t, true
+}
+
 const (
 	Prefix     = "cs_"
 	TypeName   = "crowdsec"

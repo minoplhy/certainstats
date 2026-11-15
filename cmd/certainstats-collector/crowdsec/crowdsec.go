@@ -280,7 +280,9 @@ func (r *runner) pass(ctx context.Context, fromMs int64) {
 		fillUntil(&a, now)
 		fresh = append(fresh, a)
 	}
-	sort.SliceStable(fresh, func(i, j int) bool { return fresh[i].StartAt < fresh[j].StartAt })
+	// Oldest first by real time: the server's cursor is the newest start it has
+	// acknowledged, so sending out of order could skip alerts if a batch fails.
+	sort.SliceStable(fresh, func(i, j int) bool { return alertMs(fresh[i]) < alertMs(fresh[j]) })
 	for len(fresh) > 0 && ctx.Err() == nil {
 		n := fit(fresh[:min(len(fresh), r.cfg.MaxBatch)], batchBudget)
 		if err := r.deliver(ctx, fresh[:n]); err != nil {
@@ -381,7 +383,7 @@ func (r *runner) deliver(ctx context.Context, alerts []wire.Alert) error {
 			r.cursor = max(r.cursor, ack.CursorMs)
 			for _, a := range alerts {
 				if a.UUID != "" {
-					r.sent[a.UUID] = parseMs(a.StartAt)
+					r.sent[a.UUID] = alertMs(a)
 				}
 			}
 			return nil
@@ -399,10 +401,14 @@ func (r *runner) forget() {
 	}
 }
 
-func parseMs(v string) int64 {
-	t, err := time.Parse(time.RFC3339Nano, v)
-	if err != nil {
-		return 0
+// alertMs is the alert's time as the server stores it: start_at, else created_at.
+// Both may be RFC 3339 or Go's String() form; zero when neither parses.
+func alertMs(a wire.Alert) int64 {
+	if t, ok := wire.ParseTime(a.StartAt); ok {
+		return t.UnixMilli()
 	}
-	return t.UnixMilli()
+	if t, ok := wire.ParseTime(a.CreatedAt); ok {
+		return t.UnixMilli()
+	}
+	return 0
 }

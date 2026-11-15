@@ -25,13 +25,10 @@ type alertRow struct {
 	Decisions                              []decisionRow
 }
 
-// parseTime reads the Local API's RFC 3339 timestamps; zero when missing or invalid.
+// parseTime reads a Local API timestamp (RFC 3339 or Go's String() form); zero when missing or invalid.
 func parseTime(v string) int64 {
-	if v == "" {
-		return 0
-	}
-	t, err := time.Parse(time.RFC3339Nano, v)
-	if err != nil || t.Year() < 2000 {
+	t, ok := wire.ParseTime(v)
+	if !ok {
 		return 0
 	}
 	return t.UnixMilli()
