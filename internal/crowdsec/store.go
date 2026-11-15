@@ -91,7 +91,7 @@ func Open(path string) (*Store, error) {
 		return nil, err
 	}
 	write.SetMaxOpenConns(1)
-	for _, stmt := range schema {
+	for _, stmt := range append(append([]string{}, schema...), healthSchema...) {
 		if _, err := write.Exec(stmt); err != nil {
 			write.Close()
 			return nil, fmt.Errorf("crowdsec schema: %w", err)

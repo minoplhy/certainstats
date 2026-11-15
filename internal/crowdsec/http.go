@@ -26,6 +26,8 @@ func userID(r *http.Request) string {
 func (t *Type) CollectorRoutes(r chi.Router) {
 	r.Get("/", t.collectorStatus)
 	r.Post("/resync", t.resync)
+	r.Get("/health", t.healthSettings)
+	r.Put("/health", t.saveHealthSettings)
 }
 
 // DataRoutes is mounted at /collectors/crowdsec.
@@ -36,6 +38,9 @@ func (t *Type) DataRoutes(r chi.Router) {
 	r.Get("/alerts", t.alertList)
 	r.Get("/alerts/{id}", t.alertOne)
 	r.Get("/ips/{ip}", t.ip)
+	r.Get("/components", t.components)
+	r.Put("/components/{id}/mute", t.mute(true))
+	r.Delete("/components/{id}/mute", t.mute(false))
 }
 
 func fail(w http.ResponseWriter, what string, err error) {

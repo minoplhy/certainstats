@@ -22,6 +22,48 @@ func DispatchNotification(action alert.AlertAction, nctx NotificationContext) er
 	}
 }
 
+// triggerLabel is the label shown for a notification's trigger.
+func triggerLabel(nctx NotificationContext) string {
+	if nctx.TriggerLabel != "" {
+		return nctx.TriggerLabel
+	}
+	return getTriggerLabel(nctx.TriggerType)
+}
+
+// valueText is the notification's value as text.
+func valueText(nctx NotificationContext) string {
+	if nctx.ValueText != "" {
+		return nctx.ValueText
+	}
+	return formatMetricValue(nctx.TriggerType, nctx.Value)
+}
+
+// subjectFields is the Discord embed of a subject that is not a node, such as a
+// CrowdSec machine or bouncer.
+func subjectFields(nctx NotificationContext) []map[string]interface{} {
+	kind := "Subject"
+	if nctx.SubjectKind != "" {
+		kind = strings.ToUpper(nctx.SubjectKind[:1]) + nctx.SubjectKind[1:]
+	}
+	state := "🚨 **" + nctx.Detail + "**"
+	if nctx.Status != "FIRING" {
+		state = "✅ **RECOVERED**"
+	}
+	fields := []map[string]interface{}{
+		{"name": kind, "value": nctx.Nickname, "inline": true},
+		{"name": "Collector", "value": nctx.Collector, "inline": true},
+		{"name": "Check", "value": triggerLabel(nctx), "inline": false},
+		{"name": "Status", "value": state, "inline": false},
+		{"name": "Since", "value": formatDiscordTime(nctx.WentOfflineAt), "inline": false},
+	}
+	if nctx.ResolvedAt != nil && nctx.WentOfflineAt != nil {
+		fields = append(fields,
+			map[string]interface{}{"name": "Recovered", "value": formatDiscordTime(nctx.ResolvedAt), "inline": false},
+			map[string]interface{}{"name": "Duration", "value": fmt.Sprintf("⏱️ **%s**", formatDuration(nctx.ResolvedAt.Sub(*nctx.WentOfflineAt))), "inline": true})
+	}
+	return fields
+}
+
 func getTriggerLabel(t string) string {
 	switch t {
 	case "network_loss":
@@ -125,12 +167,13 @@ func applyTemplate(tmpl string, nctx NotificationContext, isDiscord bool) string
 	}
 	r := strings.NewReplacer(
 		"{{MONITOR_ID}}", jsonText(nctx.MonitorID), "{{MONITOR_TARGET}}", jsonText(nctx.MonitorTarget), "{{MONITOR_PROTOCOL}}", jsonText(nctx.MonitorProtocol), "{{DNS_SERVER}}", jsonText(nctx.DNSServer),
+		"{{COLLECTOR}}", jsonText(nctx.Collector), "{{SUBJECT_KIND}}", jsonText(nctx.SubjectKind), "{{DETAIL}}", jsonText(nctx.Detail),
 		"{{AGENT_ID}}", jsonText(nctx.AgentID),
 		"{{NICKNAME}}", jsonText(nctx.Nickname),
 		"{{TRIGGER_TYPE}}", jsonText(nctx.TriggerType),
-		"{{TRIGGER_LABEL}}", jsonText(getTriggerLabel(nctx.TriggerType)),
+		"{{TRIGGER_LABEL}}", jsonText(triggerLabel(nctx)),
 		"{{STATUS}}", jsonText(nctx.Status),
-		"{{VALUE}}", jsonText(formatMetricValue(nctx.TriggerType, nctx.Value)),
+		"{{VALUE}}", jsonText(valueText(nctx)),
 		"{{OPERATOR}}", jsonText(nctx.Operator),
 		"{{THRESHOLD}}", jsonText(formatMetricValue(nctx.TriggerType, nctx.Threshold)),
 		"{{TIME_TRIGGER}}", jsonText(triggerTime),
@@ -165,7 +208,9 @@ func sendDiscordWebhook(action alert.AlertAction, nctx NotificationContext) erro
 		triggerLabel := getTriggerLabel(nctx.TriggerType)
 		var fields []map[string]interface{}
 
-		if nctx.TriggerType == "agent_down" {
+		if nctx.SubjectKind != "" {
+			fields = subjectFields(nctx)
+		} else if nctx.TriggerType == "agent_down" {
 			wentOfflineStr := "N/A"
 			if nctx.WentOfflineAt != nil {
 				wentOfflineStr = formatDiscordTime(nctx.WentOfflineAt)
@@ -337,6 +382,7 @@ func sendWebhook(action alert.AlertAction, nctx NotificationContext) error {
 		// 2. Fallback to a standard JSON format if Payload is empty
 		payloadBytes, err = json.Marshal(defaultPayload{
 			MonitorID: nctx.MonitorID, MonitorTarget: nctx.MonitorTarget, MonitorProtocol: nctx.MonitorProtocol, DNSServer: nctx.DNSServer,
+			Collector: nctx.Collector, SubjectKind: nctx.SubjectKind, Detail: nctx.Detail,
 			AgentID:     nctx.AgentID,
 			Nickname:    nctx.Nickname,
 			TriggerType: nctx.TriggerType,

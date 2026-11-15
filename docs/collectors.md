@@ -69,7 +69,9 @@ The rest of the exchange belongs to the types. Wire types live in
    | `TOKEN` | The token from step 1 |
    | `COLLECT_<TYPE>=true` | Switches a type on, such as `COLLECT_CROWDSEC=true`. With none, the collector exits and says so |
 
-   Each type adds its own settings, prefixed with its name.
+   Each type adds its own settings, prefixed with its name. Some are switches
+   for optional reading that is off by default, such as CrowdSec's
+   `CROWDSEC_HEALTH`.
 5. Keep the host clock correct (NTP); data and cursors are timestamps.
 
 `certainstats-collector --check` tests each prerequisite and names the first

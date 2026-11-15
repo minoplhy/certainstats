@@ -54,6 +54,85 @@
     return { level: "warn", text: "Connected, waiting for first report" };
   }
 
+  // web/src/js/components/collectors/health_form.js
+  var LEVELS = [["off", "Off"], ["caution", "Caution (shown only)"], ["alert", "Alert (notify)"]];
+  function select(options, value, label) {
+    const node = el("select", "form-select");
+    node.setAttribute("aria-label", label);
+    for (const [v, text] of options) {
+      const option = el("option", "", text);
+      option.value = v;
+      node.append(option);
+    }
+    node.value = value;
+    return node;
+  }
+  function checkRow(check, setting) {
+    const row = el("fieldset", "collector-health-check");
+    row.dataset.check = check.name;
+    row.append(el("legend", "", check.label));
+    const controls = el("div", "collector-health-controls");
+    const level = select(LEVELS, setting.level, check.label + " level");
+    level.dataset.level = "";
+    controls.append(level);
+    for (const p of check.params) {
+      const label = el("label", "collector-health-param");
+      const input = el("input", "form-input form-input-sm");
+      input.type = "number";
+      input.min = p.min;
+      input.max = p.max;
+      input.required = true;
+      input.value = setting.values[p.key] ?? p.default;
+      input.dataset.param = p.key;
+      label.append(el("span", "", p.label), input);
+      if (p.unit) label.append(el("span", "muted", p.unit));
+      controls.append(label);
+    }
+    row.append(controls, el("p", "form-hint", check.proves));
+    return row;
+  }
+  async function openHealthForm(collector, host, done) {
+    host.querySelector(".collector-health")?.remove();
+    const data = await api("collectors/" + collector.collector_id + "/crowdsec/health");
+    const form = el("form", "collector-health");
+    form.noValidate = false;
+    form.append(el("p", "form-hint", "Reads CrowdSec's database, read-only, and only when the collector's host sets CROWDSEC_HEALTH=true. Until then these settings wait."));
+    const targetLabel = el("label", "collector-health-param");
+    const target = select([["", "No notification"], ...data.targets.map((t) => [t.target_id, t.name])], data.target_id, "Notify");
+    targetLabel.append(el("span", "", "Notify"), target);
+    form.append(targetLabel);
+    if (!data.targets.length) form.append(el("p", "form-hint", "Add a notification target under Alerts to be notified."));
+    for (const check of data.registry) form.append(checkRow(check, data.checks[check.name]));
+    const message = el("p", "collector-health-message");
+    message.setAttribute("role", "alert");
+    const save = el("button", "btn btn-primary btn-sm", "Save");
+    save.type = "submit";
+    const actions = el("div", "collector-health-actions");
+    actions.append(save, button("Cancel", "btn btn-secondary btn-sm", () => form.remove()));
+    form.append(message, actions);
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const checks = {};
+      for (const row of form.querySelectorAll("[data-check]")) {
+        const values = {};
+        for (const input of row.querySelectorAll("[data-param]")) values[input.dataset.param] = Number.parseInt(input.value, 10);
+        checks[row.dataset.check] = { level: row.querySelector("[data-level]").value, values };
+      }
+      message.textContent = "";
+      save.disabled = true;
+      try {
+        await api("collectors/" + collector.collector_id + "/crowdsec/health", { method: "PUT", body: JSON.stringify({ target_id: target.value, checks }) });
+        form.remove();
+        done();
+      } catch (err) {
+        message.textContent = err.message;
+        save.disabled = false;
+      }
+    });
+    host.append(form);
+    target.focus();
+  }
+
   // web/src/js/components/collectors/list.js
   var CHEVRON = '<svg class="mgmt-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>';
   function middleTrim(s, head, tail) {
@@ -167,6 +246,12 @@
       dot.setAttribute("aria-hidden", "true");
       dd.append(dot, el("span", "collector-type-state", st.text));
       if (t.type === "crowdsec" && t.enabled && c.connected) dd.append(button("Read again…", "btn btn-ghost btn-sm", () => backfill(c, dd)));
+      if (t.type === "crowdsec" && t.enabled) dd.append(button("Health alerts…", "btn btn-ghost btn-sm", () => {
+        ui.message.textContent = "";
+        openHealthForm(c, dd, () => window.CertainStatsTelemetry?.showToast("Health settings saved", true)).catch((e) => {
+          ui.message.textContent = e.message;
+        });
+      }));
       dd.append(button(t.enabled ? "Disable" : "Enable", "btn btn-ghost btn-sm", () => act(
         () => api("collectors/" + c.collector_id + "/" + t.type, { method: t.enabled ? "DELETE" : "PUT" }),
         t.label + (t.enabled ? " disabled" : " enabled")
@@ -248,7 +333,7 @@
       applySearch();
     }
     function busy() {
-      return !!ui.list.querySelector(".inline-edit:not([hidden]), .collector-backfill");
+      return !!ui.list.querySelector(".inline-edit:not([hidden]), .collector-backfill, .collector-health");
     }
     function search(text) {
       query = text.trim().toLowerCase();

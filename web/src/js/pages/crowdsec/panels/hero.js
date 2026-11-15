@@ -11,7 +11,7 @@ export function renderHero() {
   const list = crowdsecCollectors();
   const reporting = list.filter(c => c.connected && c.types.some(t => t.type === 'crowdsec' && t.status === 'ok')).length;
   ui.collectorCount.textContent = list.length === 1 ? '1 collector' : list.length + ' collectors';
-  const h = headline(state.summary, state.view, state.collectors);
+  const h = headline(state.summary, state.view, state.collectors, state.components);
   ui.headline.textContent = h.text;
   ui.headline.classList.toggle('is-bad', h.bad);
   const s = state.summary;

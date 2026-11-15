@@ -1,4 +1,5 @@
 import { el, button, api, timeAgo, typeState } from './shared.js';
+import { openHealthForm } from './health_form.js';
 
 const CHEVRON = '<svg class="mgmt-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>';
 
@@ -108,6 +109,10 @@ export function createList(ctx) {
     dot.setAttribute('aria-hidden', 'true');
     dd.append(dot, el('span', 'collector-type-state', st.text));
     if (t.type === 'crowdsec' && t.enabled && c.connected) dd.append(button('Read again…', 'btn btn-ghost btn-sm', () => backfill(c, dd)));
+    if (t.type === 'crowdsec' && t.enabled) dd.append(button('Health alerts…', 'btn btn-ghost btn-sm', () => {
+      ui.message.textContent = '';
+      openHealthForm(c, dd, () => window.CertainStatsTelemetry?.showToast('Health settings saved', true)).catch(e => { ui.message.textContent = e.message; });
+    }));
     dd.append(button(t.enabled ? 'Disable' : 'Enable', 'btn btn-ghost btn-sm', () => act(
       () => api('collectors/' + c.collector_id + '/' + t.type, {method: t.enabled ? 'DELETE' : 'PUT'}),
       t.label + (t.enabled ? ' disabled' : ' enabled'))));
@@ -188,10 +193,10 @@ export function createList(ctx) {
     applySearch();
   }
 
-  // busy is true while a rename or a "Read again" form is open, so the periodic
-  // refresh doesn't throw away what the user is typing.
+  // busy is true while a rename, a "Read again" form or the health settings are
+  // open, so the periodic refresh doesn't throw away what the user is typing.
   function busy() {
-    return !!ui.list.querySelector('.inline-edit:not([hidden]), .collector-backfill');
+    return !!ui.list.querySelector('.inline-edit:not([hidden]), .collector-backfill, .collector-health');
   }
 
   function search(text) {

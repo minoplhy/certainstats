@@ -85,9 +85,9 @@ test('collector type states name the missing step', () => {
   assert.equal(typeState({connected: true}, {...t, enabled: false}).text, 'Disabled');
 });
 
-function page(url) {
+function page(url, health = {collectors: [], items: []}) {
   const html = '<body data-panel-path="/panel"><div class="cs-page" data-cs-page>' + partial('crowdsec/hero.html') + '<div data-cs-main>' +
-    partial('crowdsec/filters.html') + partial('crowdsec/panels.html') + partial('crowdsec/table.html') + '</div>' + partial('crowdsec/ip_view.html') +
+    partial('crowdsec/components.html') + partial('crowdsec/filters.html') + partial('crowdsec/panels.html') + partial('crowdsec/table.html') + '</div>' + partial('crowdsec/ip_view.html') +
     '</div><script type="application/json" id="page-config" data-module="CertainStatsCrowdSec">{}</script></body>';
   const dom = new JSDOM(html, {url, runScripts: 'outside-only'});
   const w = dom.window;
@@ -96,10 +96,14 @@ function page(url) {
     {id: 1, collector_id: 'col_a', collector: 'edge', machine: 'web-01', scenario: 'crowdsecurity/ssh-bf', ip: '203.0.113.7', country: 'NL', asn: '64500', as_name: 'Ex', action: 'ban', events: 6, started_at: Date.now() - 60000},
     {id: 2, collector_id: 'col_a', collector: 'edge', machine: 'web-02', scenario: 'crowdsecurity/http-probing', ip: '198.51.100.20', country: 'US', action: 'none', events: 11, simulated: true, started_at: Date.now() - 120000}
   ];
-  w.fetch = async input => {
+  const changes = [];
+  w.fetch = async (input, init = {}) => {
     const u = new URL(input, url);
-    requests.push(u);
     const path = u.pathname.replace('/panel/api/collectors/crowdsec/', '');
+    if (init.method) { changes.push(init.method + ' ' + path); return {ok: true, status: 204, json: async () => null}; }
+    // Machine and bouncer health is not an alert read: it has no range or filters.
+    if (path === 'components') return {ok: true, status: 200, json: async () => health};
+    requests.push(u);
     let body;
     if (path === 'summary') body = {source: 'raw', alerts: 2, events: 17, unique_ips: 2, active: {ban: 1}, raw_since: 1, rollup_since: 1};
     else if (path === 'timeline') body = {source: 'raw', width_ms: 300000, points: [[Date.now() - 300000, 2, 3]]};
@@ -127,7 +131,7 @@ function page(url) {
   w.scrollTo = () => {};
   open.push(w);
   w.eval(BUNDLE);
-  return {w, requests, charts, pickers, opened, q: sel => w.document.querySelector(sel)};
+  return {w, requests, charts, pickers, opened, changes, health, q: sel => w.document.querySelector(sel)};
 }
 
 const settle = () => new Promise(resolve => setTimeout(resolve, 20));
@@ -320,4 +324,129 @@ test('the Collectors page lists collectors and ?add= opens the add form with tha
   await settle();
   assert.deepEqual(posted, [{name: 'new', agent_id: '', types: ['crowdsec']}]);
   assert.ok(modals.some(m => m[0] === 'close' && m[1] === 'collectors-add-modal'));
+});
+
+test('machines and bouncers: a dense list, cautions that stay cautions, and mute', async () => {
+  const cs = helpers();
+  const now = Date.now();
+  const bouncer = {id: 2, collector: 'edge', kind: 'bouncer', name: 'fw-edge', type: 'cs-firewall-bouncer', version: 'v0.0.38', ip: '10.0.0.5', state: 'caution', muted: false,
+    last_seen_ms: now - 5000, held: 10, active: 100, dropped: 412,
+    findings: [{check: 'held', level: 'caution', label: 'Bouncer holds decisions', detail: "Holds 10 of 100 crowdsec decisions, may not be applying them; check the bouncer's log"}]};
+  const items = [
+    {id: 1, collector: 'edge', kind: 'machine', name: 'web-01', version: 'v1.8.2', state: 'ok', muted: false, validated: true, last_seen_ms: now - 30000, held: null, active: null, findings: []},
+    bouncer,
+    {id: 3, collector: 'edge', kind: 'machine', name: 'certainstats', state: 'self', muted: false, validated: true, last_seen_ms: 0, held: null, active: null, findings: []}
+  ];
+  const health = {collectors: [{collector_id: 'col_a', name: 'edge', health: 'on', error: '', unavailable: []}], items};
+  const h = page('http://x/panel/crowdsec?hours=24', health);
+  await settle();
+  assert.equal(h.q('[data-cs-components]').hidden, false);
+  assert.equal(h.q('[data-cs-components-count]').textContent, '2 machines, 1 bouncer · 1 needs a look');
+  const rows = [...h.w.document.querySelectorAll('.cs-comp-row')];
+  assert.deepEqual(rows.map(r => r.querySelector('.cs-comp-name').textContent), ['fw-edge', 'web-01', 'certainstats'], 'what needs a look comes first');
+  assert.match(rows[0].textContent, /may not be applying them/);
+  assert.match(rows[0].querySelector('.cs-comp-facts').textContent, /holds 10 of 100 decisions · 412 packets dropped · cs-firewall-bouncer · v0\.0\.38 · 10\.0\.0\.5/);
+  assert.ok(rows[0].querySelector('.status-dot').classList.contains('warn'), 'a caution is amber, never red');
+  assert.equal(rows[2].querySelector('button').hidden, true, "the collector's own login cannot be muted");
+  // A caution never changes the headline.
+  assert.equal(h.q('[data-cs-headline]').textContent, '2 alerts in the last 24 hours, most from ssh-bf.');
+  assert.equal(h.q('[data-cs-headline]').classList.contains('is-bad'), false);
+
+  rows[0].querySelector('button').click();
+  await settle();
+  assert.deepEqual(h.changes, ['PUT components/2/mute']);
+
+  // An alert-level finding does, and a failed notification is said.
+  bouncer.state = 'alert';
+  bouncer.findings = [{check: 'pull', level: 'alert', label: 'Bouncer pull', detail: 'No pull for 3h', notify: 'failed', notify_error: 'webhook returned non-2xx status code: 500'}];
+  h.q('[data-cs-refresh]').click();
+  await settle();
+  assert.equal(h.q('[data-cs-headline]').textContent, 'fw-edge needs attention: No pull for 3h.');
+  assert.ok(h.q('[data-cs-headline]').classList.contains('is-bad'));
+  assert.match(h.q('.cs-comp-row.is-alert').textContent, /Notification not delivered: webhook returned non-2xx status code: 500/);
+  assert.ok(h.q('.cs-comp-row.is-alert .status-dot').classList.contains('offline'));
+
+  const view = cs.parseView('?hours=24');
+  const ok = [{name: 'edge', connected: true, types: [{type: 'crowdsec', enabled: true, status: 'ok'}]}];
+  const two = {items: [{kind: 'machine', name: 'a', state: 'alert', findings: [{detail: 'x'}]}, {kind: 'bouncer', name: 'b', state: 'alert', findings: [{detail: 'y'}]}, {kind: 'bouncer', name: 'c', state: 'caution', findings: []}]};
+  assert.deepEqual({...cs.headline({alerts: 3}, view, ok, two)}, {bad: true, text: '1 machine and 1 bouncer need attention.'});
+  assert.equal(cs.componentText({state: 'never', kind: 'bouncer', findings: []}), 'Registered, never pulled decisions');
+  assert.equal(cs.componentText({state: 'unknown', kind: 'machine', findings: []}), 'Not judged: its collector is not reporting');
+});
+
+test('machine and bouncer health stays out of the way until a host switches it on', async () => {
+  const off = page('http://x/panel/crowdsec?hours=24', {collectors: [{collector_id: 'col_a', name: 'edge', health: 'off', error: '', unavailable: []}], items: []});
+  await settle();
+  assert.equal(off.q('[data-cs-components]').hidden, true);
+
+  const mixed = page('http://x/panel/crowdsec?hours=24', {collectors: [
+    {collector_id: 'col_a', name: 'edge', health: 'error', error: 'unable to open database file', unavailable: []},
+    {collector_id: 'col_b', name: 'lapi-2', health: 'off', error: '', unavailable: []},
+    {collector_id: 'col_c', name: 'lapi-3', health: 'on', error: '', unavailable: [{check: 'held', label: 'Bouncer holds decisions', needs: 'metrics, decisions'}]}
+  ], items: []});
+  await settle();
+  assert.equal(mixed.q('[data-cs-components]').hidden, false);
+  const notes = [...mixed.w.document.querySelectorAll('[data-cs-components-notes] li')].map(li => li.textContent);
+  assert.deepEqual(notes, [
+    "edge: CrowdSec's database could not be read: unable to open database file",
+    'lapi-2: machine and bouncer health is not switched on (CROWDSEC_HEALTH=true on its host).',
+    'lapi-3: not available, the host does not let these be read: Bouncer holds decisions (needs metrics, decisions).'
+  ]);
+});
+
+test('the Collectors page builds the health settings form from the check registry', async () => {
+  const pageHtml = fs.readFileSync('web/templates/collectors.html', 'utf8').replace(/\{\{[^}]*\}\}/g, '');
+  const dom = new JSDOM('<body data-panel-path="/panel">' + pageHtml + partial('collectors/add_modal.html') + '</body>', {url: 'http://x/panel/collectors', runScripts: 'outside-only'});
+  const w = dom.window;
+  open.push(w);
+  const settings = {
+    target_id: '', targets: [{target_id: 'tgt_1', name: 'Ops'}],
+    checks: {pull: {level: 'alert', values: {minutes: 60}}, later: {level: 'caution', values: {errors: 1}}},
+    registry: [
+      {name: 'pull', label: 'Bouncer pull', kind: 'bouncer', proves: 'The bouncer is running and fetching decisions.', params: [{key: 'minutes', label: 'Quiet for', unit: 'minutes', min: 2, max: 43200, default: 60}]},
+      // A check this page has never heard of still gets a row.
+      {name: 'later', label: 'Added later', kind: 'bouncer', proves: 'Something a later source reports.', params: [{key: 'errors', label: 'Errors', unit: '', min: 1, max: 100, default: 1}]}
+    ]
+  };
+  const saved = [];
+  w.fetch = async (input, init = {}) => {
+    const u = new URL(input, 'http://x');
+    if (u.pathname === '/panel/api/collectors/col_a/crowdsec/health') {
+      if (init.method === 'PUT') saved.push(JSON.parse(init.body));
+      return {ok: true, status: 200, json: async () => settings};
+    }
+    if (u.pathname === '/panel/api/collectors') return {ok: true, status: 200, json: async () => ({
+      items: [{collector_id: 'col_a', name: 'edge', connected: false, first_connected_at: 1, last_seen_at: Date.now(), types: [{type: 'crowdsec', label: 'CrowdSec', enabled: true}]}],
+      types: [{type: 'crowdsec', label: 'CrowdSec'}]
+    })};
+    return {ok: false, status: 404, json: async () => ({error: 'not found'})};
+  };
+  let busyDuringRefresh = null;
+  w.CertainStatsModal = {open() {}, close() {}, confirm: async () => false};
+  w.CertainStatsTelemetry = {showToast() {}};
+  w.setInterval = () => 0;
+  w.eval(COLLECTORS);
+  await settle();
+  const item = w.document.querySelector('details.mgmt-item');
+  // Settings can be prepared while the collector is offline.
+  [...item.querySelectorAll('button')].find(b => b.textContent === 'Health alerts…').click();
+  await settle();
+  const form = item.querySelector('form.collector-health');
+  assert.ok(form);
+  assert.match(form.textContent, /only when the collector's host sets CROWDSEC_HEALTH=true/);
+  assert.deepEqual([...form.querySelectorAll('legend')].map(l => l.textContent), ['Bouncer pull', 'Added later']);
+  assert.deepEqual([...form.querySelector('[data-level]').options].map(o => o.value), ['off', 'caution', 'alert']);
+  const minutes = form.querySelector('[data-check="pull"] [data-param="minutes"]');
+  assert.equal(minutes.value, '60');
+  assert.equal(minutes.min, '2');
+  busyDuringRefresh = !!w.document.querySelector('.collector-health');
+  assert.equal(busyDuringRefresh, true, 'the periodic refresh must see the open form');
+
+  form.querySelector('select[aria-label="Notify"]').value = 'tgt_1';
+  form.querySelector('[data-check="pull"] [data-level]').value = 'caution';
+  minutes.value = '240';
+  form.dispatchEvent(new w.Event('submit', {cancelable: true}));
+  await settle();
+  assert.deepEqual(saved, [{target_id: 'tgt_1', checks: {pull: {level: 'caution', values: {minutes: 240}}, later: {level: 'caution', values: {errors: 1}}}}]);
+  assert.equal(item.querySelector('form.collector-health'), null, 'the form closes after saving');
 });

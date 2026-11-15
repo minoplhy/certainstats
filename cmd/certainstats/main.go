@@ -142,13 +142,14 @@ func main() {
 	}
 	defer crowdsecStore.Close()
 	collectors := collector.NewService(db, db)
-	crowdsecType := &crowdsec.Type{Store: crowdsecStore, Collectors: collectors, Retention: crowdsec.Retention{RawMs: rawKeep.Milliseconds(), RollupMs: rollupKeep.Milliseconds()}}
+	crowdsecType := &crowdsec.Type{Store: crowdsecStore, Collectors: collectors, Targets: db, Retention: crowdsec.Retention{RawMs: rawKeep.Milliseconds(), RollupMs: rollupKeep.Milliseconds()}}
 	if err := collectors.Register(crowdsecType); err != nil {
 		log.Fatalf("collectors: %v", err)
 	}
 
 	routine := &routine.Routine{
 		Maintenance: []func(context.Context){crowdsecType.Maintain},
+		Tick:        []func(context.Context){crowdsecType.Tick},
 		Store:       db,
 		Network:     networkService,
 		TSDB:        tdb,

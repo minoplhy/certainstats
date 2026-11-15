@@ -44,12 +44,29 @@ const (
 	MsgAlerts  = "cs_alerts"
 	MsgAck     = "cs_ack"
 	MsgResync  = "cs_resync"
+	MsgHealth  = "cs_health"
 	MaxBatch   = 200
 	PollSecond = 60
 	// OverlapSeconds is how far before the cursor each poll starts. Alerts are found by
 	// their start time, and a long bucket can be created well after it started.
 	OverlapSeconds = 3600
+	// HealthSecond is how often a collector with health switched on reads CrowdSec's database.
+	HealthSecond = 60
+	// MaxComponents caps the machines and bouncers in one health report.
+	MaxComponents = 1000
+
+	KindMachine = "machine"
+	KindBouncer = "bouncer"
+
+	// The parts of CrowdSec's database a host may let the collector read.
+	PartMachines  = "machines"
+	PartBouncers  = "bouncers"
+	PartMetrics   = "metrics"
+	PartDecisions = "decisions"
 )
+
+// Parts lists every part, in the order they are read.
+var Parts = []string{PartMachines, PartBouncers, PartMetrics, PartDecisions}
 
 // Config is sent by the server right after hello.
 type Config struct {
@@ -57,6 +74,8 @@ type Config struct {
 	PollSeconds    int   `cbor:"poll_seconds"`
 	MaxBatch       int   `cbor:"max_batch"`
 	OverlapSeconds int   `cbor:"overlap_seconds"`
+	// HealthSeconds is the health read interval; zero (an older server) means HealthSecond.
+	HealthSeconds int `cbor:"health_seconds,omitempty"`
 }
 
 // Status reports whether the collector can read the Local API.
@@ -82,6 +101,39 @@ type Ack struct {
 	CursorMs          int64  `cbor:"cursor_ms"`
 	Error             string `cbor:"error,omitempty"`
 	RetryAfterSeconds int    `cbor:"retry_after_seconds,omitempty"`
+}
+
+// Health is what a collector read from CrowdSec's database about its machines and
+// bouncers. It is sent only by a host that set CROWDSEC_HEALTH=true. Components
+// is the whole registry of the parts read, so one that is missing was removed.
+type Health struct {
+	// Error is set when the database could not be read; nothing else is then meaningful.
+	Error string `cbor:"error,omitempty"`
+	// Parts names what the host allows to be read and what answered.
+	Parts []string `cbor:"parts"`
+	// Active counts the Local API's active ban decisions on IPs and ranges, by origin.
+	Active     map[string]int64 `cbor:"active,omitempty"`
+	Components []Component      `cbor:"components"`
+}
+
+// Component is one machine (log processor) or bouncer registered with the Local API.
+type Component struct {
+	Kind    string `cbor:"kind"`
+	Name    string `cbor:"name"`
+	Version string `cbor:"version,omitempty"`
+	IP      string `cbor:"ip,omitempty"`
+	Type    string `cbor:"type,omitempty"`
+	OS      string `cbor:"os,omitempty"`
+	// LastSeenMs is the last heartbeat (machine) or last pull (bouncer); zero is never.
+	LastSeenMs int64 `cbor:"last_seen_ms,omitempty"`
+	Validated  bool  `cbor:"validated,omitempty"`
+	Revoked    bool  `cbor:"revoked,omitempty"`
+	// MetricsMs is when a bouncer last pushed usage metrics; zero means it never did.
+	MetricsMs int64 `cbor:"metrics_ms,omitempty"`
+	// Held counts the decisions the bouncer says it holds, by origin.
+	Held      map[string]int64 `cbor:"held,omitempty"`
+	Dropped   int64            `cbor:"dropped,omitempty"`
+	Processed int64            `cbor:"processed,omitempty"`
 }
 
 // Resync asks the collector to read again from SinceMs.

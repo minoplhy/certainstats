@@ -19,6 +19,8 @@ type Routine struct {
 	Broadcaster *ws.AgentBroadcaster
 	// Maintenance runs on the hourly cleanup, for stores outside the main database.
 	Maintenance []func(context.Context)
+	// Tick runs on every central tick, for checks outside the alert rules.
+	Tick []func(context.Context)
 	// Deliver sends a queued alert attempt; nil means alertdelivery.Go.
 	Deliver func(eventID string)
 

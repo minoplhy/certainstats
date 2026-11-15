@@ -101,6 +101,10 @@ func (e *Routine) Start(ctx context.Context) {
 			// Task 3: Retry Failed Alerts (Every Tick)
 			e.RetryFailedAlerts(ctx)
 
+			for _, task := range e.Tick {
+				task(ctx)
+			}
+
 			// Task C: Maintenance & Cleanup (Every Hour)
 			if time.Since(lastCleanup) > 1*time.Hour {
 				e.runCleanup(ctx)

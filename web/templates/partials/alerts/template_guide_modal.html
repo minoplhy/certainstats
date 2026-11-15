@@ -32,6 +32,9 @@
           <tr><td class="mono">&#123;&#123;MONITOR_TARGET&#125;&#125;</td><td>string</td><td>Network monitor target</td></tr>
           <tr><td class="mono">&#123;&#123;MONITOR_PROTOCOL&#125;&#125;</td><td>string</td><td>ICMP, TCP, HTTP or DNS protocol</td></tr>
           <tr><td class="mono">&#123;&#123;DNS_SERVER&#125;&#125;</td><td>string</td><td>Custom DNS server, when configured</td></tr>
+          <tr><td class="mono">&#123;&#123;COLLECTOR&#125;&#125;</td><td>string</td><td>Collector name, for CrowdSec machine and bouncer health (NICKNAME is then the machine or bouncer)</td></tr>
+          <tr><td class="mono">&#123;&#123;SUBJECT_KIND&#125;&#125;</td><td>string</td><td>machine or bouncer, for CrowdSec health</td></tr>
+          <tr><td class="mono">&#123;&#123;DETAIL&#125;&#125;</td><td>string</td><td>What is wrong, such as "No pull for 2h", for CrowdSec health</td></tr>
         </tbody>
       </table>
     </div>

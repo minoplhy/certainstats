@@ -118,6 +118,8 @@
     range: null,
     // resolved {start, end, custom} of the last load
     summary: null,
+    components: { collectors: [], items: [] },
+    // machine and bouncer health
     ui: {},
     picker: null,
     charts: { timeline: null, ip: null },
@@ -146,6 +148,16 @@
       throw error;
     }
     return body;
+  }
+  async function send(method, path) {
+    const response = await fetch(state.panelPath + "/api/collectors/crowdsec/" + path, { method });
+    if (response.ok) return;
+    let body = null;
+    try {
+      body = await response.json();
+    } catch (e) {
+    }
+    throw new Error(body?.error || "Request failed (" + response.status + ")");
   }
   function isAbort(error) {
     return error && error.name === "AbortError";
@@ -231,11 +243,23 @@
     if (h === 24) return "the last 24 hours";
     return h === 1 ? "the last hour" : "the last " + h + " hours";
   }
-  function headline(summary, view, collectors) {
+  function needsAttention(components) {
+    return (components?.items || []).filter((c) => c.state === "alert");
+  }
+  function headline(summary, view, collectors, components) {
     const crowdsec = collectors.filter((c) => c.types.some((t) => t.type === "crowdsec" && t.enabled));
     const down = crowdsec.filter((c) => !c.connected || c.types.some((t) => t.type === "crowdsec" && t.status === "error"));
     if (down.length) {
       return { bad: true, text: down.length === 1 ? down[0].name + " is not reporting." : down.length + " collectors are not reporting." };
+    }
+    const quiet = needsAttention(components);
+    if (quiet.length === 1) return { bad: true, text: quiet[0].name + " needs attention: " + (quiet[0].findings[0]?.detail || "unhealthy") + "." };
+    if (quiet.length) {
+      const machines = quiet.filter((c) => c.kind === "machine").length, bouncers = quiet.length - machines;
+      const parts = [];
+      if (machines) parts.push(machines === 1 ? "1 machine" : machines + " machines");
+      if (bouncers) parts.push(bouncers === 1 ? "1 bouncer" : bouncers + " bouncers");
+      return { bad: true, text: parts.join(" and ") + " need attention." };
     }
     const label = rangeLabel(view);
     if (!summary) return { bad: false, text: "Loading alerts…" };
@@ -268,7 +292,7 @@
     const list = crowdsecCollectors();
     const reporting = list.filter((c) => c.connected && c.types.some((t) => t.type === "crowdsec" && t.status === "ok")).length;
     ui.collectorCount.textContent = list.length === 1 ? "1 collector" : list.length + " collectors";
-    const h = headline(state.summary, state.view, state.collectors);
+    const h = headline(state.summary, state.view, state.collectors, state.components);
     ui.headline.textContent = h.text;
     ui.headline.classList.toggle("is-bad", h.bad);
     const s = state.summary;
@@ -332,7 +356,7 @@
     }
     const top = Math.max(...items.map((i) => i.alerts), 1);
     for (const item of items) {
-      const row = el("li", "cs-rank-row");
+      const row2 = el("li", "cs-rank-row");
       const label = groupLabel(field, item);
       const pick = el("button", "cs-rank-value mono", label);
       pick.type = "button";
@@ -346,10 +370,10 @@
       const seg = el("span", "usage-segment seg-disk");
       seg.style.width = (item.alerts / top * 100).toFixed(1) + "%";
       track.append(seg);
-      row.append(pick);
-      if (onPick) row.append(iconButton("exclude", "Hide " + label, () => onPick(item.value, true)));
-      row.append(count, track);
-      list.append(row);
+      row2.append(pick);
+      if (onPick) row2.append(iconButton("exclude", "Hide " + label, () => onPick(item.value, true)));
+      row2.append(count, track);
+      list.append(row2);
     }
     return list;
   }
@@ -546,15 +570,15 @@
     body.replaceChildren(el("p", "muted", "Loading decisions…"));
     try {
       const full = await get("alerts/" + alert.id);
-      const facts = el("dl", "network-row-details cs-details");
-      fact(facts, "Started", formatTime(full.started_at, true), true);
-      fact(facts, "Stopped", formatTime(full.stopped_at, true), true);
-      fact(facts, "Range", full.range, true);
-      fact(facts, "Network", full.asn ? "AS" + full.asn + (full.as_name ? " " + full.as_name : "") : "");
-      fact(facts, "Collector", full.collector || full.collector_id);
-      fact(facts, "Scope", full.scope ? full.scope + " " + full.value : "", true);
-      if (full.simulated) fact(facts, "Mode", "Simulation: no decision was enforced");
-      if (full.message) fact(facts, "Message", full.message);
+      const facts2 = el("dl", "network-row-details cs-details");
+      fact(facts2, "Started", formatTime(full.started_at, true), true);
+      fact(facts2, "Stopped", formatTime(full.stopped_at, true), true);
+      fact(facts2, "Range", full.range, true);
+      fact(facts2, "Network", full.asn ? "AS" + full.asn + (full.as_name ? " " + full.as_name : "") : "");
+      fact(facts2, "Collector", full.collector || full.collector_id);
+      fact(facts2, "Scope", full.scope ? full.scope + " " + full.value : "", true);
+      if (full.simulated) fact(facts2, "Mode", "Simulation: no decision was enforced");
+      if (full.message) fact(facts2, "Message", full.message);
       const list = full.decisions || [];
       const decisions = el("div", "cs-decision-list");
       decisions.append(el("h4", "incident-event-heading", list.length ? "Decisions" : "No decisions were taken"));
@@ -568,13 +592,13 @@
         );
         decisions.append(line);
       }
-      body.replaceChildren(facts, decisions);
+      body.replaceChildren(facts2, decisions);
     } catch (e) {
       if (!isAbort(e)) body.replaceChildren(el("p", "cs-status", "Decisions could not be loaded: " + e.message));
     }
   }
   function alertRow(alert, actions2) {
-    const row = el("details", "cs-row network-row");
+    const row2 = el("details", "cs-row network-row");
     const sum = el("summary", "cs-row-main");
     sum.setAttribute("role", "row");
     sum.append(
@@ -602,15 +626,15 @@
       ipText.replaceWith(link);
     }
     const body = el("div", "cs-row-body");
-    row.append(sum, body);
+    row2.append(sum, body);
     let loaded = false;
-    row.addEventListener("toggle", () => {
-      if (row.open && !loaded) {
+    row2.addEventListener("toggle", () => {
+      if (row2.open && !loaded) {
         loaded = true;
         loadDetails(alert, body);
       }
     });
-    return row;
+    return row2;
   }
 
   // web/src/js/pages/crowdsec/table/table.js
@@ -728,6 +752,106 @@
     }
   }
 
+  // web/src/js/pages/crowdsec/panels/components.js
+  var ORDER = { alert: 0, caution: 1, never: 2, unknown: 3, ok: 4, muted: 5, self: 6 };
+  var DOT = { alert: "offline", caution: "warn", never: "warn", ok: "online" };
+  function el2(tag, className, text) {
+    const node = document.createElement(tag);
+    if (className) node.className = className;
+    if (text !== void 0 && text !== null) node.textContent = String(text);
+    return node;
+  }
+  function ago(ms, now = Date.now()) {
+    if (!ms) return "never";
+    const s = Math.max(0, Math.round((now - ms) / 1e3));
+    if (s < 60) return "just now";
+    if (s < 3600) return Math.floor(s / 60) + "m ago";
+    if (s < 86400) return Math.floor(s / 3600) + "h ago";
+    return Math.floor(s / 86400) + "d ago";
+  }
+  function componentText(c) {
+    if (c.state === "alert" || c.state === "caution") return c.findings.map((f) => f.detail).join(". ");
+    if (c.state === "never") return c.kind === "machine" ? "Registered, never sent a heartbeat" : "Registered, never pulled decisions";
+    if (c.state === "unknown") return "Not judged: its collector is not reporting";
+    if (c.state === "muted") return "Muted";
+    if (c.state === "self") return "The collector's own login";
+    if (c.revoked) return "Revoked";
+    if (c.kind === "machine" && !c.validated) return "Not validated";
+    return "Healthy";
+  }
+  function facts(c, many) {
+    const list = [];
+    if (many) list.push(c.collector);
+    list.push((c.kind === "machine" ? "heartbeat " : "pulled ") + ago(c.last_seen_ms));
+    if (c.held !== null && c.held !== void 0) list.push("holds " + c.held + " of " + c.active + " decisions");
+    if (c.dropped) list.push(c.dropped + " packets dropped");
+    if (c.type) list.push(c.type);
+    if (c.version) list.push(c.version);
+    if (c.ip) list.push(c.ip);
+    return list;
+  }
+  function row(c, many) {
+    const item = el2("li", "cs-comp-row is-" + c.state);
+    const dot = el2("span", "status-dot " + (DOT[c.state] || ""));
+    dot.setAttribute("aria-hidden", "true");
+    const name = el2("span", "cs-comp-name mono", c.name);
+    name.title = c.name;
+    const text = el2("span", "cs-comp-state", componentText(c));
+    const failed = c.findings.find((f) => f.notify === "failed" || f.notify === "pending" && f.notify_error);
+    if (failed) text.append(el2("span", "cs-comp-notify", " Notification not delivered: " + failed.notify_error));
+    const meta = el2("span", "cs-comp-facts muted", facts(c, many).join(" · "));
+    const button = el2("button", "btn btn-ghost btn-sm", c.muted ? "Unmute" : "Mute");
+    button.type = "button";
+    button.hidden = c.state === "self";
+    button.setAttribute("aria-label", (c.muted ? "Unmute " : "Mute ") + c.name);
+    button.addEventListener("click", async () => {
+      button.disabled = true;
+      try {
+        await send(c.muted ? "DELETE" : "PUT", "components/" + c.id + "/mute");
+        await loadComponents();
+      } catch (e) {
+        button.disabled = false;
+        window.CertainStatsTelemetry?.showToast(e.message, false);
+      }
+    });
+    item.append(dot, name, el2("span", "badge", c.kind === "machine" ? "Machine" : "Bouncer"), text, meta, button);
+    return item;
+  }
+  function note(c) {
+    if (c.health === "error") return c.name + ": CrowdSec's database could not be read: " + c.error;
+    if (c.health === "off") return c.name + ": machine and bouncer health is not switched on (CROWDSEC_HEALTH=true on its host).";
+    const missing = c.unavailable.map((u) => u.label + " (needs " + u.needs + ")");
+    return missing.length ? c.name + ": not available, the host does not let these be read: " + missing.join("; ") + "." : "";
+  }
+  function renderComponents() {
+    const ui = state.ui;
+    const { collectors, items } = state.components;
+    const active = collectors.some((c) => c.health === "on" || c.health === "error") || items.length > 0;
+    ui.components.hidden = !active;
+    if (!active) return;
+    const machines = items.filter((c) => c.kind === "machine").length, bouncers = items.length - machines;
+    const attention = items.filter((c) => c.state === "alert" || c.state === "caution").length;
+    ui.componentsCount.textContent = (machines === 1 ? "1 machine" : machines + " machines") + ", " + (bouncers === 1 ? "1 bouncer" : bouncers + " bouncers") + (attention ? " · " + attention + (attention === 1 ? " needs" : " need") + " a look" : "");
+    ui.componentsNotes.replaceChildren(...collectors.map(note).filter(Boolean).map((text) => el2("li", "", text)));
+    ui.componentsNotes.hidden = !ui.componentsNotes.children.length;
+    const many = collectors.length > 1;
+    const sorted = [...items].sort((a, b) => (ORDER[a.state] ?? 9) - (ORDER[b.state] ?? 9) || a.kind.localeCompare(b.kind) * -1 || a.name.localeCompare(b.name));
+    ui.componentsList.replaceChildren(...sorted.map((c) => row(c, many)));
+  }
+  async function loadComponents() {
+    const controller = begin("components");
+    try {
+      const data = await get("components", controller.signal);
+      state.components = { collectors: data.collectors || [], items: data.items || [] };
+      state.ui.componentsMessage.textContent = "";
+      renderComponents();
+      renderHero();
+    } catch (e) {
+      if (isAbort(e)) return;
+      if (!state.ui.components.hidden) showError(state.ui.componentsMessage, "Machines and bouncers could not be loaded: " + e.message, loadComponents);
+    }
+  }
+
   // web/src/js/pages/crowdsec/init.js
   var ROLES = {
     collectorCount: "collector-count",
@@ -738,6 +862,11 @@
     statCollectors: "stat-collectors",
     refresh: "refresh",
     empty: "empty",
+    components: "components",
+    componentsCount: "components-count",
+    componentsMessage: "components-message",
+    componentsNotes: "components-notes",
+    componentsList: "components-list",
     main: "main",
     search: "search",
     addFilter: "add-filter",
@@ -907,8 +1036,11 @@
       state.ui.headline.textContent = "Collectors could not be loaded: " + e.message;
     });
     setInterval(() => {
-      if (!document.hidden) dialog.refresh().catch(() => {
-      });
+      if (!document.hidden) {
+        dialog.refresh().catch(() => {
+        });
+        loadComponents();
+      }
     }, 3e4);
   }
   function init(root2, config2) {
@@ -931,6 +1063,7 @@
       state.oldest = 0;
       window.CertainStatsCollectors?.refresh().catch(() => {
       });
+      loadComponents();
       load();
     });
     window.addEventListener("popstate", () => {
@@ -944,6 +1077,7 @@
       load();
     });
     bindCollectors();
+    loadComponents();
     load();
     return config2;
   }
@@ -961,7 +1095,8 @@
     headline,
     rangeLabel,
     groupLabel,
-    untilText
+    untilText,
+    componentText
   };
   var config = readPageConfig("CertainStatsCrowdSec");
   var root = typeof document !== "undefined" ? document.querySelector("[data-cs-page]") : null;

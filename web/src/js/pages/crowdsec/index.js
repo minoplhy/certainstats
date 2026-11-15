@@ -6,11 +6,12 @@ import { readPageConfig } from '../../lib/page_config.js';
 import { init, load } from './init.js';
 import { parseView, toQuery, apiParams, resolveRange, addFilter, removeFilter } from './url/state.js';
 import { headline, rangeLabel, groupLabel, untilText } from './format.js';
+import { componentText } from './panels/components.js';
 
 window.CertainStatsCrowdSec = {
   load,
   // Pure helpers, exposed for the browser tests.
-  parseView, toQuery, apiParams, resolveRange, addFilter, removeFilter, headline, rangeLabel, groupLabel, untilText
+  parseView, toQuery, apiParams, resolveRange, addFilter, removeFilter, headline, rangeLabel, groupLabel, untilText, componentText
 };
 
 const config = readPageConfig('CertainStatsCrowdSec');

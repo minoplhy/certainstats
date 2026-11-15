@@ -87,11 +87,26 @@ export function rangeLabel(view) {
 }
 
 // headline says the page's state in words first.
-export function headline(summary, view, collectors) {
+// needsAttention lists the machines and bouncers with an alert-level finding.
+// A caution is shown in the list but never changes the headline.
+export function needsAttention(components) {
+  return (components?.items || []).filter(c => c.state === 'alert');
+}
+
+export function headline(summary, view, collectors, components) {
   const crowdsec = collectors.filter(c => c.types.some(t => t.type === 'crowdsec' && t.enabled));
   const down = crowdsec.filter(c => !c.connected || c.types.some(t => t.type === 'crowdsec' && t.status === 'error'));
   if (down.length) {
     return {bad: true, text: down.length === 1 ? down[0].name + ' is not reporting.' : down.length + ' collectors are not reporting.'};
+  }
+  const quiet = needsAttention(components);
+  if (quiet.length === 1) return {bad: true, text: quiet[0].name + ' needs attention: ' + (quiet[0].findings[0]?.detail || 'unhealthy') + '.'};
+  if (quiet.length) {
+    const machines = quiet.filter(c => c.kind === 'machine').length, bouncers = quiet.length - machines;
+    const parts = [];
+    if (machines) parts.push(machines === 1 ? '1 machine' : machines + ' machines');
+    if (bouncers) parts.push(bouncers === 1 ? '1 bouncer' : bouncers + ' bouncers');
+    return {bad: true, text: parts.join(' and ') + ' need attention.'};
   }
   const label = rangeLabel(view);
   if (!summary) return {bad: false, text: 'Loading alerts…'};

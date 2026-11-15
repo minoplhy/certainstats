@@ -4,11 +4,15 @@ import (
 	"certainstats/internal/collector"
 	"certainstats/internal/crowdsec/wire"
 	log "certainstats/internal/logger"
+	"certainstats/internal/notifications"
 	"certainstats/internal/store"
 	"context"
 	"encoding/json"
 	"fmt"
+	"sync/atomic"
 	"time"
+
+	"certainstats/internal/base/alert"
 
 	"github.com/fxamacker/cbor/v2"
 )
@@ -18,6 +22,14 @@ type Type struct {
 	Store      *Store
 	Collectors *collector.Service
 	Retention  Retention
+	// Targets resolves the notification target of a health incident; nil sends nothing.
+	Targets Targets
+	// Notify sends one notification; nil means notifications.DispatchNotification.
+	Notify func(alert.AlertAction, notifications.NotificationContext) error
+	// live overrides how a collector's live connection is found; tests set it.
+	live func(collectorID string) (since time.Time, ok bool)
+	// delivering is set while a background round of notifications runs.
+	delivering atomic.Bool
 }
 
 var _ collector.Type = (*Type)(nil)
@@ -41,7 +53,8 @@ func (t *Type) Setup() collector.TypeSetup {
 		}},
 		Volumes: []string{credentialsPath + ":" + credentialsPath + ":ro"},
 		Note: "Install the collector on the machine that runs the CrowdSec Local API. If CrowdSec runs in Docker, the collector must share its network, " +
-			"the Local API must listen on that network, and url in " + credentialsPath + " must name the container, such as http://crowdsec:8080.",
+			"the Local API must listen on that network, and url in " + credentialsPath + " must name the container, such as http://crowdsec:8080. " +
+			"Machine and bouncer health is optional and off by default: it reads CrowdSec's database, read-only, only when the host sets CROWDSEC_HEALTH=true.",
 	}
 }
 
@@ -81,7 +94,7 @@ func (t *Type) OnConnect(ctx context.Context, c *collector.Conn) error {
 	if err != nil {
 		return err
 	}
-	return c.Send(wire.MsgConfig, wire.Config{CursorMs: st.CursorMs, PollSeconds: wire.PollSecond, MaxBatch: wire.MaxBatch, OverlapSeconds: wire.OverlapSeconds})
+	return c.Send(wire.MsgConfig, wire.Config{CursorMs: st.CursorMs, PollSeconds: wire.PollSecond, MaxBatch: wire.MaxBatch, OverlapSeconds: wire.OverlapSeconds, HealthSeconds: wire.HealthSecond})
 }
 
 func (t *Type) OnDisconnect(*collector.Conn) {}
@@ -103,6 +116,12 @@ func (t *Type) OnMessage(ctx context.Context, c *collector.Conn, msgType string,
 			return fmt.Errorf("batch of %d alerts exceeds %d", len(m.Alerts), wire.MaxBatch)
 		}
 		return t.alerts(ctx, c, m)
+	case wire.MsgHealth:
+		var m wire.Health
+		if err := cbor.Unmarshal(body, &m); err != nil {
+			return err
+		}
+		return t.health(ctx, c, m)
 	}
 	return nil
 }
@@ -165,4 +184,7 @@ func (t *Type) Maintain(ctx context.Context) {
 		return
 	}
 	log.Printf("[Maintenance] %s", res)
+	if err := t.Store.pruneHealth(ctx, t.Retention.RawMs, time.Now().UnixMilli(), users); err != nil {
+		log.Printf("[CrowdSec] health maintenance: %v", err)
+	}
 }

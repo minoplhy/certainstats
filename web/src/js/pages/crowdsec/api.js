@@ -20,6 +20,15 @@ export async function get(path, signal) {
   return body;
 }
 
+// send makes a change (PUT, DELETE) and returns nothing.
+export async function send(method, path) {
+  const response = await fetch(state.panelPath + '/api/collectors/crowdsec/' + path, {method});
+  if (response.ok) return;
+  let body = null;
+  try { body = await response.json(); } catch (e) { /* not JSON: use the generic message */ }
+  throw new Error(body?.error || 'Request failed (' + response.status + ')');
+}
+
 export function isAbort(error) {
   return error && error.name === 'AbortError';
 }

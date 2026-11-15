@@ -45,6 +45,9 @@ type Module struct {
 	// Together they tell a Local API still starting up from one that is down.
 	started time.Time
 	reached bool
+	// health reads machines and bouncers from CrowdSec's database. It is nil
+	// unless the host set CROWDSEC_HEALTH=true, and then nothing touches the database.
+	health *health
 }
 
 var _ module.Module = (*Module)(nil)
@@ -54,7 +57,11 @@ func New(getenv func(string) string, version string) *Module {
 	if path == "" {
 		path = DefaultCredentials
 	}
-	return &Module{credsPath: path, version: version, Now: time.Now, started: time.Now()}
+	m := &Module{credsPath: path, version: version, Now: time.Now, started: time.Now()}
+	if cfg := healthFromEnv(getenv); cfg.on {
+		m.health = &health{cfg: cfg}
+	}
+	return m
 }
 
 func (m *Module) Name() string   { return wire.TypeName }
@@ -85,6 +92,10 @@ func (m *Module) Check(ctx context.Context) error {
 	if _, err := m.client.alerts(ctx, m.Now().Add(-time.Minute), m.Now(), 1); err != nil {
 		return err
 	}
+	if m.health != nil {
+		// Health is optional: a database that cannot be read is a warning, not a failure.
+		fmt.Println(m.health.check(ctx))
+	}
 	return nil
 }
 
@@ -102,6 +113,8 @@ type runner struct {
 	once    bool
 	// failures counts passes in a row that could not read the Local API.
 	failures int
+	// healthAt is when machines and bouncers were last read on this connection.
+	healthAt time.Time
 }
 
 // startGrace is how long after start an unreachable Local API counts as still
@@ -130,8 +143,12 @@ func (m *Module) Run(ctx context.Context, send module.Send, inbox <-chan cwire.E
 	if err := r.waitConfig(ctx); err != nil {
 		return err
 	}
+	if m.health != nil {
+		defer m.health.close()
+	}
 	for {
 		r.pass(ctx, r.cursor-int64(r.cfg.OverlapSeconds)*1000)
+		r.healthPass(ctx)
 		if once || ctx.Err() != nil {
 			return nil
 		}
@@ -247,6 +264,29 @@ func (r *runner) report(err error) {
 	}
 	if err != nil {
 		log.Printf("crowdsec: %v", err)
+	}
+}
+
+// healthPass reads machines and bouncers from CrowdSec's database and reports
+// them, at most once per pass and no more often than the server asked. It does
+// nothing on a host that has not switched health on.
+func (r *runner) healthPass(ctx context.Context) {
+	h := r.m.health
+	if h == nil || ctx.Err() != nil {
+		return
+	}
+	now := r.m.Now()
+	// A few seconds of slack, so a pass that starts slightly early still reads.
+	if !r.healthAt.IsZero() && now.Sub(r.healthAt) < time.Duration(r.cfg.HealthSeconds)*time.Second-5*time.Second {
+		return
+	}
+	r.healthAt = now
+	rep := h.read(ctx, now)
+	if rep.Error != "" {
+		log.Printf("crowdsec: health: %s", rep.Error)
+	}
+	if err := r.send(wire.MsgHealth, rep); err != nil {
+		log.Printf("crowdsec: health: %v", err)
 	}
 }
 

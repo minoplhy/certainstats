@@ -8,10 +8,12 @@ import { buildCards, renderCard, CARD_LIMIT } from './panels/breakdowns.js';
 import { renderChips, bindFilters, syncRangeControls } from './filters/bar.js';
 import { renderHead, renderRows, bindPaging } from './table/table.js';
 import { bindIPView, loadIPView } from './ip/view.js';
+import { loadComponents } from './panels/components.js';
 
 const ROLES = {
   collectorCount: 'collector-count', headline: 'headline', statAlerts: 'stat-alerts', statIps: 'stat-ips', statBans: 'stat-bans',
-  statCollectors: 'stat-collectors', refresh: 'refresh', empty: 'empty',
+  statCollectors: 'stat-collectors', refresh: 'refresh', empty: 'empty', components: 'components', componentsCount: 'components-count',
+  componentsMessage: 'components-message', componentsNotes: 'components-notes', componentsList: 'components-list',
   main: 'main', search: 'search', addFilter: 'add-filter', filterField: 'filter-field', filterOp: 'filter-op', filterValue: 'filter-value',
   filterToggle: 'filter-toggle', filterPopover: 'filter-popover', timePicker: 'time-picker', chips: 'chips', expired: 'expired',
   timelineNote: 'timeline-note', timelineAlerts: 'timeline-alerts', timelineDecisions: 'timeline-decisions',
@@ -140,8 +142,8 @@ function bindCollectors() {
     renderHero();
   });
   dialog.refresh().catch(e => { state.ui.headline.textContent = 'Collectors could not be loaded: ' + e.message; });
-  // Collector status changes on its own; refresh it while the page is visible.
-  setInterval(() => { if (!document.hidden) dialog.refresh().catch(() => {}); }, 30000);
+  // Collector and component status change on their own; refresh them while the page is visible.
+  setInterval(() => { if (!document.hidden) { dialog.refresh().catch(() => {}); loadComponents(); } }, 30000);
 }
 
 export function init(root, config) {
@@ -154,7 +156,7 @@ export function init(root, config) {
   bindFilters(update);
   bindPaging(update);
   bindIPView(actions);
-  state.ui.refresh.addEventListener('click', () => { state.oldest = 0; window.CertainStatsCollectors?.refresh().catch(() => {}); load(); });
+  state.ui.refresh.addEventListener('click', () => { state.oldest = 0; window.CertainStatsCollectors?.refresh().catch(() => {}); loadComponents(); load(); });
   window.addEventListener('popstate', () => {
     state.view = parseView(window.location.search, state.view.hours);
     buildCards((slot, field) => { state.view.groups[slot] = field; update(); });
@@ -163,6 +165,7 @@ export function init(root, config) {
     load();
   });
   bindCollectors();
+  loadComponents();
   load();
   return config;
 }

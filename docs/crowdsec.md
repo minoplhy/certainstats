@@ -68,19 +68,133 @@ On top of the [steps every collector needs](collectors.md#setting-one-up):
    mounted into the collector.
 
 Not needed: an open port, a bouncer key, or access to CrowdSec's log files.
+Access to CrowdSec's database is not needed either, unless the host switches on
+[machine and bouncer health](#machine-and-bouncer-health).
 
 When the Local API is unreachable the collector stays connected and reports the
 error, which the Collectors page and the CrowdSec page headline show.
+
+## Machine and bouncer health
+
+A Local API can serve many machines (log processors) and bouncers. This part
+shows whether each one is alive, gives a hint when a bouncer may not be applying
+decisions, and can notify when one goes quiet and when it comes back.
+
+### The boundary: read-only, and only when the host says so
+
+The Local API has no route that lists machines or bouncers; `cscli` reads
+CrowdSec's database for that, and so does the collector. It never changes
+anything in CrowdSec:
+
+- It is **off by default**. The collector opens CrowdSec's database only when
+  the host sets `CROWDSEC_HEALTH=true`. Without it no database code runs, no
+  path is probed, and the panel cannot switch it on.
+- It reads with its own fixed `SELECT` statements. It does not use CrowdSec's Go
+  client, which changes the database file's permissions and runs a schema
+  migration every time it opens.
+- SQLite is opened with `mode=ro` and `query_only`, so a missing file is an
+  error, never a new file. PostgreSQL and MySQL queries run in read-only
+  transactions.
+- CrowdSec's `config.yaml` is never read; it holds the read-write credentials.
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `CROWDSEC_HEALTH` | off | `true` lets the collector read CrowdSec's database |
+| `CROWDSEC_DB` | `/var/lib/crowdsec/data/crowdsec.db` | A SQLite path, or `postgres://user:password@host:5432/crowdsec` or `mysql://user:password@host:3306/crowdsec` |
+| `CROWDSEC_HEALTH_READ` | all four | Which parts may be read: `machines`, `bouncers`, `metrics`, `decisions`, separated by commas |
+
+In Docker, mount CrowdSec's data directory into the collector read-only
+(`crowdsec-db:/var/lib/crowdsec/data:ro`). For PostgreSQL or MySQL, give the
+collector its own user with `SELECT` on `machines`, `bouncers`, `metrics` and
+`decisions` only; `--check` warns when a PostgreSQL user could write.
+`--check` reports health as a line of its own and never fails because of it.
+
+### What is read
+
+| Part | Table | Columns | Used for |
+| --- | --- | --- | --- |
+| `machines` | `machines` | `machine_id`, `last_heartbeat`, `version`, `ip_address`, `is_validated`, `osname`, `osversion` | Is the agent on that machine running |
+| `bouncers` | `bouncers` | `name`, `last_pull`, `type`, `version`, `ip_address`, `revoked` | Is the bouncer fetching decisions |
+| `metrics` | `metrics` (CrowdSec 1.6.3+) | each bouncer's newest usage metrics | What the bouncer says it holds and drops |
+| `decisions` | `decisions` | a count of active, not simulated `ban` decisions on IPs and ranges, by origin | The other side of that comparison |
+
+A part the host leaves out is never queried, and the checks that need it are
+listed on the page as not available. A table or column that does not exist
+(the `metrics` table before 1.6.3) only drops that part. Machines and bouncers
+are read every minute, the two heavier parts every five. A bouncer's metrics
+payload is reduced on the host to three numbers (decisions held per origin,
+packets dropped, packets processed); the payload itself never leaves.
+
+### What each signal can prove
+
+All of it is the component's own word, recorded by the Local API:
+
+- A fresh `last_heartbeat` shows the agent runs and reaches the Local API.
+- A fresh `last_pull` shows the bouncer runs and fetches decisions. It does not
+  show they reached the firewall. A bouncer in live mode only asks when it has
+  traffic, so mute it or allow a longer quiet time.
+- A bouncer never reports that applying a decision failed; it only logs that on
+  its own host. But the firewall bouncer's metrics, pushed every 15 minutes,
+  are read from the kernel: `active_decisions` per origin is the real nftables
+  set or `ipset list` entry count (0 when `ipset list` fails), and `dropped`
+  and `processed` are rule counters. So a firewall holding far fewer decisions
+  than the Local API has active is a hint that they are not being applied.
+  Sizes cannot prove it, and the reason is only in the bouncer's log.
+
+### Checks
+
+Health is a list of named checks, each configured per collector under
+**Health alerts…** on the Collectors page.
+
+| Check | Applies to | Default level | Default thresholds |
+| --- | --- | --- | --- |
+| `heartbeat` | machines | alert | quiet for 5 minutes |
+| `pull` | bouncers | alert | quiet for 60 minutes |
+| `held` | bouncers | caution | holds under 50% of at least 20 active decisions of an origin it reports, on 2 metric reports in a row |
+
+Each check has a level: **off**, **caution** (amber on the page; no incident,
+no notification, the headline unchanged) or **alert** (red, an incident, a
+notification). `held` is a caution by default because it rests on comparing
+sizes; it can be raised to alert, as any check can be lowered.
+
+A component is judged only while its collector is connected and its last report
+is error-free and younger than five minutes. A collector that died, or a host
+that switched health off, therefore never sets off a round of notifications.
+Not judged at all: muted components, revoked bouncers, machines that are not
+validated, and the collector's own machine login, which never sends a heartbeat.
+A component deleted from CrowdSec disappears here with the next report, and its
+open incident closes without a notification.
+
+Notifications go to one of the owner's alert targets, chosen per collector,
+with the message templates alert rules use (`{{NICKNAME}}` is the machine or
+bouncer; `{{COLLECTOR}}`, `{{SUBJECT_KIND}}` and `{{DETAIL}}` are added). One
+is sent when an alert-level finding starts and one when the check passes again.
+A failed delivery is tried again each minute, five times at most. These
+incidents belong to CrowdSec health and show on the CrowdSec page; they are not
+alert rules and do not appear in the Alerts history, which is keyed to nodes.
+
+A check is one entry in a registry in `internal/crowdsec/checks.go`: its name,
+the kind it applies to, its parameters with limits and defaults, the parts it
+needs and a function from signals to a verdict. Settings are stored by check
+name and signals by source, and the settings form is built from the registry
+the API returns. A later source, such as a collector on a bouncer's host
+reading its log, adds its own signal set and a check without changing the
+existing ones.
+
+To confirm on a real host: reading a WAL-mode SQLite database through a
+read-only mount, the PostgreSQL and MySQL paths (tested here against SQLite
+only), and the metrics payload of bouncers other than the firewall bouncer.
 
 ## Messages
 
 | Direction | Message | Content |
 | --- | --- | --- |
-| server → collector | `cs_config` | Cursor, poll interval (60 s), batch size (200), overlap (3,600 s); sent after `hello` |
+| server → collector | `cs_config` | Cursor, poll interval (60 s), batch size (200), overlap (3,600 s), health read interval (60 s); sent after `hello` |
 | collector → server | `cs_status` | Local API reachable or its error, machine login, Local API URL; sent when it changes |
 | collector → server | `cs_alerts` | Batch ID and up to 200 alerts |
 | server → collector | `cs_ack` | Batch ID, stored, duplicates, cursor; or an error and when to resend |
 | server → collector | `cs_resync` | Read again from a given time |
+| collector → server | `cs_health` | Only with `CROWDSEC_HEALTH=true`: the parts read, active decisions by origin, and every machine and bouncer; or the error that stopped the read |
 
 The collector sends the next batch only after the previous `cs_ack`. A batch
 over 200 alerts closes the connection. If storing fails the server answers with
@@ -103,6 +217,14 @@ never hold up agent ingestion or the main state database. It has three tables:
   alert. The `decisions` column was added later (schema version 1, in
   `PRAGMA user_version`); on upgrade it is filled from the raw alerts still
   kept, so hours whose raw alerts were already pruned count 0 decisions.
+
+Health adds three tables to the same file: `components` (one row per machine or
+bouncer of a collector, with its signals by source, its current findings and
+whether it is muted), `collector_health` (per collector: the notify target, the
+checks' settings, and the last report's parts, error and active decisions) and
+`health_events` (one row per alert-level incident, with the delivery state of
+its two notifications). Resolved incidents follow `CROWDSEC_RAW_RETENTION`.
+Removing a collector removes all three.
 
 ### Retention
 
@@ -139,6 +261,9 @@ Paths are relative to the panel's `/api`.
 | GET | `/collectors/crowdsec/alerts` | Paged alerts: `page`, `limit` (25, 50, 100), `sort`, `order` |
 | GET | `/collectors/crowdsec/alerts/{id}` | One alert with all decisions |
 | GET | `/collectors/crowdsec/ips/{ip}` | First and last seen, totals, scenarios, machines and latest 50 decisions over retained alerts |
+| GET | `/collectors/crowdsec/components` | Every machine and bouncer with its state and findings, and per collector whether health is on, off or failing |
+| PUT, DELETE | `/collectors/crowdsec/components/{id}/mute` | Mute or unmute one machine or bouncer |
+| GET, PUT | `/collectors/{id}/crowdsec/health` | The notify target and each check's level and numbers. GET also returns the check registry and the owner's targets |
 
 Data reads take `start` and `end` (Unix ms, at most 20 years apart) or `hours`,
 and filters on `ip`, `range`, `scenario`, `country`, `machine`, `asn`, `action`
@@ -159,6 +284,12 @@ Collectors page. Below is a one-row filter bar:
 - one range dropdown holding the quick ranges, a custom range and **All**, a
   range starting at the oldest data.
 
+Above the filter bar, once some host has switched health on, **Machines and
+bouncers** lists each one in a row: its state in words, last heartbeat or pull,
+what a bouncer holds, type, version and address, and **Mute**. What needs a
+look comes first. An alert-level finding also takes over the headline; a
+caution never does.
+
 Active filters show as removable chips under the bar. Then come:
 - the timeline of alerts and the decisions they issued, as two series (brush to zoom);
 - four breakdowns whose field can each be changed;
@@ -173,10 +304,14 @@ view can be linked and Back works.
 ## Verification
 
 `go test ./internal/crowdsec/...` covers decoding, de-duplication, the rollup,
-late alerts, filters, raw and rollup agreement, owner isolation and pruning.
+late alerts, filters, raw and rollup agreement, owner isolation and pruning;
+for health, each check's levels and thresholds, what is not judged, incidents
+opening and resolving once, the retry cap, removal, and the routes.
 `go test ./cmd/certainstats-collector/...` runs the collector against a fake
 Local API: backfill, JWT reuse and renewal, restarts without duplicates, window
-splitting, an unreachable Local API, `--check` and resync.
+splitting, an unreachable Local API, `--check` and resync; and against a SQLite
+file shaped like CrowdSec's database: nothing read without the switch, every
+part, an older schema, a missing file, and the file left untouched.
 `node --test web/tests/crowdsec.test.cjs` covers the URL state, the headline,
 the page's filtering (including the + Filter popover), sorting, row details, IP
 view, range controls, the two timeline series and the Collectors page.

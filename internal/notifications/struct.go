@@ -24,10 +24,21 @@ type NotificationContext struct {
 	Threshold       float64
 	WentOfflineAt   *time.Time
 	ResolvedAt      *time.Time
+	// The fields below are set for subjects that are not a node, such as a
+	// CrowdSec machine or bouncer. Nickname is then the subject's name and
+	// AgentID the collector's ID.
+	Collector    string // name of the collector that reported the subject
+	SubjectKind  string // "machine" or "bouncer"
+	Detail       string // one sentence on what is wrong
+	TriggerLabel string // overrides the label derived from TriggerType
+	ValueText    string // overrides the formatted Value
 }
 
 // defaultPayload is used if the user doesn't provide a custom JSON template
 type defaultPayload struct {
+	Collector       string  `json:"collector,omitempty"`
+	SubjectKind     string  `json:"subject_kind,omitempty"`
+	Detail          string  `json:"detail,omitempty"`
 	MonitorID       string  `json:"monitor_id,omitempty"`
 	MonitorTarget   string  `json:"monitor_target,omitempty"`
 	MonitorProtocol string  `json:"monitor_protocol,omitempty"`
