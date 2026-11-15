@@ -3,25 +3,23 @@ package crowdsec
 import (
 	"encoding/json"
 	"fmt"
+	"net"
 	"sort"
+	"strings"
 	"time"
 
+	"certainstats/internal/base/alert"
 	"certainstats/internal/crowdsec/wire"
 )
 
 // Machine and bouncer health is a list of named checks. A check reads the
 // signals a collector reported about one component and says whether it is
-// unhealthy. Level and thresholds are set per collector, so nothing about
-// severity is fixed in code. A new source of signals (say, a collector on a
+// unhealthy. On the CrowdSec page a check failing at its default numbers is a
+// caution (amber). Notifications come only from alert rules on the Alerts page:
+// each check is also a rule condition, "crowdsec_<name>", whose threshold sets
+// the check's RuleParam. A new source of signals (say, a collector on a
 // bouncer's own host reading its log) adds a signal set under its own key and a
-// check here; the settings, storage, routes and form follow from the registry.
-
-// Levels a check can be set to.
-const (
-	LevelOff     = "off"
-	LevelCaution = "caution" // shown, never an incident, never notified
-	LevelAlert   = "alert"   // an incident, notified
-)
+// check here; the rule condition, the page and the Alerts form follow.
 
 // Signal sources. Each is a key in a component's signals.
 const SourceDB = "db" // CrowdSec's database, read by the collector beside the Local API
@@ -36,12 +34,6 @@ type Param struct {
 	Default int    `json:"default"`
 }
 
-// CheckSetting is one check's configuration for one collector.
-type CheckSetting struct {
-	Level  string         `json:"level"`
-	Values map[string]int `json:"values"`
-}
-
 // DBSignals is what CrowdSec's database says about a component.
 type DBSignals struct {
 	LastSeenMs int64            `json:"last_seen_ms,omitempty"`
@@ -53,6 +45,20 @@ type DBSignals struct {
 	Processed  int64            `json:"processed,omitempty"`
 }
 
+func (s DBSignals) heldTotal() int64 {
+	var n int64
+	for _, v := range s.Held {
+		n += v
+	}
+	return n
+}
+
+// peer is another entry of the same shared bouncer key.
+type peer struct {
+	Name string
+	DB   DBSignals
+}
+
 // evalInput is everything a check may look at.
 type evalInput struct {
 	Component *Component
@@ -60,12 +66,14 @@ type evalInput struct {
 	Values    map[string]int
 	// Active is the Local API's active decisions by origin.
 	Active map[string]int64
-	Now    int64
+	// Peers are the other entries sharing this bouncer's key (name@ip).
+	Peers []peer
+	Now   int64
 }
 
 // verdict is a check's answer for one component.
 type verdict struct {
-	// Judged is false when the check has nothing to go on; any finding is then dropped quietly.
+	// Judged is false when the check has nothing to go on.
 	Judged bool
 	Bad    bool
 	Detail string
@@ -81,24 +89,43 @@ type Check struct {
 	Label string `json:"label"`
 	// Kind is the component kind it applies to.
 	Kind string `json:"kind"`
-	// Proves says, for the settings form, what a finding does and does not show.
-	Proves       string   `json:"proves"`
-	DefaultLevel string   `json:"default_level"`
-	Params       []Param  `json:"params"`
-	Needs        []string `json:"needs"` // parts of the report it reads
-	// Unit says how Value reads in a notification: "minutes" or "percent".
+	// Proves says what a finding does and does not show.
+	Proves string  `json:"proves"`
+	Params []Param `json:"params"`
+	// RuleParam is the parameter an alert rule's threshold sets.
+	RuleParam string `json:"rule_param"`
+	// RuleLabel is the condition's wording in the Alerts form.
+	RuleLabel string   `json:"rule_label"`
+	Needs     []string `json:"needs"` // parts of the report it reads
+	// Unit says how Value reads in a notification.
 	Unit string                  `json:"unit"`
 	Eval func(evalInput) verdict `json:"-"`
 }
 
 var checks = map[string]*Check{}
 
-// RegisterCheck adds a check. It panics on a duplicate name, at start-up.
+// TriggerType is the alert rule condition of a check.
+func (c *Check) TriggerType() alert.TriggerType { return alert.TriggerType("crowdsec_" + c.Name) }
+
+// checkForTrigger returns the check behind a rule condition.
+func checkForTrigger(t alert.TriggerType) *Check {
+	name, ok := strings.CutPrefix(string(t), "crowdsec_")
+	if !ok {
+		return nil
+	}
+	return checks[name]
+}
+
+// RegisterCheck adds a check and its rule condition. It panics on a duplicate, at start-up.
 func RegisterCheck(c *Check) {
 	if _, dup := checks[c.Name]; dup {
 		panic("crowdsec: check " + c.Name + " registered twice")
 	}
 	checks[c.Name] = c
+	if p, ok := c.param(c.RuleParam); ok {
+		alert.RegisterSubjectTrigger(alert.SubjectTrigger{Type: c.TriggerType(), Group: "CrowdSec", Label: c.RuleLabel, Kind: c.Kind,
+			Unit: p.Unit, Min: float64(p.Min), Max: float64(p.Max), Default: float64(p.Default), Hint: c.Proves})
+	}
 }
 
 // Checks returns the registry in a stable order: machines first, then by name.
@@ -116,42 +143,31 @@ func Checks() []*Check {
 	return list
 }
 
-// setting returns the check's configuration with defaults for whatever is not set,
-// so settings saved before a check or parameter existed keep working.
-func (c *Check) setting(saved map[string]CheckSetting) CheckSetting {
-	out := CheckSetting{Level: c.DefaultLevel, Values: map[string]int{}}
-	got, ok := saved[c.Name]
-	if ok && (got.Level == LevelOff || got.Level == LevelCaution || got.Level == LevelAlert) {
-		out.Level = got.Level
-	}
+func (c *Check) param(key string) (Param, bool) {
 	for _, p := range c.Params {
-		out.Values[p.Key] = p.Default
-		if v, set := got.Values[p.Key]; ok && set && v >= p.Min && v <= p.Max {
-			out.Values[p.Key] = v
+		if p.Key == key {
+			return p, true
 		}
+	}
+	return Param{}, false
+}
+
+// defaults returns the check's numbers as shown on the CrowdSec page.
+func (c *Check) defaults() map[string]int {
+	out := map[string]int{}
+	for _, p := range c.Params {
+		out[p.Key] = p.Default
 	}
 	return out
 }
 
-// validate checks a setting sent by the user.
-func (c *Check) validate(s CheckSetting) error {
-	if s.Level != LevelOff && s.Level != LevelCaution && s.Level != LevelAlert {
-		return fmt.Errorf("%s: level must be off, caution or alert", c.Label)
+// ruleValues returns the check's numbers for a rule: its threshold sets RuleParam.
+func (c *Check) ruleValues(threshold float64) map[string]int {
+	out := c.defaults()
+	if p, ok := c.param(c.RuleParam); ok {
+		out[p.Key] = min(max(int(threshold), p.Min), p.Max)
 	}
-	known := map[string]Param{}
-	for _, p := range c.Params {
-		known[p.Key] = p
-	}
-	for key, v := range s.Values {
-		p, ok := known[key]
-		if !ok {
-			return fmt.Errorf("%s: unknown setting %q", c.Label, key)
-		}
-		if v < p.Min || v > p.Max {
-			return fmt.Errorf("%s: %s must be %d to %d", c.Label, p.Label, p.Min, p.Max)
-		}
-	}
-	return nil
+	return out
 }
 
 func silentFor(ms int64) string {
@@ -181,12 +197,17 @@ func quiet(in evalInput, what string) verdict {
 // metricsFresh is how old a bouncer's last usage metrics may be and still be compared.
 const metricsFresh = 2 * time.Hour
 
+func (s DBSignals) metricsUsable(now int64) bool {
+	return !s.Revoked && s.MetricsMs > 0 && s.Held != nil && now-s.MetricsMs <= metricsFresh.Milliseconds()
+}
+
 func init() {
 	minutes := func(def int) []Param {
 		return []Param{{Key: "minutes", Label: "Quiet for", Unit: "minutes", Min: 2, Max: 43200, Default: def}}
 	}
 	RegisterCheck(&Check{
-		Name: "heartbeat", Label: "Machine heartbeat", Kind: wire.KindMachine, DefaultLevel: LevelAlert, Unit: "minutes",
+		Name: "heartbeat", Label: "Machine heartbeat", Kind: wire.KindMachine, Unit: "minutes",
+		RuleLabel: "Machine sends no heartbeat for (minutes)", RuleParam: "minutes",
 		Proves: "The CrowdSec agent on that machine is running and reaches the Local API.",
 		Params: minutes(5), Needs: []string{wire.PartMachines},
 		Eval: func(in evalInput) verdict {
@@ -197,8 +218,9 @@ func init() {
 		},
 	})
 	RegisterCheck(&Check{
-		Name: "pull", Label: "Bouncer pull", Kind: wire.KindBouncer, DefaultLevel: LevelAlert, Unit: "minutes",
-		Proves: "The bouncer is running and fetching decisions. A bouncer in live mode only asks when it has traffic, so mute it or allow a longer quiet time.",
+		Name: "pull", Label: "Bouncer pull", Kind: wire.KindBouncer, Unit: "minutes",
+		RuleLabel: "Bouncer pulls no decisions for (minutes)", RuleParam: "minutes",
+		Proves: "The bouncer is running and fetching decisions. A bouncer in live mode only asks when it has traffic, so allow a longer quiet time for it.",
 		Params: minutes(60), Needs: []string{wire.PartBouncers},
 		Eval: func(in evalInput) verdict {
 			if in.DB.Revoked {
@@ -208,21 +230,34 @@ func init() {
 		},
 	})
 	RegisterCheck(&Check{
-		Name: "held", Label: "Bouncer holds decisions", Kind: wire.KindBouncer, DefaultLevel: LevelCaution, Unit: "percent",
+		Name: "held", Label: "Bouncer holds decisions", Kind: wire.KindBouncer, Unit: "%",
+		RuleLabel: "Bouncer holds under (%) of the Local API's active decisions", RuleParam: "percent",
 		Proves: "Compares how many decisions the bouncer says its firewall holds with how many the Local API has active. A gap can mean decisions are not being applied, but sizes alone cannot prove it; the bouncer's own log has the reason. Needs CrowdSec 1.6.3 or newer and a bouncer that sends usage metrics.",
 		Params: []Param{
-			{Key: "percent", Label: "Holds under", Unit: "% of active", Min: 1, Max: 100, Default: 50},
-			{Key: "min_active", Label: "Only when active decisions are at least", Unit: "", Min: 1, Max: 1000000, Default: 20},
-			{Key: "reports", Label: "For this many reports in a row", Unit: "", Min: 1, Max: 10, Default: 2},
+			{Key: "percent", Label: "Holds under", Unit: "%", Min: 1, Max: 100, Default: 50},
+			{Key: "min_active", Label: "Only when active decisions are at least", Min: 1, Max: 1000000, Default: 20},
+			{Key: "reports", Label: "For this many reports in a row", Min: 1, Max: 10, Default: 2},
 		},
 		Needs: []string{wire.PartBouncers, wire.PartMetrics, wire.PartDecisions},
 		Eval:  evalHeld,
+	})
+	RegisterCheck(&Check{
+		Name: "siblings", Label: "Bouncer behind its siblings", Kind: wire.KindBouncer, Unit: "%",
+		RuleLabel: "Bouncer holds under (%) of what its siblings on the same key hold", RuleParam: "percent",
+		Proves: "CrowdSec makes one entry per address when a bouncer key is shared (name@ip). Those entries apply the same decisions, so one holding almost nothing while its siblings hold thousands points at a broken ipset or nftables set on that host; its log has the reason. Needs bouncers that send usage metrics.",
+		Params: []Param{
+			{Key: "percent", Label: "Holds under", Unit: "%", Min: 1, Max: 100, Default: 10},
+			{Key: "min_held", Label: "Only when that sibling holds at least", Min: 1, Max: 10000000, Default: 1000},
+			{Key: "reports", Label: "For this many reports in a row", Min: 1, Max: 10, Default: 2},
+		},
+		Needs: []string{wire.PartBouncers, wire.PartMetrics},
+		Eval:  evalSiblings,
 	})
 }
 
 func evalHeld(in evalInput) verdict {
 	db := in.DB
-	if db.Revoked || db.MetricsMs <= 0 || db.Held == nil || in.Now-db.MetricsMs > metricsFresh.Milliseconds() {
+	if !db.metricsUsable(in.Now) {
 		return verdict{}
 	}
 	v := verdict{Judged: true, Sample: db.MetricsMs, Value: 100}
@@ -250,10 +285,44 @@ func evalHeld(in evalInput) verdict {
 	return v
 }
 
-// Finding is one check currently unhealthy for a component.
+func evalSiblings(in evalInput) verdict {
+	db := in.DB
+	if !db.metricsUsable(in.Now) || len(in.Peers) == 0 {
+		return verdict{}
+	}
+	var top peer
+	for _, p := range in.Peers {
+		if p.DB.metricsUsable(in.Now) && p.DB.heldTotal() > top.DB.heldTotal() {
+			top = p
+		}
+	}
+	if top.Name == "" || top.DB.heldTotal() < int64(in.Values["min_held"]) {
+		return verdict{}
+	}
+	held, best := db.heldTotal(), top.DB.heldTotal()
+	v := verdict{Judged: true, Sample: db.MetricsMs, Value: float64(held) * 100 / float64(best)}
+	if v.Value < float64(in.Values["percent"]) {
+		v.Bad = true
+		v.Detail = fmt.Sprintf("Holds %d of the %d decisions its sibling %s holds; its ipset or nftables set may be failing, check its log", held, best, top.Name)
+	}
+	return v
+}
+
+// BaseName is a bouncer's name without the "@<ip>" suffixes CrowdSec appends
+// when one key is used from several addresses, as its own baseBouncerName does.
+func BaseName(name string) string {
+	for {
+		i := strings.LastIndexByte(name, '@')
+		if i <= 0 || net.ParseIP(name[i+1:]) == nil {
+			return name
+		}
+		name = name[:i]
+	}
+}
+
+// Finding is one check currently failing for a component at its default numbers.
 type Finding struct {
 	Check   string  `json:"check"`
-	Level   string  `json:"level"`
 	Detail  string  `json:"detail"`
 	SinceMs int64   `json:"since_ms"`
 	Value   float64 `json:"value"`
@@ -263,15 +332,6 @@ type Finding struct {
 type progress struct {
 	Streak int   `json:"streak"`
 	Sample int64 `json:"sample"`
-}
-
-// outcome is what one check concluded for one component on one evaluation.
-type outcome struct {
-	Check   *Check
-	Finding *Finding // nil when healthy or not judged
-	// Recovered is true when a finding ended because the check passed, as
-	// opposed to the check being switched off, muted or unable to judge.
-	Recovered bool
 }
 
 func (c *Component) db() DBSignals {
@@ -284,86 +344,123 @@ func (c *Component) db() DBSignals {
 
 // evalContext is what an evaluation knows beyond the component.
 type evalContext struct {
-	Settings map[string]CheckSetting
-	Active   map[string]int64
-	Parts    map[string]bool
+	Active map[string]int64
+	Parts  map[string]bool
 	// Self is the collector's own machine login, which never sends a heartbeat.
 	Self string
-	Now  int64
+	// Groups holds the bouncers of the collector by base name.
+	Groups map[string][]*Component
+	Now    int64
 }
 
 func (c *Component) skipped(ec evalContext) bool {
 	return c.Muted || (c.Kind == wire.KindMachine && ec.Self != "" && c.Name == ec.Self)
 }
 
-// evaluate runs every check that applies to c and updates its findings and
-// progress in place. It returns one outcome per applicable check.
-func (c *Component) evaluate(ec evalContext) []outcome {
+// readable reports whether the parts a check needs were read.
+func (ec evalContext) readable(check *Check) bool {
+	for _, part := range check.Needs {
+		if !ec.Parts[part] {
+			return false
+		}
+	}
+	return true
+}
+
+func (ec evalContext) peers(c *Component) []peer {
+	if c.Kind != wire.KindBouncer {
+		return nil
+	}
+	var out []peer
+	for _, other := range ec.Groups[BaseName(c.Name)] {
+		if other.ID != c.ID {
+			out = append(out, peer{Name: other.Name, DB: other.db()})
+		}
+	}
+	return out
+}
+
+// groupBouncers indexes a collector's bouncers by base name.
+func groupBouncers(comps []*Component) map[string][]*Component {
+	out := map[string][]*Component{}
+	for _, c := range comps {
+		if c.Kind == wire.KindBouncer {
+			out[BaseName(c.Name)] = append(out[BaseName(c.Name)], c)
+		}
+	}
+	return out
+}
+
+// result is one check's conclusion for one component.
+type result struct {
+	Judged bool
+	Bad    bool // and confirmed over the reports it needs
+	Detail string
+	Value  float64
+}
+
+// run evaluates one check with values, keeping its streak under key in the
+// component's progress. Muted components, the collector's own login and checks
+// whose data is not read are not judged.
+func (c *Component) run(check *Check, values map[string]int, ec evalContext, key string) result {
+	if c.Progress == nil {
+		c.Progress = map[string]progress{}
+	}
+	if check.Kind != c.Kind || c.skipped(ec) || !ec.readable(check) {
+		delete(c.Progress, key)
+		return result{}
+	}
+	v := check.Eval(evalInput{Component: c, DB: c.db(), Values: values, Active: ec.Active, Peers: ec.peers(c), Now: ec.Now})
+	p := c.Progress[key]
+	out := result{Judged: v.Judged, Value: v.Value, Detail: v.Detail}
+	switch {
+	case !v.Judged:
+		p = progress{}
+	case !v.Bad:
+		p = progress{Sample: v.Sample}
+	default:
+		need := max(values["reports"], 1)
+		if v.Sample == 0 {
+			p.Streak = need
+		} else if v.Sample != p.Sample {
+			p.Streak, p.Sample = p.Streak+1, v.Sample
+		}
+		out.Bad = p.Streak >= need
+	}
+	if p == (progress{}) {
+		delete(c.Progress, key)
+	} else {
+		c.Progress[key] = p
+	}
+	return out
+}
+
+// evaluate runs every check at its default numbers and refreshes the
+// component's findings, which the CrowdSec page shows as cautions.
+func (c *Component) evaluate(ec evalContext) {
 	old := map[string]Finding{}
 	for _, f := range c.Findings {
 		old[f.Check] = f
 	}
-	if c.Progress == nil {
-		c.Progress = map[string]progress{}
-	}
 	c.Findings = nil
-	var out []outcome
-	in := evalInput{Component: c, DB: c.db(), Active: ec.Active, Now: ec.Now}
 	for _, check := range Checks() {
-		if check.Kind != c.Kind {
+		r := c.run(check, check.defaults(), ec, check.Name)
+		if !r.Bad {
 			continue
 		}
-		o := outcome{Check: check}
-		set := check.setting(ec.Settings)
-		readable := true
-		for _, part := range check.Needs {
-			readable = readable && ec.Parts[part]
+		f := Finding{Check: check.Name, Detail: r.Detail, SinceMs: ec.Now, Value: r.Value}
+		if was, ok := old[check.Name]; ok {
+			f.SinceMs = was.SinceMs
 		}
-		if set.Level == LevelOff || !readable || c.skipped(ec) {
-			delete(c.Progress, check.Name)
-			out = append(out, o)
-			continue
-		}
-		in.Values = set.Values
-		v := check.Eval(in)
-		p := c.Progress[check.Name]
-		switch {
-		case !v.Judged:
-			p = progress{}
-		case !v.Bad:
-			o.Recovered = true
-			p = progress{Sample: v.Sample}
-		default:
-			need := max(set.Values["reports"], 1)
-			if v.Sample == 0 {
-				p.Streak = need
-			} else if v.Sample != p.Sample {
-				p.Streak, p.Sample = p.Streak+1, v.Sample
-			}
-			if p.Streak >= need {
-				f := Finding{Check: check.Name, Level: set.Level, Detail: v.Detail, SinceMs: ec.Now, Value: v.Value}
-				if was, ok := old[check.Name]; ok {
-					f.SinceMs = was.SinceMs
-				}
-				o.Finding = &f
-				c.Findings = append(c.Findings, f)
-			}
-		}
-		if p == (progress{}) {
-			delete(c.Progress, check.Name)
-		} else {
-			c.Progress[check.Name] = p
-		}
-		out = append(out, o)
+		c.Findings = append(c.Findings, f)
 	}
-	return out
 }
 
 // Component states shown on the page.
 const (
 	StateOK      = "ok"
-	StateCaution = "caution"
-	StateAlert   = "alert"
+	StateCaution = "caution" // a check fails at its default numbers
+	StateAlert   = "alert"   // an alert rule is firing on it
 	StateNever   = "never"   // registered with CrowdSec, never seen
 	StateUnknown = "unknown" // cannot be judged right now
 	StateMuted   = "muted"
@@ -371,25 +468,43 @@ const (
 )
 
 // state is the one word shown for a component. judged is false while its
-// collector's reports are missing, old or failing.
-func (c *Component) state(judged bool, self string) string {
+// collector's reports are missing, old or failing; firing is true while an
+// alert rule has an open incident on it.
+func (c *Component) state(judged bool, self string, firing bool) string {
 	switch {
 	case c.Kind == wire.KindMachine && self != "" && c.Name == self:
 		return StateSelf
 	case c.Muted:
 		return StateMuted
+	case firing:
+		return StateAlert
 	case !judged:
 		return StateUnknown
-	}
-	worst := StateOK
-	for _, f := range c.Findings {
-		if f.Level == LevelAlert {
-			return StateAlert
-		}
-		worst = StateCaution
-	}
-	if worst == StateOK && c.db().LastSeenMs <= 0 {
+	case len(c.Findings) > 0:
+		return StateCaution
+	case c.db().LastSeenMs <= 0:
 		return StateNever
 	}
-	return worst
+	return StateOK
 }
+
+// matches reports whether a rule subject covers this component.
+func (c *Component) matches(s alert.CrowdSecSubject) bool {
+	if s.CollectorID != c.CollectorID {
+		return false
+	}
+	switch s.Scope {
+	case alert.ScopeAll:
+		return true
+	case alert.ScopeMachine:
+		return c.Kind == wire.KindMachine && c.Name == s.Name
+	case alert.ScopeBouncer:
+		return c.Kind == wire.KindBouncer && c.Name == s.Name
+	case alert.ScopeGroup:
+		return c.Kind == wire.KindBouncer && BaseName(c.Name) == s.Name
+	}
+	return false
+}
+
+// key identifies a component in a rule incident: collector/kind/name.
+func (c *Component) key() string { return c.CollectorID + "/" + c.Kind + "/" + c.Name }

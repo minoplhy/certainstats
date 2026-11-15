@@ -221,6 +221,14 @@
     const date = d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate());
     return date + " " + pad(d.getHours()) + ":" + pad(d.getMinutes()) + (withSeconds ? ":" + pad(d.getSeconds()) : "");
   }
+  function timeAgo(ms, now = Date.now()) {
+    if (!ms) return "never";
+    const s = Math.max(0, Math.round((now - ms) / 1e3));
+    if (s < 60) return "just now";
+    if (s < 3600) return Math.floor(s / 60) + "m ago";
+    if (s < 86400) return Math.floor(s / 3600) + "h ago";
+    return Math.floor(s / 86400) + "d ago";
+  }
   function untilText(ms, now = Date.now()) {
     if (!ms) return "unknown expiry";
     const diff = ms - now;
@@ -253,7 +261,11 @@
       return { bad: true, text: down.length === 1 ? down[0].name + " is not reporting." : down.length + " collectors are not reporting." };
     }
     const quiet = needsAttention(components);
-    if (quiet.length === 1) return { bad: true, text: quiet[0].name + " needs attention: " + (quiet[0].findings[0]?.detail || "unhealthy") + "." };
+    if (quiet.length === 1) {
+      const c = quiet[0];
+      const why = c.findings[0]?.detail || (c.firing?.[0] ? c.firing[0].rule + " is firing" : "unhealthy");
+      return { bad: true, text: c.name + " needs attention: " + why + "." };
+    }
     if (quiet.length) {
       const machines = quiet.filter((c) => c.kind === "machine").length, bouncers = quiet.length - machines;
       const parts = [];
@@ -356,7 +368,7 @@
     }
     const top = Math.max(...items.map((i) => i.alerts), 1);
     for (const item of items) {
-      const row2 = el("li", "cs-rank-row");
+      const row = el("li", "cs-rank-row");
       const label = groupLabel(field, item);
       const pick = el("button", "cs-rank-value mono", label);
       pick.type = "button";
@@ -370,10 +382,10 @@
       const seg = el("span", "usage-segment seg-disk");
       seg.style.width = (item.alerts / top * 100).toFixed(1) + "%";
       track.append(seg);
-      row2.append(pick);
-      if (onPick) row2.append(iconButton("exclude", "Hide " + label, () => onPick(item.value, true)));
-      row2.append(count, track);
-      list.append(row2);
+      row.append(pick);
+      if (onPick) row.append(iconButton("exclude", "Hide " + label, () => onPick(item.value, true)));
+      row.append(count, track);
+      list.append(row);
     }
     return list;
   }
@@ -598,7 +610,7 @@
     }
   }
   function alertRow(alert, actions2) {
-    const row2 = el("details", "cs-row network-row");
+    const row = el("details", "cs-row network-row");
     const sum = el("summary", "cs-row-main");
     sum.setAttribute("role", "row");
     sum.append(
@@ -626,15 +638,15 @@
       ipText.replaceWith(link);
     }
     const body = el("div", "cs-row-body");
-    row2.append(sum, body);
+    row.append(sum, body);
     let loaded = false;
-    row2.addEventListener("toggle", () => {
-      if (row2.open && !loaded) {
+    row.addEventListener("toggle", () => {
+      if (row.open && !loaded) {
         loaded = true;
         loadDetails(alert, body);
       }
     });
-    return row2;
+    return row;
   }
 
   // web/src/js/pages/crowdsec/table/table.js
@@ -752,91 +764,301 @@
     }
   }
 
-  // web/src/js/pages/crowdsec/panels/components.js
+  // web/src/js/pages/crowdsec/panels/component_rows.js
+  var CHEVRON = '<svg class="mgmt-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>';
+  var BADGE = {
+    alert: ["badge-offline", "Alert"],
+    caution: ["badge-warn", "Caution"],
+    never: ["badge-warn", "Never seen"],
+    unknown: ["", "Unknown"],
+    ok: ["badge-online", "OK"],
+    muted: ["", "Muted"],
+    self: ["", "Collector's login"]
+  };
   var ORDER = { alert: 0, caution: 1, never: 2, unknown: 3, ok: 4, muted: 5, self: 6 };
-  var DOT = { alert: "offline", caution: "warn", never: "warn", ok: "online" };
-  function el2(tag, className, text) {
-    const node = document.createElement(tag);
-    if (className) node.className = className;
-    if (text !== void 0 && text !== null) node.textContent = String(text);
-    return node;
+  function setText(node, text) {
+    if (node.textContent !== text) node.textContent = text;
   }
-  function ago(ms, now = Date.now()) {
-    if (!ms) return "never";
-    const s = Math.max(0, Math.round((now - ms) / 1e3));
-    if (s < 60) return "just now";
-    if (s < 3600) return Math.floor(s / 60) + "m ago";
-    if (s < 86400) return Math.floor(s / 3600) + "h ago";
-    return Math.floor(s / 86400) + "d ago";
+  function setClass(node, className) {
+    if (node.className !== className) node.className = className;
+  }
+  function place(container, nodes) {
+    nodes.forEach((node, i) => {
+      if (container.children[i] !== node) container.insertBefore(node, container.children[i] || null);
+    });
+    while (container.children.length > nodes.length) container.lastElementChild.remove();
+  }
+  function setBadge(node, state2) {
+    const [cls, text] = BADGE[state2] || ["", state2];
+    setClass(node, "badge " + cls);
+    setText(node, text);
   }
   function componentText(c) {
-    if (c.state === "alert" || c.state === "caution") return c.findings.map((f) => f.detail).join(". ");
+    if (c.state === "alert") return c.firing.map((f) => f.rule).join(", ") + " is firing" + (c.findings.length ? ": " + c.findings.map((f) => f.detail).join(". ") : "");
+    if (c.state === "caution") return c.findings.map((f) => f.detail).join(". ");
     if (c.state === "never") return c.kind === "machine" ? "Registered, never sent a heartbeat" : "Registered, never pulled decisions";
     if (c.state === "unknown") return "Not judged: its collector is not reporting";
     if (c.state === "muted") return "Muted";
-    if (c.state === "self") return "The collector's own login";
+    if (c.state === "self") return "The collector's own login, which never sends a heartbeat";
     if (c.revoked) return "Revoked";
     if (c.kind === "machine" && !c.validated) return "Not validated";
     return "Healthy";
   }
-  function facts(c, many) {
+  var NOTIFIED = { pending: "sending", queued: "sending", success: "delivered", failed: "not delivered", unknown: "outcome unknown", skipped: "skipped" };
+  function facts() {
+    const dl = el("dl", "cred-list");
+    const pairs = /* @__PURE__ */ new Map();
+    return {
+      dl,
+      // set records one fact for this round; value null hides it.
+      update(list) {
+        const nodes = [];
+        for (const [key, label, value, mono] of list) {
+          if (value === null || value === void 0 || value === "") continue;
+          let p = pairs.get(key);
+          if (!p) {
+            p = { row: el("div", "cred-row"), dt: el("dt"), dd: el("dd", "cred-value") };
+            p.row.append(p.dt, p.dd);
+            pairs.set(key, p);
+          }
+          setText(p.dt, label);
+          setClass(p.dd, "cred-value" + (mono ? " mono" : ""));
+          setText(p.dd, String(value));
+          nodes.push(p.row);
+        }
+        for (const [key, p] of pairs) if (!nodes.includes(p.row)) pairs.delete(key);
+        place(dl, nodes);
+      }
+    };
+  }
+  function seen(ms) {
+    return ms ? formatTime(ms) + " (" + timeAgo(ms) + ")" : "Never";
+  }
+  function heldText(c) {
+    if (!c.held) return null;
+    const origins = Object.keys(c.held).sort();
+    if (!origins.length) return "0";
+    return origins.map((o) => o + ": " + formatCount(c.held[o]) + " of " + formatCount(c.active?.[o] || 0) + " active").join("\n");
+  }
+  function componentFacts(c, many) {
     const list = [];
-    if (many) list.push(c.collector);
-    list.push((c.kind === "machine" ? "heartbeat " : "pulled ") + ago(c.last_seen_ms));
-    if (c.held !== null && c.held !== void 0) list.push("holds " + c.held + " of " + c.active + " decisions");
-    if (c.dropped) list.push(c.dropped + " packets dropped");
-    if (c.type) list.push(c.type);
-    if (c.version) list.push(c.version);
-    if (c.ip) list.push(c.ip);
+    if (many) list.push(["collector", "Collector", c.collector]);
+    list.push(["status", "Status", componentText(c)]);
+    if (c.kind === "machine") {
+      list.push(
+        ["ip", "Address", c.ip, true],
+        ["version", "Version", c.version, true],
+        ["os", "System", c.os],
+        ["validated", "Validated", c.validated ? "Yes" : "No"],
+        ["seen", "Last heartbeat", seen(c.last_seen_ms), true]
+      );
+    } else {
+      list.push(
+        ["type", "Type", c.type],
+        ["version", "Version", c.version, true],
+        ["ip", "Address", c.ip, true],
+        ["revoked", "Revoked", c.revoked ? "Yes" : null],
+        ["seen", "Last pull", seen(c.last_seen_ms), true],
+        ["metrics", "Usage metrics", c.metrics_ms ? seen(c.metrics_ms) : "Not sent by this bouncer", !!c.metrics_ms],
+        ["held", "Decisions held", heldText(c), true],
+        ["dropped", "Packets dropped", c.metrics_ms ? formatCount(c.dropped) : null, true],
+        ["processed", "Packets processed", c.metrics_ms ? formatCount(c.processed) : null, true]
+      );
+    }
+    for (const f of c.firing) list.push(["rule:" + f.alert_id, "Alert rule", f.rule + ", notification " + (NOTIFIED[f.notified] || f.notified) + (f.error ? ": " + f.error : "")]);
     return list;
   }
-  function row(c, many) {
-    const item = el2("li", "cs-comp-row is-" + c.state);
-    const dot = el2("span", "status-dot " + (DOT[c.state] || ""));
-    dot.setAttribute("aria-hidden", "true");
-    const name = el2("span", "cs-comp-name mono", c.name);
-    name.title = c.name;
-    const text = el2("span", "cs-comp-state", componentText(c));
-    const failed = c.findings.find((f) => f.notify === "failed" || f.notify === "pending" && f.notify_error);
-    if (failed) text.append(el2("span", "cs-comp-notify", " Notification not delivered: " + failed.notify_error));
-    const meta = el2("span", "cs-comp-facts muted", facts(c, many).join(" · "));
-    const button = el2("button", "btn btn-ghost btn-sm", c.muted ? "Unmute" : "Mute");
-    button.type = "button";
-    button.hidden = c.state === "self";
-    button.setAttribute("aria-label", (c.muted ? "Unmute " : "Mute ") + c.name);
-    button.addEventListener("click", async () => {
-      button.disabled = true;
-      try {
-        await send(c.muted ? "DELETE" : "PUT", "components/" + c.id + "/mute");
-        await loadComponents();
-      } catch (e) {
-        button.disabled = false;
-        window.CertainStatsTelemetry?.showToast(e.message, false);
-      }
-    });
-    item.append(dot, name, el2("span", "badge", c.kind === "machine" ? "Machine" : "Bouncer"), text, meta, button);
-    return item;
+  function muteButton(rec, onMute2) {
+    const b = el("button", "btn btn-ghost btn-sm");
+    b.type = "button";
+    b.addEventListener("click", () => onMute2(rec.item, b));
+    return b;
   }
-  function note(c) {
+  function updateMute(b, c) {
+    setText(b, c.muted ? "Unmute" : "Mute");
+    const label = (c.muted ? "Unmute " : "Mute ") + c.name;
+    if (b.getAttribute("aria-label") !== label) b.setAttribute("aria-label", label);
+    b.hidden = c.state === "self";
+  }
+  function summaryParts(rec) {
+    const summary = el("summary", "mgmt-summary");
+    rec.name = el("span", "mgmt-name mono");
+    rec.badge = el("span");
+    rec.meta = el("span", "cs-comp-meta muted mono");
+    summary.append(rec.name, rec.badge, rec.meta);
+    summary.insertAdjacentHTML("beforeend", CHEVRON);
+    return summary;
+  }
+  function createRow(onMute2) {
+    const rec = { item: null };
+    rec.details = el("details", "mgmt-item cs-comp-row");
+    const panel = el("div", "mgmt-panel");
+    rec.facts = facts();
+    rec.mute = muteButton(rec, onMute2);
+    const actions2 = el("div", "mgmt-actions");
+    actions2.append(rec.mute);
+    panel.append(rec.facts.dl, actions2);
+    rec.details.append(summaryParts(rec), panel);
+    return rec;
+  }
+  function updateRow(rec, c, many) {
+    rec.item = c;
+    rec.details.dataset.state = c.state;
+    setText(rec.name, c.name);
+    setBadge(rec.badge, c.state);
+    const when = (c.kind === "machine" ? "heartbeat " : "pulled ") + timeAgo(c.last_seen_ms);
+    setText(rec.meta, [many ? c.collector : "", c.kind === "bouncer" ? c.type : "", c.version, when].filter(Boolean).join(" · "));
+    rec.facts.update(componentFacts(c, many));
+    updateMute(rec.mute, c);
+  }
+  function createGroup(onMute2) {
+    const rec = { entries: /* @__PURE__ */ new Map() };
+    rec.details = el("details", "mgmt-item cs-comp-row");
+    rec.panel = el("div", "mgmt-panel cs-comp-entries");
+    rec.details.append(summaryParts(rec), rec.panel);
+    rec.onMute = onMute2;
+    return rec;
+  }
+  function updateGroup(rec, group, many) {
+    const worst = group.entries.reduce((w, c) => (ORDER[c.state] ?? 9) < (ORDER[w] ?? 9) ? c.state : w, "self");
+    rec.details.dataset.state = worst;
+    setText(rec.name, group.name);
+    setBadge(rec.badge, worst);
+    const first = group.entries[0];
+    setText(rec.meta, [many ? first.collector : "", first.type, group.entries.length + " addresses on one key"].filter(Boolean).join(" · "));
+    const nodes = group.entries.map((c) => {
+      let e = rec.entries.get(c.id);
+      if (!e) {
+        e = { item: c, box: el("div", "cs-comp-entry"), head: el("div", "cs-comp-entry-head"), name: el("span", "mono"), badge: el("span"), facts: facts() };
+        e.mute = muteButton(e, rec.onMute);
+        e.head.append(e.name, e.badge, e.mute);
+        e.box.append(e.head, e.facts.dl);
+        rec.entries.set(c.id, e);
+      }
+      e.item = c;
+      setText(e.name, c.name);
+      setBadge(e.badge, c.state);
+      e.facts.update(componentFacts(c, false));
+      updateMute(e.mute, c);
+      return e.box;
+    });
+    for (const [id, e] of rec.entries) if (!group.entries.some((c) => c.id === id)) rec.entries.delete(id);
+    place(rec.panel, nodes);
+  }
+
+  // web/src/js/pages/crowdsec/panels/components.js
+  var machineRows = /* @__PURE__ */ new Map();
+  var bouncerRows = /* @__PURE__ */ new Map();
+  var notes = /* @__PURE__ */ new Map();
+  async function onMute(c, button) {
+    button.disabled = true;
+    try {
+      await send(c.muted ? "DELETE" : "PUT", "components/" + c.id + "/mute");
+      await loadComponents();
+    } catch (e) {
+      window.CertainStatsTelemetry?.showToast(e.message, false);
+    } finally {
+      button.disabled = false;
+    }
+  }
+  var byState = (a, b) => (ORDER[a.state] ?? 9) - (ORDER[b.state] ?? 9) || a.name.localeCompare(b.name);
+  function countText(list, noun) {
+    const look = list.filter((c) => c.state === "alert" || c.state === "caution").length;
+    return list.length + " " + noun + (list.length === 1 ? "" : "s") + (look ? " · " + look + (look === 1 ? " needs" : " need") + " a look" : "");
+  }
+  function renderMachines(items, many) {
+    const ui = state.ui;
+    const list = items.filter((c) => c.kind === "machine").sort(byState);
+    const nodes = list.map((c) => {
+      let rec = machineRows.get(c.id);
+      if (!rec) {
+        rec = createRow(onMute);
+        machineRows.set(c.id, rec);
+      }
+      updateRow(rec, c, many);
+      return rec.details;
+    });
+    for (const [id] of machineRows) if (!list.some((c) => c.id === id)) machineRows.delete(id);
+    place(ui.machines, nodes);
+    setText(ui.machinesCount, countText(list, "machine"));
+    ui.machinesEmpty.hidden = list.length > 0;
+  }
+  function bouncerUnits(items) {
+    const groups = /* @__PURE__ */ new Map();
+    for (const c of items.filter((i) => i.kind === "bouncer")) {
+      const key = c.collector_id + "/" + c.group;
+      if (!groups.has(key)) groups.set(key, { key, name: c.group, entries: [] });
+      groups.get(key).entries.push(c);
+    }
+    const units = [];
+    for (const g of groups.values()) {
+      g.entries.sort(byState);
+      if (g.entries.length === 1 && g.entries[0].name === g.name) units.push({ single: g.entries[0], state: g.entries[0].state, name: g.name });
+      else units.push({ group: g, state: g.entries[0].state, name: g.name });
+    }
+    return units.sort(byState);
+  }
+  function renderBouncers(items, many) {
+    const ui = state.ui;
+    const units = bouncerUnits(items);
+    const used = /* @__PURE__ */ new Set();
+    const nodes = units.map((u) => {
+      const key = u.single ? "b:" + u.single.id : "g:" + u.group.key;
+      used.add(key);
+      let rec = bouncerRows.get(key);
+      if (!rec) {
+        rec = u.single ? createRow(onMute) : createGroup(onMute);
+        bouncerRows.set(key, rec);
+      }
+      if (u.single) updateRow(rec, u.single, many);
+      else updateGroup(rec, u.group, many);
+      return rec.details;
+    });
+    for (const key of [...bouncerRows.keys()]) if (!used.has(key)) bouncerRows.delete(key);
+    place(ui.bouncers, nodes);
+    const all = items.filter((c) => c.kind === "bouncer");
+    setText(ui.bouncersCount, countText(all, "bouncer"));
+    ui.bouncersEmpty.hidden = all.length > 0;
+  }
+  function noteText(c) {
     if (c.health === "error") return c.name + ": CrowdSec's database could not be read: " + c.error;
     if (c.health === "off") return c.name + ": machine and bouncer health is not switched on (CROWDSEC_HEALTH=true on its host).";
     const missing = c.unavailable.map((u) => u.label + " (needs " + u.needs + ")");
     return missing.length ? c.name + ": not available, the host does not let these be read: " + missing.join("; ") + "." : "";
   }
+  function renderNotes(collectors) {
+    const ui = state.ui;
+    const shown = [];
+    for (const c of collectors) {
+      const text = noteText(c);
+      if (!text) continue;
+      let li = notes.get(c.collector_id);
+      if (!li) {
+        li = el("li");
+        notes.set(c.collector_id, li);
+      }
+      setText(li, text);
+      shown.push(li);
+    }
+    for (const [id, li] of notes) if (!shown.includes(li)) notes.delete(id);
+    place(ui.componentsNotes, shown);
+    ui.componentsNotes.hidden = !shown.length;
+  }
   function renderComponents() {
     const ui = state.ui;
     const { collectors, items } = state.components;
     const active = collectors.some((c) => c.health === "on" || c.health === "error") || items.length > 0;
-    ui.components.hidden = !active;
+    ui.componentsStat.hidden = !active;
+    ui.componentsOpen.hidden = !active;
+    const firing = items.filter((c) => c.state === "alert").length;
+    const look = items.filter((c) => c.state === "alert" || c.state === "caution").length;
+    setText(ui.componentsCount, items.length + (look ? " · " + look + (look === 1 ? " needs" : " need") + " a look" : ""));
+    ui.componentsCount.classList.toggle("is-bad", firing > 0);
     if (!active) return;
-    const machines = items.filter((c) => c.kind === "machine").length, bouncers = items.length - machines;
-    const attention = items.filter((c) => c.state === "alert" || c.state === "caution").length;
-    ui.componentsCount.textContent = (machines === 1 ? "1 machine" : machines + " machines") + ", " + (bouncers === 1 ? "1 bouncer" : bouncers + " bouncers") + (attention ? " · " + attention + (attention === 1 ? " needs" : " need") + " a look" : "");
-    ui.componentsNotes.replaceChildren(...collectors.map(note).filter(Boolean).map((text) => el2("li", "", text)));
-    ui.componentsNotes.hidden = !ui.componentsNotes.children.length;
+    renderNotes(collectors);
     const many = collectors.length > 1;
-    const sorted = [...items].sort((a, b) => (ORDER[a.state] ?? 9) - (ORDER[b.state] ?? 9) || a.kind.localeCompare(b.kind) * -1 || a.name.localeCompare(b.name));
-    ui.componentsList.replaceChildren(...sorted.map((c) => row(c, many)));
+    renderMachines(items, many);
+    renderBouncers(items, many);
   }
   async function loadComponents() {
     const controller = begin("components");
@@ -848,8 +1070,11 @@
       renderHero();
     } catch (e) {
       if (isAbort(e)) return;
-      if (!state.ui.components.hidden) showError(state.ui.componentsMessage, "Machines and bouncers could not be loaded: " + e.message, loadComponents);
+      showError(state.ui.componentsMessage, "Machines and bouncers could not be loaded: " + e.message, loadComponents);
     }
+  }
+  function bindComponents() {
+    state.ui.componentsOpen.addEventListener("click", () => window.CertainStatsModal?.open(state.ui.components));
   }
 
   // web/src/js/pages/crowdsec/init.js
@@ -866,7 +1091,14 @@
     componentsCount: "components-count",
     componentsMessage: "components-message",
     componentsNotes: "components-notes",
-    componentsList: "components-list",
+    componentsStat: "components-stat",
+    componentsOpen: "components-open",
+    machines: "machines",
+    machinesCount: "machines-count",
+    machinesEmpty: "machines-empty",
+    bouncers: "bouncers",
+    bouncersCount: "bouncers-count",
+    bouncersEmpty: "bouncers-empty",
     main: "main",
     search: "search",
     addFilter: "add-filter",
@@ -1077,6 +1309,7 @@
       load();
     });
     bindCollectors();
+    bindComponents();
     loadComponents();
     load();
     return config2;

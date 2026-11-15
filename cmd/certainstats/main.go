@@ -21,6 +21,7 @@ import (
 	"certainstats/internal/agent"
 	"certainstats/internal/agent_parser/registry"
 	"certainstats/internal/alert"
+	"certainstats/internal/alertdelivery"
 	"certainstats/internal/auth"
 	"certainstats/internal/collector"
 	"certainstats/internal/compress"
@@ -142,7 +143,7 @@ func main() {
 	}
 	defer crowdsecStore.Close()
 	collectors := collector.NewService(db, db)
-	crowdsecType := &crowdsec.Type{Store: crowdsecStore, Collectors: collectors, Targets: db, Retention: crowdsec.Retention{RawMs: rawKeep.Milliseconds(), RollupMs: rollupKeep.Milliseconds()}}
+	crowdsecType := &crowdsec.Type{Store: crowdsecStore, Collectors: collectors, Rules: db, Deliver: func(eventID string) { alertdelivery.Go(db, eventID) }, Retention: crowdsec.Retention{RawMs: rawKeep.Milliseconds(), RollupMs: rollupKeep.Milliseconds()}}
 	if err := collectors.Register(crowdsecType); err != nil {
 		log.Fatalf("collectors: %v", err)
 	}
@@ -235,6 +236,7 @@ func main() {
 		PublicPath: strings.TrimSuffix(publicPath, "/"),
 		StaticPath: staticPath,
 		Agents:     wsManager,
+		CrowdSec:   crowdsecType,
 	}
 
 	// 4. Router setups

@@ -42,6 +42,7 @@
             <option value="net_tx">Upload rate (KiB/s)</option>
             <option value="disk_read">Disk read rate (KiB/s)</option>
             <option value="disk_write">Disk write rate (KiB/s)</option>
+            {{template "alerts_crowdsec_triggers" .}}
           </select>
         </div>
 
@@ -110,6 +111,11 @@
           </div>
           <textarea id="create-payload" name="payload" class="form-textarea mono" placeholder='Leave empty to use the target default'></textarea>
         </div>
+      </div>
+
+      <!-- CrowdSec machines and bouncers (CrowdSec rules only) -->
+      <div class="form-fieldset" data-crowdsec-rule="create" hidden>
+        {{template "alerts_crowdsec_subjects" .}}
       </div>
 
       <!-- Network monitors (network loss rules only) -->

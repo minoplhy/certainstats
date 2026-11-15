@@ -48,15 +48,18 @@ type Alert struct {
 	Trigger    Trigger      `json:"trigger"`
 	Action     AlertAction  `json:"action"`
 	Agents     []AgentState `json:"agents"`
+	// CrowdSec lists the machines and bouncers a CrowdSec rule watches.
+	CrowdSec []CrowdSecSubject `json:"crowdsec,omitempty"`
 }
 
 type AlertPayload struct {
-	MonitorIDs []string    `json:"monitor_ids"`
-	Nickname   string      `json:"nickname"`
-	Enabled    bool        `json:"enabled"`
-	Trigger    Trigger     `json:"trigger"`
-	Action     AlertAction `json:"action"`
-	Agents     []string    `json:"agents"` // List of AgentIDs
+	MonitorIDs []string          `json:"monitor_ids"`
+	CrowdSec   []CrowdSecSubject `json:"crowdsec,omitempty"`
+	Nickname   string            `json:"nickname"`
+	Enabled    bool              `json:"enabled"`
+	Trigger    Trigger           `json:"trigger"`
+	Action     AlertAction       `json:"action"`
+	Agents     []string          `json:"agents"` // List of AgentIDs
 }
 
 type Trigger struct {
@@ -112,28 +115,32 @@ type HistoryEvent struct {
 }
 
 type AlertHistory struct {
-	SubjectKind         string     `json:"subject_kind"`
-	MonitorID           string     `json:"monitor_id,omitempty"`
-	Monitor             nm.Config  `json:"monitor,omitempty"`
-	MonitoringAvailable bool       `json:"-"`
-	ClosedAt            *time.Time `json:"closed_at,omitempty"`
-	CloseReason         string     `json:"close_reason,omitempty"`
-	Legacy              bool       `json:"legacy"`
-	RetryAvailable      bool       `json:"retry_available"`
-	FiringDelivery      string     `json:"firing_delivery,omitempty"`
-	RecoveryDelivery    string     `json:"recovery_delivery,omitempty"`
-	HistoryID           string     `json:"history_id"`
-	AlertID             string     `json:"alert_id"`
-	UserID              string     `json:"-"` // Denormalized for ultra-fast query
-	AgentID             string     `json:"agent_id"`
-	AgentNickname       string     `json:"agent_nickname"`
-	AlertNickname       string     `json:"alert_nickname"`
-	TriggeredAt         time.Time  `json:"triggered_at"`
-	ResolvedAt          *time.Time `json:"resolved_at,omitempty"`
-	TriggerValue        float64    `json:"trigger_value"`
-	NotifiedStatus      string     `json:"notified_status"`
-	Trigger             Trigger    `json:"trigger"`
-	TargetID            string     `json:"target_id,omitempty"`
-	TargetName          string     `json:"target_name,omitempty"`
-	ErrorMessage        string     `json:"error_message,omitempty"`
+	SubjectKind         string    `json:"subject_kind"`
+	MonitorID           string    `json:"monitor_id,omitempty"`
+	Monitor             nm.Config `json:"monitor,omitempty"`
+	MonitoringAvailable bool      `json:"-"`
+	// SubjectID and Subject are set for CrowdSec incidents: the machine or
+	// bouncer (collector/kind/name) and what fired, in words.
+	SubjectID        string           `json:"subject_id,omitempty"`
+	Subject          CrowdSecSnapshot `json:"subject,omitempty"`
+	ClosedAt         *time.Time       `json:"closed_at,omitempty"`
+	CloseReason      string           `json:"close_reason,omitempty"`
+	Legacy           bool             `json:"legacy"`
+	RetryAvailable   bool             `json:"retry_available"`
+	FiringDelivery   string           `json:"firing_delivery,omitempty"`
+	RecoveryDelivery string           `json:"recovery_delivery,omitempty"`
+	HistoryID        string           `json:"history_id"`
+	AlertID          string           `json:"alert_id"`
+	UserID           string           `json:"-"` // Denormalized for ultra-fast query
+	AgentID          string           `json:"agent_id"`
+	AgentNickname    string           `json:"agent_nickname"`
+	AlertNickname    string           `json:"alert_nickname"`
+	TriggeredAt      time.Time        `json:"triggered_at"`
+	ResolvedAt       *time.Time       `json:"resolved_at,omitempty"`
+	TriggerValue     float64          `json:"trigger_value"`
+	NotifiedStatus   string           `json:"notified_status"`
+	Trigger          Trigger          `json:"trigger"`
+	TargetID         string           `json:"target_id,omitempty"`
+	TargetName       string           `json:"target_name,omitempty"`
+	ErrorMessage     string           `json:"error_message,omitempty"`
 }

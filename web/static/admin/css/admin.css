@@ -1940,20 +1940,11 @@ dialog.modal.modal-confirm {
 .collector-type-actions, .collector-row-actions { display: flex; flex-wrap: wrap; gap: 4px; justify-content: flex-end; }
 .collector-backfill { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 13px; }
 .collector-backfill .form-input { width: auto; }
+.collector-backfill .form-input.mono { font-family: var(--font-mono); }
 .collector-type-options { display: flex; flex-wrap: wrap; gap: 8px; }
 .collectors-page .collector-type-state { color: var(--text-2); }
 .collectors-page .collector-backfill { flex-basis: 100%; padding-top: 6px; }
-.collector-health { flex-basis: 100%; display: grid; gap: 12px; padding-top: 10px; font-size: 13px; }
-.collector-health .form-hint { margin: 0; }
-.collector-health-check { display: grid; gap: 6px; min-width: 0; margin: 0; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--r-sm); }
-.collector-health-check legend { padding: 0 4px; font-weight: 600; }
-.collector-health-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
-.collector-health-param { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; }
-.collector-health .form-select { width: auto; }
-.collector-health-param .form-input { width: 96px; }
-.collector-health-message { margin: 0; color: var(--bad); }
-.collector-health-message:empty { display: none; }
-.collector-health-actions { display: flex; gap: 6px; }
+.collector-type-badges { display: contents; }
 
 /* CrowdSec page */
 .cs-toolbar { flex-wrap: wrap; row-gap: 10px; }
@@ -1989,21 +1980,16 @@ dialog.modal.modal-confirm {
 .cs-chip-field { font-weight: 600; }
 .cs-chip-op { color: var(--muted); }
 .cs-chip-value { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 240px; }
-.cs-comp-notes { display: grid; gap: 4px; margin: 0 0 10px; padding: 0; list-style: none; color: var(--muted); font-size: 13px; }
-.cs-comp-list { margin: 0; padding: 0; list-style: none; border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); }
-.cs-comp-row { display: grid; grid-template-columns: auto minmax(120px, 220px) auto minmax(0, 1.2fr) minmax(0, 1.6fr) auto; align-items: center; gap: 4px 12px; padding: 8px 14px; font-size: 13px; }
-.cs-comp-row + .cs-comp-row { border-top: 1px solid var(--line); }
-.cs-comp-name { overflow: hidden; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
-.cs-comp-state { min-width: 0; color: var(--text-2); overflow-wrap: anywhere; }
-.cs-comp-row.is-alert .cs-comp-state { color: var(--bad); font-weight: 600; }
-.cs-comp-row.is-caution .cs-comp-state { color: var(--warn); }
-.cs-comp-row.is-muted .cs-comp-name, .cs-comp-row.is-unknown .cs-comp-name, .cs-comp-row.is-self .cs-comp-name { color: var(--muted); }
-.cs-comp-notify { color: var(--muted); font-weight: 400; }
-.cs-comp-facts { min-width: 0; font-size: 12px; overflow-wrap: anywhere; }
-@media (max-width: 860px) {
-  .cs-comp-row { grid-template-columns: auto minmax(0, 1fr) auto auto; }
-  .cs-comp-state, .cs-comp-facts { grid-column: 2 / -1; }
-}
+.cs-comp-notes { display: grid; gap: 4px; margin: 0 0 12px; padding: 0; list-style: none; color: var(--muted); font-size: 13px; }
+.cs-comp-section + .cs-comp-section { margin-top: 24px; }
+.cs-comp-meta { min-width: 0; margin-left: auto; overflow: hidden; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.cs-comp-row[data-state="alert"] .mgmt-name { color: var(--bad); }
+.cs-comp-row .cred-value { white-space: pre-line; overflow-wrap: anywhere; }
+.cs-comp-entries { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
+.cs-comp-entry { min-width: 0; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--r-sm); }
+.cs-comp-entry-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 6px; font-weight: 600; }
+.cs-comp-entry-head .btn { margin-left: auto; }
+[data-cs-components-count].is-bad { color: var(--bad); }
 .cs-status { margin: 0 0 8px; color: var(--muted); font-size: 13px; }
 .cs-status:empty { display: none; }
 .banner[data-cs-expired] { margin-bottom: 16px; }

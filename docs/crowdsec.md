@@ -143,43 +143,64 @@ All of it is the component's own word, recorded by the Local API:
 
 ### Checks
 
-Health is a list of named checks, each configured per collector under
-**Health alerts…** on the Collectors page.
+Health is a list of named checks. On the CrowdSec page a check that fails at
+its default numbers is a **caution** (amber); it opens no incident, sends
+nothing and never changes the headline.
 
-| Check | Applies to | Default level | Default thresholds |
+| Check | Applies to | Default numbers | What it can show |
 | --- | --- | --- | --- |
-| `heartbeat` | machines | alert | quiet for 5 minutes |
-| `pull` | bouncers | alert | quiet for 60 minutes |
-| `held` | bouncers | caution | holds under 50% of at least 20 active decisions of an origin it reports, on 2 metric reports in a row |
+| `heartbeat` | machines | quiet for 5 minutes | the agent runs and reaches the Local API |
+| `pull` | bouncers | quiet for 60 minutes | the bouncer runs and fetches decisions |
+| `held` | bouncers | holds under 50% of at least 20 active decisions of an origin it reports, on 2 metric reports in a row | it may not be applying decisions |
+| `siblings` | bouncers sharing a key | holds under 10% of what its largest sibling holds, that sibling holding at least 1,000, on 2 metric reports in a row | its ipset or nftables set may be failing |
 
-Each check has a level: **off**, **caution** (amber on the page; no incident,
-no notification, the headline unchanged) or **alert** (red, an incident, a
-notification). `held` is a caution by default because it rests on comparing
-sizes; it can be raised to alert, as any check can be lowered.
+**Shared keys.** When one bouncer key is used from several addresses, CrowdSec
+creates one entry per address named `name@ip`. Those entries apply the same
+decisions, so `siblings` compares each with the others of its key; one holding
+0 while its siblings hold 30,000 is what a firewall bouncer looks like when
+`ipset` fails, since it then reports 0 entries. The base name is found by
+stripping trailing `@<ip>` parts, as CrowdSec does.
 
 A component is judged only while its collector is connected and its last report
 is error-free and younger than five minutes. A collector that died, or a host
 that switched health off, therefore never sets off a round of notifications.
 Not judged at all: muted components, revoked bouncers, machines that are not
 validated, and the collector's own machine login, which never sends a heartbeat.
-A component deleted from CrowdSec disappears here with the next report, and its
-open incident closes without a notification.
 
-Notifications go to one of the owner's alert targets, chosen per collector,
-with the message templates alert rules use (`{{NICKNAME}}` is the machine or
-bouncer; `{{COLLECTOR}}`, `{{SUBJECT_KIND}}` and `{{DETAIL}}` are added). One
-is sent when an alert-level finding starts and one when the check passes again.
-A failed delivery is tried again each minute, five times at most. These
-incidents belong to CrowdSec health and show on the CrowdSec page; they are not
-alert rules and do not appear in the Alerts history, which is keyed to nodes.
+### Alert rules
+
+Notifications come from ordinary alert rules on the Alerts page. **New rule**
+offers a CrowdSec group under **When**, one condition per check
+(`crowdsec_heartbeat`, `crowdsec_pull`, `crowdsec_held`, `crowdsec_siblings`),
+and in place of **Servers** a **Machines and bouncers** list per collector:
+
+- **Every machine and bouncer** of a collector, including ones added later;
+- one machine;
+- one shared bouncer key: every address using it, new addresses included;
+- one bouncer entry.
+
+The rule's threshold sets the check's main number (minutes, or a percentage);
+the others keep their defaults, and the check does its own timing, so there is
+no operator or duration. A check that needs several reports in a row counts the
+reports seen since the rule was created; bouncers send usage metrics every 15
+minutes, so a new `held` or `siblings` rule can take up to half an hour to fire.
+
+A firing rule is an incident in the Alerts incident history like any other:
+delivery, retry and the message templates are the same (`{{NICKNAME}}` is the
+machine or bouncer; `{{COLLECTOR}}`, `{{SUBJECT_KIND}}` and `{{DETAIL}}` are
+added). On the CrowdSec page the component turns red and names the rule. An
+incident closes without a notification when its rule is disabled, deleted or no
+longer covers the component, or when the component is muted, deleted from
+CrowdSec, or its collector removed. A collector that cannot be judged leaves its
+incidents as they are.
 
 A check is one entry in a registry in `internal/crowdsec/checks.go`: its name,
-the kind it applies to, its parameters with limits and defaults, the parts it
-needs and a function from signals to a verdict. Settings are stored by check
-name and signals by source, and the settings form is built from the registry
-the API returns. A later source, such as a collector on a bouncer's host
-reading its log, adds its own signal set and a check without changing the
-existing ones.
+the kind it applies to, its parameters with limits and defaults, the parameter
+a rule's threshold sets, the parts it needs and a function from signals to a
+verdict. Registering it also registers its rule condition, so it appears on the
+Alerts page. Signals are stored by source, so a later source, such as a
+collector on a bouncer's host reading its log, adds its own signal set and a
+check without changing the existing ones.
 
 To confirm on a real host: reading a WAL-mode SQLite database through a
 read-only mount, the PostgreSQL and MySQL paths (tested here against SQLite
@@ -218,13 +239,14 @@ never hold up agent ingestion or the main state database. It has three tables:
   `PRAGMA user_version`); on upgrade it is filled from the raw alerts still
   kept, so hours whose raw alerts were already pruned count 0 decisions.
 
-Health adds three tables to the same file: `components` (one row per machine or
-bouncer of a collector, with its signals by source, its current findings and
-whether it is muted), `collector_health` (per collector: the notify target, the
-checks' settings, and the last report's parts, error and active decisions) and
-`health_events` (one row per alert-level incident, with the delivery state of
-its two notifications). Resolved incidents follow `CROWDSEC_RAW_RETENTION`.
-Removing a collector removes all three.
+Health adds two tables to the same file: `components` (one row per machine or
+bouncer of a collector, with its signals by source, its current findings, the
+streaks of its checks and whether it is muted) and `collector_health` (per
+collector: the last report's parts, error and active decisions). Removing a
+collector removes both. CrowdSec alert rules keep their machines and bouncers in
+the main database (`alert_crowdsec_subjects`), and their incidents are
+`alert_history` rows with `subject_kind` `crowdsec`, the collector in
+`agent_id`, the component in `subject_id` and what fired in `subject_snapshot`.
 
 ### Retention
 
@@ -261,9 +283,9 @@ Paths are relative to the panel's `/api`.
 | GET | `/collectors/crowdsec/alerts` | Paged alerts: `page`, `limit` (25, 50, 100), `sort`, `order` |
 | GET | `/collectors/crowdsec/alerts/{id}` | One alert with all decisions |
 | GET | `/collectors/crowdsec/ips/{ip}` | First and last seen, totals, scenarios, machines and latest 50 decisions over retained alerts |
-| GET | `/collectors/crowdsec/components` | Every machine and bouncer with its state and findings, and per collector whether health is on, off or failing |
+| GET | `/collectors/crowdsec/components` | Every machine and bouncer with its state, findings, firing rules, and for bouncers the decisions held and active by origin; per collector whether health is on, off or failing |
 | PUT, DELETE | `/collectors/crowdsec/components/{id}/mute` | Mute or unmute one machine or bouncer |
-| GET, PUT | `/collectors/{id}/crowdsec/health` | The notify target and each check's level and numbers. GET also returns the check registry and the owner's targets |
+| GET | `/collectors/crowdsec/subjects` | What a rule can watch, per collector: machines, shared bouncer keys with their entries, single bouncers |
 
 Data reads take `start` and `end` (Unix ms, at most 20 years apart) or `hours`,
 and filters on `ip`, `range`, `scenario`, `country`, `machine`, `asn`, `action`
@@ -284,11 +306,16 @@ Collectors page. Below is a one-row filter bar:
 - one range dropdown holding the quick ranges, a custom range and **All**, a
   range starting at the oldest data.
 
-Above the filter bar, once some host has switched health on, **Machines and
-bouncers** lists each one in a row: its state in words, last heartbeat or pull,
-what a bouncer holds, type, version and address, and **Mute**. What needs a
-look comes first. An alert-level finding also takes over the headline; a
-caution never does.
+Once some host has switched health on, the hero shows how many machines and
+bouncers there are and how many need a look, and **Machines and bouncers** opens
+them in a popup with two lists, laid out like the Management page. A machine's
+row opens to its address, version, system, validation and last heartbeat. A
+bouncer's row opens to everything it reported: type, version, address, last
+pull, when it last sent usage metrics, the decisions it holds per origin next to
+the Local API's active count, and packets dropped and processed. A shared key
+is one row whose entries sit side by side. Each has **Mute**. What needs a look
+comes first, rows update in place every 30 seconds, and an open row stays open.
+A firing rule takes over the headline; a caution never does.
 
 Active filters show as removable chips under the bar. Then come:
 - the timeline of alerts and the decisions they issued, as two series (brush to zoom);
@@ -305,8 +332,9 @@ view can be linked and Back works.
 
 `go test ./internal/crowdsec/...` covers decoding, de-duplication, the rollup,
 late alerts, filters, raw and rollup agreement, owner isolation and pruning;
-for health, each check's levels and thresholds, what is not judged, incidents
-opening and resolving once, the retry cap, removal, and the routes.
+for health, each check including siblings on a shared key, what is not judged,
+Alerts page rules firing and recovering once with their webhook, incidents
+closing quietly (muted, removed, rule disabled), and the routes.
 `go test ./internal/collectoragent/...` runs the collector against a fake
 Local API: backfill, JWT reuse and renewal, restarts without duplicates, window
 splitting, an unreachable Local API, `--check` and resync; and against a SQLite

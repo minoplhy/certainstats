@@ -5,14 +5,13 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"certainstats/internal/base/alert"
 	"certainstats/internal/collector"
 	"certainstats/internal/crowdsec/wire"
 	log "certainstats/internal/logger"
-	"certainstats/internal/notifications"
+	"certainstats/internal/store"
 )
 
 // reportFresh is how old a collector's last health report may be and still be
@@ -20,10 +19,14 @@ import (
 // switched off never sets off a round of notifications.
 const reportFresh = 5 * time.Minute
 
-// Targets reads the owner's notification targets, the ones alert rules use.
-type Targets interface {
-	TargetGetByID(ctx context.Context, targetID string, userID string) (alert.AlertTarget, error)
-	TargetList(ctx context.Context, userID string) ([]alert.AlertTarget, error)
+// Rules is the part of the main database that holds CrowdSec alert rules and
+// their incidents, which are ordinary alert rules and incident history.
+type Rules interface {
+	CrowdSecRules(ctx context.Context) ([]store.Alert, error)
+	CrowdSecOpenIncidents(ctx context.Context, userID string) ([]store.CrowdSecIncident, error)
+	CrowdSecFire(ctx context.Context, rule store.Alert, collectorID, subjectID string, snap alert.CrowdSecSnapshot, value float64) (string, error)
+	CrowdSecResolve(ctx context.Context, historyID string) (string, error)
+	CrowdSecClose(ctx context.Context, historyID string) error
 }
 
 // health stores a cs_health report. Only a host that set CROWDSEC_HEALTH=true sends one.
@@ -56,30 +59,55 @@ func (t *Type) connected(collectorID string) (time.Time, bool) {
 	return conn.Since, true
 }
 
-// Tick evaluates every check and opens or resolves incidents. It runs on the
-// central timer. Notifications are sent in the background.
+// Tick evaluates every check and every CrowdSec alert rule. It runs on the central timer.
 func (t *Type) Tick(ctx context.Context) {
 	if err := t.Evaluate(ctx, time.Now().UnixMilli()); err != nil {
 		log.Printf("[CrowdSec] health: %v", err)
 	}
-	if t.delivering.CompareAndSwap(false, true) {
-		go func() {
-			defer t.delivering.Store(false)
-			t.Deliver(context.WithoutCancel(ctx))
-		}()
+}
+
+func (t *Type) deliver(eventID string) {
+	if eventID != "" && t.Deliver != nil {
+		t.Deliver(eventID)
 	}
 }
 
-// Evaluate runs the checks for every collector that can be judged at now.
+// openKey identifies an incident: one rule on one machine or bouncer.
+type openKey struct{ alertID, subjectID string }
+
+// Evaluate refreshes every judged collector's findings, then opens and resolves
+// rule incidents. An open incident is closed quietly when nothing keeps it:
+// its rule is gone, disabled or no longer covers the component, the component
+// was muted or removed, or its collector was removed. Incidents of a collector
+// that cannot be judged right now are left as they are.
 func (t *Type) Evaluate(ctx context.Context, now int64) error {
 	list, err := t.Store.reportedHealth(ctx)
 	if err != nil {
 		return err
 	}
+	var rules []store.Alert
+	open := map[openKey]store.CrowdSecIncident{}
+	if t.Rules != nil {
+		if rules, err = t.Rules.CrowdSecRules(ctx); err != nil {
+			return err
+		}
+		incidents, err := t.Rules.CrowdSecOpenIncidents(ctx, "")
+		if err != nil {
+			return err
+		}
+		for _, i := range incidents {
+			open[openKey{i.AlertID, i.SubjectID}] = i
+		}
+	}
+	ruleByID := map[string]bool{}
+	for _, r := range rules {
+		ruleByID[r.AlertID] = true
+	}
+	kept := map[openKey]bool{}
 	for _, h := range list {
 		col, err := t.Collectors.Store.CollectorGet(ctx, h.CollectorID, h.UserID)
 		if errors.Is(err, sql.ErrNoRows) {
-			// The collector was removed: nothing about it is kept.
+			// The collector was removed: nothing about it is kept, and its incidents close below.
 			if err := t.Store.dropCollectorHealth(ctx, h.CollectorID); err != nil {
 				return err
 			}
@@ -89,47 +117,44 @@ func (t *Type) Evaluate(ctx context.Context, now int64) error {
 			return err
 		}
 		if !t.judged(h, now) {
+			for k, i := range open {
+				if i.CollectorID == h.CollectorID && ruleByID[i.AlertID] {
+					kept[k] = true
+				}
+			}
 			continue
 		}
-		if err := t.evaluateCollector(ctx, h, readState(col).Machine, now); err != nil {
+		if err := t.evaluateCollector(ctx, h, col, rules, open, kept, now); err != nil {
+			return err
+		}
+	}
+	for k, i := range open {
+		if kept[k] {
+			continue
+		}
+		if err := t.Rules.CrowdSecClose(ctx, i.HistoryID); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (t *Type) evaluateCollector(ctx context.Context, h *CollectorHealth, self string, now int64) error {
+func (t *Type) evaluateCollector(ctx context.Context, h *CollectorHealth, col *store.Collector, rules []store.Alert,
+	open map[openKey]store.CrowdSecIncident, kept map[openKey]bool, now int64) error {
 	comps, err := t.Store.collectorComponents(ctx, h.CollectorID)
 	if err != nil {
 		return err
 	}
-	open, err := t.Store.events(ctx, eventsOpenByCollector, h.CollectorID)
-	if err != nil {
-		return err
-	}
-	type key struct {
-		component int64
-		check     string
-	}
-	byKey := map[key]*HealthEvent{}
-	for _, e := range open {
-		byKey[key{e.ComponentID, e.Check}] = e
-	}
-	ec := evalContext{Settings: h.Checks, Active: h.Active, Parts: h.partSet(), Self: self, Now: now}
+	ec := evalContext{Active: h.Active, Parts: h.partSet(), Self: readState(col).Machine, Groups: groupBouncers(comps), Now: now}
 	for _, c := range comps {
 		before := jsonText(c.Findings) + jsonText(c.Progress)
-		for _, o := range c.evaluate(ec) {
-			e := byKey[key{c.ID, o.Check.Name}]
-			alerting := o.Finding != nil && o.Finding.Level == LevelAlert
-			switch {
-			case alerting && e == nil:
-				if err := t.Store.openEvent(ctx, c, *o.Finding, h.TargetID, now); err != nil {
-					return err
-				}
-			case !alerting && e != nil:
-				if err := t.Store.resolveEvent(ctx, e, o.Recovered, now); err != nil {
-					return err
-				}
+		c.evaluate(ec)
+		for _, rule := range rules {
+			if rule.UserID != h.UserID {
+				continue
+			}
+			if err := t.evaluateRule(ctx, rule, c, col.Name, ec, open, kept); err != nil {
+				return err
 			}
 		}
 		if jsonText(c.Findings)+jsonText(c.Progress) != before {
@@ -141,71 +166,48 @@ func (t *Type) evaluateCollector(ctx context.Context, h *CollectorHealth, self s
 	return nil
 }
 
-// Deliver sends every notification that is waiting, one attempt each.
-func (t *Type) Deliver(ctx context.Context) {
-	pending, err := t.Store.events(ctx, eventsPending)
-	if err != nil {
-		log.Printf("[CrowdSec] health notifications: %v", err)
-		return
+func (t *Type) evaluateRule(ctx context.Context, rule store.Alert, c *Component, collectorName string, ec evalContext,
+	open map[openKey]store.CrowdSecIncident, kept map[openKey]bool) error {
+	check := checkForTrigger(rule.Trigger.Type)
+	if check == nil || check.Kind != c.Kind {
+		return nil
 	}
-	names := map[string]map[string]string{}
-	for _, e := range pending {
-		phase := "firing"
-		if e.Firing != notifyPending {
-			phase = "recovery"
+	covered := false
+	for _, s := range rule.CrowdSec {
+		covered = covered || c.matches(s)
+	}
+	if !covered {
+		return nil
+	}
+	k := openKey{rule.AlertID, c.key()}
+	incident, isOpen := open[k]
+	r := c.run(check, check.ruleValues(rule.Trigger.Threshold), ec, "rule:"+rule.AlertID)
+	switch {
+	case !r.Judged:
+		// Nothing to go on (never seen, metrics missing): an open incident stays,
+		// unless the component was muted, which ends it.
+		if isOpen && !c.skipped(ec) {
+			kept[k] = true
 		}
-		if names[e.UserID] == nil {
-			list, err := t.Collectors.Store.CollectorNames(ctx, e.UserID)
-			if err != nil {
-				log.Printf("[CrowdSec] health notifications: collector names: %v", err)
-				list = map[string]string{}
-			}
-			names[e.UserID] = list
+	case r.Bad && isOpen:
+		kept[k] = true
+	case r.Bad:
+		snap := alert.CrowdSecSnapshot{Collector: collectorName, Kind: c.Kind, Name: c.Name, Label: check.Label, Detail: r.Detail, Unit: check.Unit}
+		eventID, err := t.Rules.CrowdSecFire(ctx, rule, c.CollectorID, c.key(), snap, r.Value)
+		if err != nil {
+			return err
 		}
-		name := names[e.UserID][e.CollectorID]
-		if name == "" {
-			name = e.CollectorID // still says which collector, if its name is unavailable
+		kept[k] = true
+		t.deliver(eventID)
+	case isOpen:
+		eventID, err := t.Rules.CrowdSecResolve(ctx, incident.HistoryID)
+		if err != nil {
+			return err
 		}
-		sendErr := t.send(ctx, e, phase, name)
-		if sendErr != nil {
-			log.Printf("[CrowdSec] health notification for %s %s: %v", e.Kind, e.Name, sendErr)
-		}
-		if err := t.Store.recordDelivery(ctx, e, phase, sendErr); err != nil {
-			log.Printf("[CrowdSec] health notifications: %v", err)
-		}
-	}
-}
-
-func (t *Type) send(ctx context.Context, e *HealthEvent, phase, collectorName string) error {
-	if t.Targets == nil {
-		return errors.New("notification targets are not available")
-	}
-	target, err := t.Targets.TargetGetByID(ctx, e.TargetID, e.UserID)
-	if err != nil {
-		return errors.New("the notification target no longer exists")
-	}
-	nctx := notifications.NotificationContext{
-		AgentID: e.CollectorID, Nickname: e.Name, Collector: collectorName, TriggerType: "crowdsec_" + e.Check,
-		Status: "FIRING", Value: e.Value, Detail: e.Detail, SubjectKind: e.Kind,
-	}
-	opened := time.UnixMilli(e.OpenedMs)
-	nctx.WentOfflineAt = &opened
-	if check := checks[e.Check]; check != nil {
-		nctx.TriggerLabel = "CrowdSec: " + check.Label
-		nctx.ValueText = fmt.Sprintf("%.0f %s", e.Value, check.Unit)
-	}
-	if phase == "recovery" {
-		resolved := time.UnixMilli(e.ResolvedMs)
-		nctx.Status, nctx.ResolvedAt, nctx.Value, nctx.ValueText = "RESOLVED", &resolved, 0, "Recovered"
-	}
-	action := alert.AlertAction{Type: target.Type, Destination: target.Destination, Payload: target.Payload}
-	notify := t.Notify
-	if notify == nil {
-		notify = notifications.DispatchNotification
-	}
-	if err := notify(action, nctx); err != nil {
-		// The destination is a secret: keep it out of the log and the page, as alert delivery does.
-		return errors.New(strings.ReplaceAll(err.Error(), target.Destination, "[notification destination]"))
+		kept[k] = true // resolved, not to be closed as well
+		t.deliver(eventID)
+	default:
+		// Healthy with nothing open; also not "still bad but waiting for more reports".
 	}
 	return nil
 }

@@ -21,9 +21,14 @@
       <span class="hero-stat-label">Collectors reporting</span>
       <span class="hero-stat-value"><span data-cs-stat-collectors>–</span></span>
     </div>
+    <div class="hero-stat" data-cs-components-stat hidden>
+      <span class="hero-stat-label">Machines and bouncers</span>
+      <span class="hero-stat-value"><span data-cs-components-count>–</span></span>
+    </div>
   </div>
   <div class="hero-actions">
     <a class="btn btn-secondary" href="{{.PanelPath}}/collectors">Collectors</a>
+    <button type="button" class="btn btn-secondary" data-cs-components-open hidden>Machines and bouncers</button>
     <button type="button" class="btn btn-ghost" data-cs-refresh>Refresh</button>
   </div>
 </section>

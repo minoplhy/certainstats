@@ -1,6 +1,7 @@
 (function () {
   'use strict';
-  const LABELS = { network_loss: 'Network monitor loss', agent_down: 'Node offline', cpu_usage: 'CPU usage', cpu_iowait: 'CPU I/O wait', cpu_steal: 'CPU steal', ram_usage: 'RAM usage', swap_usage: 'Swap usage', disk_usage: 'Disk usage', net_rx: 'Network in', net_tx: 'Network out', disk_read: 'Disk read', disk_write: 'Disk write' };
+  const LABELS = { network_loss: 'Network monitor loss', agent_down: 'Node offline', cpu_usage: 'CPU usage', cpu_iowait: 'CPU I/O wait', cpu_steal: 'CPU steal', ram_usage: 'RAM usage', swap_usage: 'Swap usage', disk_usage: 'Disk usage', net_rx: 'Network in', net_tx: 'Network out', disk_read: 'Disk read', disk_write: 'Disk write',
+    crowdsec_heartbeat: 'CrowdSec machine heartbeat', crowdsec_pull: 'CrowdSec bouncer pull', crowdsec_held: 'CrowdSec bouncer holds decisions', crowdsec_siblings: 'CrowdSec bouncer behind its siblings' };
   const STATUS = { queued: 'Queued', pending: 'Sending', success: 'Delivered', failed: 'Failed', unknown: 'Outcome unknown', skipped: 'Skipped' };
   function el(tag, cls, text) { const node = document.createElement(tag); if (cls) node.className = cls; if (text != null) node.textContent = text; return node; }
   function date(value) { const t = new Date(value); return Number.isFinite(t.getTime()) ? t.toLocaleString() : 'Unknown time'; }
@@ -16,6 +17,7 @@
   function metric(type, value) {
     if (type === 'agent_down') return 'Offline';
     if (!type || !Number.isFinite(value)) return 'Unknown';
+    if (type === 'crowdsec_heartbeat' || type === 'crowdsec_pull') return value.toLocaleString(undefined, { maximumFractionDigits: 0 }) + ' min';
     return value.toLocaleString(undefined, { maximumFractionDigits: 1 }) + (['net_rx', 'net_tx', 'disk_read', 'disk_write'].includes(type) ? ' KB/s' : '%');
   }
   function badge(status, text) { return el('span', 'incident-badge incident-' + status, text || STATUS[status] || 'Not recorded'); }
@@ -112,6 +114,12 @@
         const facts = el('dl', 'incident-facts');
         function fact(label, value) { const pair = el('div'); const detail = el('dd', '', value); pair.append(el('dt', 'muted', label), detail); facts.append(pair); return detail; }
         const trigger = h.trigger || {};
+        if (h.subject_kind === 'crowdsec' && h.subject) {
+          // A CrowdSec machine or bouncer, kept as it was when the incident started.
+          fact(h.subject.kind === 'machine' ? 'Machine' : 'Bouncer', h.subject.name);
+          fact('Collector', h.subject.collector);
+          if (h.subject.detail) fact('What fired', h.subject.detail);
+        }
         if (h.monitor_id) {
           fact('Monitor target', h.monitor.target);
           fact('Protocol', h.monitor.protocol);

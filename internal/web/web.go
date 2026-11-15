@@ -3,10 +3,12 @@ package web
 import (
 	"certainstats/internal/auth"
 	ctx "certainstats/internal/context"
+	"certainstats/internal/crowdsec"
 	"certainstats/internal/metrics"
 	"certainstats/internal/security"
 	"certainstats/internal/store"
 	"certainstats/internal/ws"
+	stdctx "context"
 	"net/http"
 	"time"
 )
@@ -22,6 +24,13 @@ type WebHandler struct {
 	StaticPath string
 	// Agents holds live agent connections, closed when credentials are revoked.
 	Agents *ws.Manager
+	// CrowdSec lists the machines and bouncers alert rules can watch; nil hides them.
+	CrowdSec CrowdSecSubjects
+}
+
+// CrowdSecSubjects is the CrowdSec type's list of what alert rules can watch.
+type CrowdSecSubjects interface {
+	Subjects(c stdctx.Context, userID string) ([]crowdsec.CollectorSubjects, error)
 }
 
 // Helper to extract user ID from context

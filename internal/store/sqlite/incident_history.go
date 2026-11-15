@@ -17,11 +17,15 @@ func triggerSnapshot(t a.Trigger) string { b, _ := json.Marshal(t); return strin
 
 const incidentSelect = `SELECT h.history_id,h.alert_id,h.agent_id,h.user_id,h.agent_nickname,h.alert_nickname,
  h.triggered_at,h.resolved_at,h.closed_at,h.close_reason,h.trigger_value,h.notified_status,h.trigger_snapshot,
- h.target_id,h.target_name,h.error_message,h.legacy,h.subject_kind,h.monitor_id,h.monitor_snapshot,
- EXISTS(SELECT 1 FROM alerts a JOIN agents n ON n.agent_id=h.agent_id WHERE a.alert_id=h.alert_id AND a.user_id=h.user_id AND n.user_id=h.user_id) AND h.closed_at IS NULL AND (h.monitor_id='' OR EXISTS(SELECT 1 FROM network_monitors m JOIN alert_monitors am ON am.monitor_id=m.monitor_id AND am.alert_id=h.alert_id WHERE m.monitor_id=h.monitor_id AND m.enabled=1 AND m.archived_at IS NULL AND EXISTS(SELECT 1 FROM alerts r WHERE r.alert_id=h.alert_id AND r.enabled=1))),
- EXISTS(SELECT 1 FROM alerts a JOIN agents n ON n.agent_id=h.agent_id WHERE a.alert_id=h.alert_id AND a.user_id=h.user_id AND n.user_id=h.user_id
+ h.target_id,h.target_name,h.error_message,h.legacy,h.subject_kind,h.monitor_id,h.monitor_snapshot, h.subject_id,h.subject_snapshot,
+ CASE WHEN h.subject_kind='crowdsec' THEN (h.closed_at IS NULL AND EXISTS(SELECT 1 FROM alerts r WHERE r.alert_id=h.alert_id AND r.user_id=h.user_id AND r.enabled=1))
+ ELSE (EXISTS(SELECT 1 FROM alerts a JOIN agents n ON n.agent_id=h.agent_id WHERE a.alert_id=h.alert_id AND a.user_id=h.user_id AND n.user_id=h.user_id) AND h.closed_at IS NULL AND (h.monitor_id='' OR EXISTS(SELECT 1 FROM network_monitors m JOIN alert_monitors am ON am.monitor_id=m.monitor_id AND am.alert_id=h.alert_id WHERE m.monitor_id=h.monitor_id AND m.enabled=1 AND m.archived_at IS NULL AND EXISTS(SELECT 1 FROM alerts r WHERE r.alert_id=h.alert_id AND r.enabled=1)))) END,
+ CASE WHEN h.subject_kind='crowdsec' THEN (h.closed_at IS NULL AND EXISTS(SELECT 1 FROM alerts a WHERE a.alert_id=h.alert_id AND a.user_id=h.user_id AND a.enabled=1
  AND ((h.target_id!='' AND EXISTS(SELECT 1 FROM alert_targets t WHERE t.target_id=h.target_id AND t.user_id=h.user_id))
- OR (h.target_id='' AND json_extract(a.action_config,'$.type')!='preset' AND COALESCE(json_extract(a.action_config,'$.destination'),'')!=''))) AND h.closed_at IS NULL AND (h.monitor_id='' OR EXISTS(SELECT 1 FROM network_monitors m JOIN alert_monitors am ON am.monitor_id=m.monitor_id AND am.alert_id=h.alert_id WHERE m.monitor_id=h.monitor_id AND m.enabled=1 AND m.archived_at IS NULL AND EXISTS(SELECT 1 FROM alerts r WHERE r.alert_id=h.alert_id AND r.enabled=1))),
+ OR (h.target_id='' AND json_extract(a.action_config,'$.type')!='preset' AND COALESCE(json_extract(a.action_config,'$.destination'),'')!=''))))
+ ELSE (EXISTS(SELECT 1 FROM alerts a JOIN agents n ON n.agent_id=h.agent_id WHERE a.alert_id=h.alert_id AND a.user_id=h.user_id AND n.user_id=h.user_id
+ AND ((h.target_id!='' AND EXISTS(SELECT 1 FROM alert_targets t WHERE t.target_id=h.target_id AND t.user_id=h.user_id))
+ OR (h.target_id='' AND json_extract(a.action_config,'$.type')!='preset' AND COALESCE(json_extract(a.action_config,'$.destination'),'')!=''))) AND h.closed_at IS NULL AND (h.monitor_id='' OR EXISTS(SELECT 1 FROM network_monitors m JOIN alert_monitors am ON am.monitor_id=m.monitor_id AND am.alert_id=h.alert_id WHERE m.monitor_id=h.monitor_id AND m.enabled=1 AND m.archived_at IS NULL AND EXISTS(SELECT 1 FROM alerts r WHERE r.alert_id=h.alert_id AND r.enabled=1)))) END,
  COALESCE((SELECT e.status FROM alert_history_events e WHERE e.history_id=h.history_id AND e.phase='firing' ORDER BY e.created_at DESC,e.event_id DESC LIMIT 1),h.notified_status),
  COALESCE((SELECT e.status FROM alert_history_events e WHERE e.history_id=h.history_id AND e.phase='recovery' ORDER BY e.created_at DESC,e.event_id DESC LIMIT 1),'')
  FROM alert_history h `
@@ -31,8 +35,8 @@ type scanner interface{ Scan(...any) error }
 func scanIncident(row scanner) (*a.AlertHistory, error) {
 	h := new(a.AlertHistory)
 	var resolved, closed sql.NullTime
-	var snapshot, monitor string
-	err := row.Scan(&h.HistoryID, &h.AlertID, &h.AgentID, &h.UserID, &h.AgentNickname, &h.AlertNickname, &h.TriggeredAt, &resolved, &closed, &h.CloseReason, &h.TriggerValue, &h.NotifiedStatus, &snapshot, &h.TargetID, &h.TargetName, &h.ErrorMessage, &h.Legacy, &h.SubjectKind, &h.MonitorID, &monitor, &h.MonitoringAvailable, &h.RetryAvailable, &h.FiringDelivery, &h.RecoveryDelivery)
+	var snapshot, monitor, subject string
+	err := row.Scan(&h.HistoryID, &h.AlertID, &h.AgentID, &h.UserID, &h.AgentNickname, &h.AlertNickname, &h.TriggeredAt, &resolved, &closed, &h.CloseReason, &h.TriggerValue, &h.NotifiedStatus, &snapshot, &h.TargetID, &h.TargetName, &h.ErrorMessage, &h.Legacy, &h.SubjectKind, &h.MonitorID, &monitor, &h.SubjectID, &subject, &h.MonitoringAvailable, &h.RetryAvailable, &h.FiringDelivery, &h.RecoveryDelivery)
 	if err != nil {
 		return nil, err
 	}
@@ -44,6 +48,7 @@ func scanIncident(row scanner) (*a.AlertHistory, error) {
 	}
 	_ = json.Unmarshal([]byte(snapshot), &h.Trigger)
 	_ = json.Unmarshal([]byte(monitor), &h.Monitor)
+	_ = json.Unmarshal([]byte(subject), &h.Subject) // like the other snapshots: damaged reads as empty
 	return h, nil
 }
 func (s *Store) AlertHistoryGetByID(ctx context.Context, id, user string) (*a.AlertHistory, error) {

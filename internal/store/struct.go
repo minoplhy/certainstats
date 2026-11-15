@@ -126,3 +126,17 @@ type DiskDelta struct {
 	ReadBytes  uint64
 	WriteBytes uint64
 }
+
+// CrowdSecIncident is one open CrowdSec incident.
+type CrowdSecIncident struct {
+	HistoryID     string
+	AlertID       string
+	AlertNickname string
+	UserID        string
+	CollectorID   string
+	SubjectID     string
+	Trigger       c.TriggerType
+	// Notified is how the firing notification went: pending, success, failed, unknown.
+	Notified string
+	Error    string
+}

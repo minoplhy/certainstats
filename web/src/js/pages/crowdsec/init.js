@@ -8,12 +8,13 @@ import { buildCards, renderCard, CARD_LIMIT } from './panels/breakdowns.js';
 import { renderChips, bindFilters, syncRangeControls } from './filters/bar.js';
 import { renderHead, renderRows, bindPaging } from './table/table.js';
 import { bindIPView, loadIPView } from './ip/view.js';
-import { loadComponents } from './panels/components.js';
+import { loadComponents, bindComponents } from './panels/components.js';
 
 const ROLES = {
   collectorCount: 'collector-count', headline: 'headline', statAlerts: 'stat-alerts', statIps: 'stat-ips', statBans: 'stat-bans',
   statCollectors: 'stat-collectors', refresh: 'refresh', empty: 'empty', components: 'components', componentsCount: 'components-count',
-  componentsMessage: 'components-message', componentsNotes: 'components-notes', componentsList: 'components-list',
+  componentsMessage: 'components-message', componentsNotes: 'components-notes', componentsStat: 'components-stat', componentsOpen: 'components-open',
+  machines: 'machines', machinesCount: 'machines-count', machinesEmpty: 'machines-empty', bouncers: 'bouncers', bouncersCount: 'bouncers-count', bouncersEmpty: 'bouncers-empty',
   main: 'main', search: 'search', addFilter: 'add-filter', filterField: 'filter-field', filterOp: 'filter-op', filterValue: 'filter-value',
   filterToggle: 'filter-toggle', filterPopover: 'filter-popover', timePicker: 'time-picker', chips: 'chips', expired: 'expired',
   timelineNote: 'timeline-note', timelineAlerts: 'timeline-alerts', timelineDecisions: 'timeline-decisions',
@@ -165,6 +166,7 @@ export function init(root, config) {
     load();
   });
   bindCollectors();
+  bindComponents();
   loadComponents();
   load();
   return config;

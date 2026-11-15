@@ -10,6 +10,15 @@ import (
 
 // ParseTrigger validates and normalizes a Trigger.
 func ParseTrigger(t *alert.Trigger) error {
+	if st, ok := alert.SubjectTriggerFor(t.Type); ok {
+		// The check does its own timing; only the threshold is the rule's.
+		if math.IsNaN(t.Threshold) || math.IsInf(t.Threshold, 0) || t.Threshold < st.Min || t.Threshold > st.Max {
+			return fmt.Errorf("%s: threshold must be between %g and %g", st.Label, st.Min, st.Max)
+		}
+		t.Operator = alert.OpGreaterThan
+		t.Duration = "0s"
+		return nil
+	}
 	if t.Type == alert.TriggerTypeNetworkLoss {
 		if math.IsNaN(t.Threshold) || math.IsInf(t.Threshold, 0) || t.Threshold < 0 || t.Threshold > 100 {
 			return fmt.Errorf("loss threshold must be between 0 and 100")
@@ -64,4 +73,30 @@ func ParseAction(a *alert.AlertAction) error {
 		return fmt.Errorf("alert: invalid action channel type: %q", a.Type)
 	}
 	return nil
+}
+
+// CheckSubjects says which subjects a rule must have for its trigger: network
+// rules need monitors, CrowdSec rules need machines or bouncers, and every other
+// rule watches servers. It returns the problem in words, or "".
+func CheckSubjects(t alert.TriggerType, agents, monitors int, crowdsec []alert.CrowdSecSubject) string {
+	switch {
+	case alert.IsCrowdSecTrigger(t):
+		if agents > 0 || monitors > 0 || len(crowdsec) == 0 {
+			return "Select machines or bouncers for CrowdSec rules"
+		}
+		for _, s := range crowdsec {
+			if _, ok := alert.ParseCrowdSecSubject(s.Key()); !ok {
+				return "Invalid machine or bouncer selection"
+			}
+		}
+	case t == alert.TriggerTypeNetworkLoss:
+		if agents > 0 || monitors == 0 || len(crowdsec) > 0 {
+			return "Select monitors for network rules, agents for resource rules"
+		}
+	default:
+		if monitors > 0 || len(crowdsec) > 0 {
+			return "Select monitors for network rules, agents for resource rules"
+		}
+	}
+	return ""
 }

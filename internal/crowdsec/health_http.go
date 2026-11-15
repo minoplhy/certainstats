@@ -1,17 +1,18 @@
 package crowdsec
 
 import (
+	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
 
-	"certainstats/internal/collector"
 	"certainstats/internal/crowdsec/wire"
 	apiresponse "certainstats/internal/response"
+	"certainstats/internal/store"
 
 	"github.com/go-chi/chi/v5"
 )
@@ -27,9 +28,17 @@ const (
 type findingView struct {
 	Finding
 	Label string `json:"label"`
-	// Notify is how the incident's notification went: sent, pending, failed, none; empty for a caution.
-	Notify      string `json:"notify,omitempty"`
-	NotifyError string `json:"notify_error,omitempty"`
+}
+
+// firingView is an alert rule with an open incident on the component.
+type firingView struct {
+	AlertID   string `json:"alert_id"`
+	Rule      string `json:"rule"`
+	Check     string `json:"check"`
+	HistoryID string `json:"history_id"`
+	// Notified is how the notification went: pending, success, failed, unknown.
+	Notified string `json:"notified"`
+	Error    string `json:"error,omitempty"`
 }
 
 type componentView struct {
@@ -38,6 +47,7 @@ type componentView struct {
 	Collector   string        `json:"collector"`
 	Kind        string        `json:"kind"`
 	Name        string        `json:"name"`
+	Group       string        `json:"group"`
 	Version     string        `json:"version"`
 	IP          string        `json:"ip"`
 	Type        string        `json:"type"`
@@ -48,13 +58,14 @@ type componentView struct {
 	Validated   bool          `json:"validated"`
 	Revoked     bool          `json:"revoked"`
 	Findings    []findingView `json:"findings"`
-	// Held and Active are set for a bouncer that reports what it holds: its
-	// decisions, and the Local API's active ones for the same origins.
-	MetricsMs int64  `json:"metrics_ms"`
-	Held      *int64 `json:"held"`
-	Active    *int64 `json:"active"`
-	Dropped   int64  `json:"dropped"`
-	Processed int64  `json:"processed"`
+	Firing      []firingView  `json:"firing"`
+	// Held is what a bouncer that sends usage metrics says it holds, by origin;
+	// Active is the Local API's active decisions for the same origins.
+	MetricsMs int64            `json:"metrics_ms"`
+	Held      map[string]int64 `json:"held"`
+	Active    map[string]int64 `json:"active"`
+	Dropped   int64            `json:"dropped"`
+	Processed int64            `json:"processed"`
 }
 
 type unavailableView struct {
@@ -69,15 +80,46 @@ type collectorHealthView struct {
 	Health      string `json:"health"`
 	Error       string `json:"error"`
 	ReportedMs  int64  `json:"reported_ms"`
-	// Unavailable lists the checks that are on but whose data the host does not let the collector read.
+	// Unavailable lists the checks whose data the host does not let the collector read.
 	Unavailable []unavailableView `json:"unavailable"`
+}
+
+// collectorInfo is what the views need about one collector with CrowdSec on.
+type collectorInfo struct {
+	name   string
+	self   string
+	health *CollectorHealth
+	judged bool
+}
+
+// crowdsecCollectors lists the owner's collectors with CrowdSec enabled, in order.
+func (t *Type) crowdsecCollectors(ctx context.Context, user string, now int64) ([]store.Collector, map[string]collectorInfo, error) {
+	cols, err := t.Collectors.Store.CollectorList(ctx, user)
+	if err != nil {
+		return nil, nil, err
+	}
+	var out []store.Collector
+	info := map[string]collectorInfo{}
+	for i := range cols {
+		c := &cols[i]
+		if row, ok := c.Type(wire.TypeName); !ok || !row.Enabled {
+			continue
+		}
+		h, err := t.Store.Health(ctx, user, c.CollectorID)
+		if err != nil {
+			return nil, nil, err
+		}
+		info[c.CollectorID] = collectorInfo{name: c.Name, self: readState(c).Machine, health: h, judged: t.judged(h, now)}
+		out = append(out, *c)
+	}
+	return out, info, nil
 }
 
 // components lists the owner's machines and bouncers with their state, and
 // says per collector whether health is being reported at all.
 func (t *Type) components(w http.ResponseWriter, r *http.Request) {
 	ctx, user, now := r.Context(), userID(r), time.Now().UnixMilli()
-	cols, err := t.Collectors.Store.CollectorList(ctx, user)
+	cols, info, err := t.crowdsecCollectors(ctx, user, now)
 	if err != nil {
 		fail(w, "components", err)
 		return
@@ -87,44 +129,26 @@ func (t *Type) components(w http.ResponseWriter, r *http.Request) {
 		fail(w, "components", err)
 		return
 	}
-	open, err := t.Store.events(ctx, eventsOpenByUser, user)
-	if err != nil {
-		fail(w, "components", err)
-		return
-	}
-	type key struct {
-		component int64
-		check     string
-	}
-	events := map[key]*HealthEvent{}
-	for _, e := range open {
-		events[key{e.ComponentID, e.Check}] = e
+	firing := map[string][]firingView{}
+	if t.Rules != nil {
+		open, err := t.Rules.CrowdSecOpenIncidents(ctx, user)
+		if err != nil {
+			fail(w, "components", err)
+			return
+		}
+		for _, i := range open {
+			check := strings.TrimPrefix(string(i.Trigger), "crowdsec_")
+			firing[i.SubjectID] = append(firing[i.SubjectID], firingView{AlertID: i.AlertID, Rule: i.AlertNickname, Check: check, HistoryID: i.HistoryID, Notified: i.Notified, Error: i.Error})
+		}
 	}
 
 	out := struct {
 		Collectors []collectorHealthView `json:"collectors"`
 		Items      []componentView       `json:"items"`
 	}{Collectors: []collectorHealthView{}, Items: []componentView{}}
-	type known struct {
-		name   string
-		self   string
-		health *CollectorHealth
-		judged bool
-	}
-	byID := map[string]known{}
-	for i := range cols {
-		c := &cols[i]
-		row, ok := c.Type(wire.TypeName)
-		if !ok || !row.Enabled {
-			continue
-		}
-		h, err := t.Store.Health(ctx, user, c.CollectorID)
-		if err != nil {
-			fail(w, "components", err)
-			return
-		}
-		k := known{name: c.Name, self: readState(c).Machine, health: h, judged: t.judged(h, now)}
-		byID[c.CollectorID] = k
+	for _, c := range cols {
+		k := info[c.CollectorID]
+		h := k.health
 		v := collectorHealthView{CollectorID: c.CollectorID, Name: c.Name, Error: h.Error, ReportedMs: h.ReportedMs, Unavailable: []unavailableView{}}
 		since, connected := t.connected(c.CollectorID)
 		fresh := h.ReportedMs > 0 && now-h.ReportedMs <= reportFresh.Milliseconds()
@@ -144,9 +168,6 @@ func (t *Type) components(w http.ResponseWriter, r *http.Request) {
 		if v.Health == healthOn {
 			parts := h.partSet()
 			for _, check := range Checks() {
-				if check.setting(h.Checks).Level == LevelOff {
-					continue
-				}
 				var missing []string
 				for _, p := range check.Needs {
 					if !parts[p] {
@@ -161,31 +182,33 @@ func (t *Type) components(w http.ResponseWriter, r *http.Request) {
 		out.Collectors = append(out.Collectors, v)
 	}
 	for _, c := range list {
-		k, ok := byID[c.CollectorID]
+		k, ok := info[c.CollectorID]
 		if !ok {
 			continue
 		}
 		db := c.db()
+		fv := firing[c.key()]
+		if fv == nil {
+			fv = []firingView{}
+		}
 		v := componentView{ID: c.ID, CollectorID: c.CollectorID, Collector: k.name, Kind: c.Kind, Name: c.Name, Version: c.Version, IP: c.IP, Type: c.Type, OS: c.OS,
-			State: c.state(k.judged, k.self), Muted: c.Muted, LastSeenMs: db.LastSeenMs, Validated: db.Validated, Revoked: db.Revoked,
-			Findings: []findingView{}, MetricsMs: db.MetricsMs, Dropped: db.Dropped, Processed: db.Processed}
+			State: c.state(k.judged, k.self, len(fv) > 0), Muted: c.Muted, LastSeenMs: db.LastSeenMs, Validated: db.Validated, Revoked: db.Revoked,
+			Findings: []findingView{}, Firing: fv, MetricsMs: db.MetricsMs, Held: db.Held, Dropped: db.Dropped, Processed: db.Processed}
+		if c.Kind == wire.KindBouncer {
+			v.Group = BaseName(c.Name)
+		}
 		if db.Held != nil {
-			var held, active int64
-			for origin, n := range db.Held {
-				held += n
-				active += k.health.Active[origin]
+			v.Active = map[string]int64{}
+			for origin := range db.Held {
+				v.Active[origin] = k.health.Active[origin]
 			}
-			v.Held, v.Active = &held, &active
 		}
 		// Findings of a component that is not being judged are stale; leave them out.
-		if v.State == StateAlert || v.State == StateCaution {
+		if k.judged && !c.Muted {
 			for _, f := range c.Findings {
 				fv := findingView{Finding: f, Label: f.Check}
 				if check := checks[f.Check]; check != nil {
 					fv.Label = check.Label
-				}
-				if e := events[key{c.ID, f.Check}]; e != nil {
-					fv.Notify, fv.NotifyError = e.Firing, e.Error
 				}
 				v.Findings = append(v.Findings, fv)
 			}
@@ -215,85 +238,70 @@ func (t *Type) mute(muted bool) http.HandlerFunc {
 	}
 }
 
-type targetView struct {
-	TargetID string `json:"target_id"`
-	Name     string `json:"name"`
+// SubjectGroup is one shared bouncer key: its base name and its entries.
+type SubjectGroup struct {
+	Name    string   `json:"name"`
+	Entries []string `json:"entries"`
 }
 
-type healthSettingsView struct {
-	TargetID string                  `json:"target_id"`
-	Checks   map[string]CheckSetting `json:"checks"`
-	// Registry describes every check, so the form is built from it.
-	Registry []*Check     `json:"registry"`
-	Targets  []targetView `json:"targets"`
+// CollectorSubjects is what an alert rule can watch on one collector.
+type CollectorSubjects struct {
+	CollectorID string         `json:"collector_id"`
+	Name        string         `json:"name"`
+	Machines    []string       `json:"machines"`
+	Groups      []SubjectGroup `json:"groups"`   // keys used from several addresses
+	Bouncers    []string       `json:"bouncers"` // bouncers with a key of their own
 }
 
-func (t *Type) settingsView(r *http.Request, h *CollectorHealth) (healthSettingsView, error) {
-	v := healthSettingsView{TargetID: h.TargetID, Checks: map[string]CheckSetting{}, Registry: Checks(), Targets: []targetView{}}
-	for _, check := range v.Registry {
-		v.Checks[check.Name] = check.setting(h.Checks)
-	}
-	if t.Targets != nil {
-		targets, err := t.Targets.TargetList(r.Context(), userID(r))
-		if err != nil {
-			return v, err
-		}
-		for _, target := range targets {
-			v.Targets = append(v.Targets, targetView{TargetID: target.TargetID, Name: target.Name})
-		}
-	}
-	return v, nil
-}
-
-func (t *Type) healthSettings(w http.ResponseWriter, r *http.Request) {
-	c := collector.FromRequest(r)
-	h, err := t.Store.Health(r.Context(), userID(r), c.CollectorID)
-	var v healthSettingsView
-	if err == nil {
-		v, err = t.settingsView(r, h)
-	}
+// Subjects lists, per collector with CrowdSec enabled, the machines, shared
+// bouncer keys and single bouncers an alert rule can watch.
+func (t *Type) Subjects(ctx context.Context, user string) ([]CollectorSubjects, error) {
+	cols, info, err := t.crowdsecCollectors(ctx, user, time.Now().UnixMilli())
 	if err != nil {
-		fail(w, "health settings", err)
-		return
+		return nil, err
 	}
-	apiresponse.JSON(w, http.StatusOK, v)
+	list, err := t.Store.Components(ctx, user)
+	if err != nil {
+		return nil, err
+	}
+	byCollector := map[string][]*Component{}
+	for _, c := range list {
+		byCollector[c.CollectorID] = append(byCollector[c.CollectorID], c)
+	}
+	out := []CollectorSubjects{}
+	for _, col := range cols {
+		s := CollectorSubjects{CollectorID: col.CollectorID, Name: col.Name, Machines: []string{}, Groups: []SubjectGroup{}, Bouncers: []string{}}
+		self := info[col.CollectorID].self
+		for _, c := range byCollector[col.CollectorID] {
+			if c.Kind == wire.KindMachine && c.Name != self {
+				s.Machines = append(s.Machines, c.Name)
+			}
+		}
+		for base, members := range groupBouncers(byCollector[col.CollectorID]) {
+			if len(members) == 1 && members[0].Name == base {
+				s.Bouncers = append(s.Bouncers, base)
+				continue
+			}
+			g := SubjectGroup{Name: base}
+			for _, m := range members {
+				g.Entries = append(g.Entries, m.Name)
+			}
+			sort.Strings(g.Entries)
+			s.Groups = append(s.Groups, g)
+		}
+		sort.Strings(s.Machines)
+		sort.Strings(s.Bouncers)
+		sort.Slice(s.Groups, func(i, j int) bool { return s.Groups[i].Name < s.Groups[j].Name })
+		out = append(out, s)
+	}
+	return out, nil
 }
 
-func (t *Type) saveHealthSettings(w http.ResponseWriter, r *http.Request) {
-	c := collector.FromRequest(r)
-	var body struct {
-		TargetID string                  `json:"target_id"`
-		Checks   map[string]CheckSetting `json:"checks"`
-	}
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&body); err != nil {
-		apiresponse.Error(w, http.StatusBadRequest, "Invalid request body")
+func (t *Type) subjects(w http.ResponseWriter, r *http.Request) {
+	out, err := t.Subjects(r.Context(), userID(r))
+	if err != nil {
+		fail(w, "machines and bouncers", err)
 		return
 	}
-	body.TargetID = strings.TrimSpace(body.TargetID)
-	if body.TargetID != "" {
-		if t.Targets == nil {
-			apiresponse.Error(w, http.StatusBadRequest, "Notification targets are not available")
-			return
-		}
-		if _, err := t.Targets.TargetGetByID(r.Context(), body.TargetID, userID(r)); err != nil {
-			apiresponse.Error(w, http.StatusBadRequest, "Unknown notification target")
-			return
-		}
-	}
-	for name, setting := range body.Checks {
-		check := checks[name]
-		if check == nil {
-			apiresponse.Error(w, http.StatusBadRequest, "Unknown check: "+name)
-			return
-		}
-		if err := check.validate(setting); err != nil {
-			apiresponse.Error(w, http.StatusBadRequest, err.Error())
-			return
-		}
-	}
-	if err := t.Store.SaveHealthSettings(r.Context(), userID(r), c.CollectorID, body.TargetID, body.Checks); err != nil {
-		fail(w, "health settings", err)
-		return
-	}
-	t.healthSettings(w, r)
+	apiresponse.JSON(w, http.StatusOK, map[string]any{"collectors": out})
 }

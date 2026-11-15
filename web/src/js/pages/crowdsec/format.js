@@ -60,6 +60,16 @@ export function formatTime(ms, withSeconds = false) {
   return date + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + (withSeconds ? ':' + pad(d.getSeconds()) : '');
 }
 
+// timeAgo describes a past moment: "just now", "5m ago", "3h ago", "2d ago" or "never".
+export function timeAgo(ms, now = Date.now()) {
+  if (!ms) return 'never';
+  const s = Math.max(0, Math.round((now - ms) / 1000));
+  if (s < 60) return 'just now';
+  if (s < 3600) return Math.floor(s / 60) + 'm ago';
+  if (s < 86400) return Math.floor(s / 3600) + 'h ago';
+  return Math.floor(s / 86400) + 'd ago';
+}
+
 // relative describes a moment from now: "in 3h 12m" or "expired".
 export function untilText(ms, now = Date.now()) {
   if (!ms) return 'unknown expiry';
@@ -100,7 +110,11 @@ export function headline(summary, view, collectors, components) {
     return {bad: true, text: down.length === 1 ? down[0].name + ' is not reporting.' : down.length + ' collectors are not reporting.'};
   }
   const quiet = needsAttention(components);
-  if (quiet.length === 1) return {bad: true, text: quiet[0].name + ' needs attention: ' + (quiet[0].findings[0]?.detail || 'unhealthy') + '.'};
+  if (quiet.length === 1) {
+    const c = quiet[0];
+    const why = c.findings[0]?.detail || (c.firing?.[0] ? c.firing[0].rule + ' is firing' : 'unhealthy');
+    return {bad: true, text: c.name + ' needs attention: ' + why + '.'};
+  }
   if (quiet.length) {
     const machines = quiet.filter(c => c.kind === 'machine').length, bouncers = quiet.length - machines;
     const parts = [];

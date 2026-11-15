@@ -10,8 +10,8 @@ import (
 )
 
 // healthSchema is added to crowdsec.db: the machines and bouncers a collector
-// reported, each collector's health settings and last report, and one row per
-// alert-level incident.
+// reported, and each collector's last report. Alert rules and their incidents
+// live in the main database with every other rule.
 var healthSchema = []string{
 	`CREATE TABLE IF NOT EXISTS components (
 		id            INTEGER PRIMARY KEY,
@@ -35,34 +35,11 @@ var healthSchema = []string{
 	`CREATE TABLE IF NOT EXISTS collector_health (
 		collector_id TEXT PRIMARY KEY,
 		user_id      TEXT NOT NULL,
-		target_id    TEXT NOT NULL DEFAULT '',
-		checks       TEXT NOT NULL DEFAULT '{}',
 		error        TEXT NOT NULL DEFAULT '',
 		parts        TEXT NOT NULL DEFAULT '[]',
 		active       TEXT NOT NULL DEFAULT '{}',
 		reported_ms  INTEGER NOT NULL DEFAULT 0
 	)`,
-	`CREATE TABLE IF NOT EXISTS health_events (
-		id             INTEGER PRIMARY KEY,
-		user_id        TEXT NOT NULL,
-		collector_id   TEXT NOT NULL,
-		component_id   INTEGER NOT NULL,
-		kind           TEXT NOT NULL,
-		name           TEXT NOT NULL,
-		check_name     TEXT NOT NULL,
-		detail         TEXT NOT NULL DEFAULT '',
-		value          REAL NOT NULL DEFAULT 0,
-		target_id      TEXT NOT NULL DEFAULT '',
-		opened_ms      INTEGER NOT NULL,
-		resolved_ms    INTEGER NOT NULL DEFAULT 0,
-		firing         TEXT NOT NULL DEFAULT 'none',
-		firing_tries   INTEGER NOT NULL DEFAULT 0,
-		recovery       TEXT NOT NULL DEFAULT '',
-		recovery_tries INTEGER NOT NULL DEFAULT 0,
-		error          TEXT NOT NULL DEFAULT ''
-	)`,
-	`CREATE INDEX IF NOT EXISTS health_events_open ON health_events(collector_id, component_id, check_name) WHERE resolved_ms = 0`,
-	`CREATE INDEX IF NOT EXISTS health_events_user ON health_events(user_id, opened_ms)`,
 }
 
 // Component is one machine or bouncer a collector reported.
@@ -85,12 +62,10 @@ type Component struct {
 	UpdatedMs   int64
 }
 
-// CollectorHealth is one collector's health settings and its last report.
+// CollectorHealth is one collector's last health report.
 type CollectorHealth struct {
 	CollectorID string
 	UserID      string
-	TargetID    string
-	Checks      map[string]CheckSetting
 	Error       string
 	Parts       []string
 	Active      map[string]int64
@@ -105,38 +80,6 @@ func (h *CollectorHealth) partSet() map[string]bool {
 	return set
 }
 
-// Delivery states of an incident's two notifications.
-const (
-	notifyNone    = "none"    // nothing to send: no target set
-	notifyPending = "pending" // to send, or to try again
-	notifySent    = "sent"
-	notifyFailed  = "failed" // gave up
-	notifySkipped = "skipped"
-	// maxNotifyTries bounds how often one notification is attempted.
-	maxNotifyTries = 5
-)
-
-// HealthEvent is one period a check was unhealthy at alert level.
-type HealthEvent struct {
-	ID          int64
-	UserID      string
-	CollectorID string
-	ComponentID int64
-	Kind        string
-	Name        string
-	Check       string
-	Detail      string
-	Value       float64
-	TargetID    string
-	OpenedMs    int64
-	ResolvedMs  int64
-	Firing      string
-	FiringTries int
-	Recovery    string
-	RecoveryTry int
-	Error       string
-}
-
 func jsonText(v any) string {
 	b, err := json.Marshal(v)
 	if err != nil {
@@ -147,7 +90,7 @@ func jsonText(v any) string {
 
 // SaveReport stores one cs_health. The report is the whole registry of the
 // parts it read, so a component missing from it was removed from CrowdSec and
-// is deleted here, its open incidents closed without a notification.
+// is deleted here; the next evaluation closes its open incidents quietly.
 func (s *Store) SaveReport(ctx context.Context, userID, collectorID string, rep wire.Health, now int64) error {
 	tx, err := s.write.BeginTx(ctx, nil)
 	if err != nil {
@@ -199,13 +142,6 @@ func (s *Store) SaveReport(ctx context.Context, userID, collectorID string, rep 
 			}
 			if !read {
 				continue
-			}
-			// Their open incidents end without a notification.
-			if _, err := tx.ExecContext(ctx, `UPDATE health_events SET resolved_ms = ?, recovery = 'none',
-				firing = CASE WHEN firing = 'pending' THEN 'skipped' ELSE firing END
-				WHERE resolved_ms = 0 AND collector_id = ? AND component_id IN (SELECT id FROM components WHERE collector_id = ? AND kind = ? AND updated_ms < ?)`,
-				now, collectorID, collectorID, kind, now); err != nil {
-				return err
 			}
 			if _, err := tx.ExecContext(ctx, `DELETE FROM components WHERE collector_id = ? AND kind = ? AND updated_ms < ?`, collectorID, kind, now); err != nil {
 				return err
@@ -286,20 +222,19 @@ func (s *Store) SetMuted(ctx context.Context, userID string, id int64, muted boo
 }
 
 const (
-	healthOne = `SELECT collector_id, user_id, target_id, checks, error, parts, active, reported_ms
+	healthOne = `SELECT collector_id, user_id, error, parts, active, reported_ms
 		FROM collector_health WHERE collector_id = ? AND user_id = ?`
-	healthReported = `SELECT collector_id, user_id, target_id, checks, error, parts, active, reported_ms
+	healthReported = `SELECT collector_id, user_id, error, parts, active, reported_ms
 		FROM collector_health WHERE reported_ms > 0 ORDER BY collector_id`
 )
 
 func scanHealth(row interface{ Scan(...any) error }) (*CollectorHealth, error) {
-	h := &CollectorHealth{Checks: map[string]CheckSetting{}, Parts: []string{}, Active: map[string]int64{}}
-	var checks, parts, active string
-	if err := row.Scan(&h.CollectorID, &h.UserID, &h.TargetID, &checks, &h.Error, &parts, &active, &h.ReportedMs); err != nil {
+	h := &CollectorHealth{Parts: []string{}, Active: map[string]int64{}}
+	var parts, active string
+	if err := row.Scan(&h.CollectorID, &h.UserID, &h.Error, &parts, &active, &h.ReportedMs); err != nil {
 		return nil, err
 	}
-	// A damaged column reads as empty: defaults for the checks, nothing reported.
-	_ = json.Unmarshal([]byte(checks), &h.Checks)
+	// A damaged column reads as empty, as if nothing was reported.
 	_ = json.Unmarshal([]byte(parts), &h.Parts)
 	_ = json.Unmarshal([]byte(active), &h.Active)
 	return h, nil
@@ -309,7 +244,7 @@ func scanHealth(row interface{ Scan(...any) error }) (*CollectorHealth, error) {
 func (s *Store) Health(ctx context.Context, userID, collectorID string) (*CollectorHealth, error) {
 	h, err := scanHealth(s.read.QueryRowContext(ctx, healthOne, collectorID, userID))
 	if errors.Is(err, sql.ErrNoRows) {
-		return &CollectorHealth{CollectorID: collectorID, UserID: userID, Checks: map[string]CheckSetting{}, Parts: []string{}, Active: map[string]int64{}}, nil
+		return &CollectorHealth{CollectorID: collectorID, UserID: userID, Parts: []string{}, Active: map[string]int64{}}, nil
 	}
 	return h, err
 }
@@ -332,17 +267,9 @@ func (s *Store) reportedHealth(ctx context.Context) ([]*CollectorHealth, error) 
 	return list, rows.Err()
 }
 
-// SaveHealthSettings stores the notify target and the checks' configuration.
-func (s *Store) SaveHealthSettings(ctx context.Context, userID, collectorID, targetID string, checks map[string]CheckSetting) error {
-	_, err := s.write.ExecContext(ctx, `INSERT INTO collector_health (collector_id, user_id, target_id, checks) VALUES (?, ?, ?, ?)
-		ON CONFLICT(collector_id) DO UPDATE SET target_id = excluded.target_id, checks = excluded.checks WHERE collector_health.user_id = excluded.user_id`,
-		collectorID, userID, targetID, jsonText(checks))
-	return err
-}
-
 // dropCollectorHealth removes everything health keeps about a collector that is gone.
 func (s *Store) dropCollectorHealth(ctx context.Context, collectorID string) error {
-	for _, q := range []string{`DELETE FROM components WHERE collector_id = ?`, `DELETE FROM health_events WHERE collector_id = ?`, `DELETE FROM collector_health WHERE collector_id = ?`} {
+	for _, q := range []string{`DELETE FROM components WHERE collector_id = ?`, `DELETE FROM collector_health WHERE collector_id = ?`} {
 		if _, err := s.write.ExecContext(ctx, q, collectorID); err != nil {
 			return err
 		}
@@ -350,90 +277,13 @@ func (s *Store) dropCollectorHealth(ctx context.Context, collectorID string) err
 	return nil
 }
 
-const (
-	eventsOpenByCollector = `SELECT id, user_id, collector_id, component_id, kind, name, check_name, detail, value, target_id, opened_ms, resolved_ms, firing, firing_tries, recovery, recovery_tries, error
-		FROM health_events WHERE collector_id = ? AND resolved_ms = 0 ORDER BY id`
-	eventsOpenByUser = `SELECT id, user_id, collector_id, component_id, kind, name, check_name, detail, value, target_id, opened_ms, resolved_ms, firing, firing_tries, recovery, recovery_tries, error
-		FROM health_events WHERE user_id = ? AND resolved_ms = 0 ORDER BY id`
-	eventsPending = `SELECT id, user_id, collector_id, component_id, kind, name, check_name, detail, value, target_id, opened_ms, resolved_ms, firing, firing_tries, recovery, recovery_tries, error
-		FROM health_events WHERE firing = 'pending' OR recovery = 'pending' ORDER BY id`
-	eventsAll = `SELECT id, user_id, collector_id, component_id, kind, name, check_name, detail, value, target_id, opened_ms, resolved_ms, firing, firing_tries, recovery, recovery_tries, error
-		FROM health_events ORDER BY id`
-)
-
-func (s *Store) events(ctx context.Context, query string, args ...any) ([]*HealthEvent, error) {
-	rows, err := s.read.QueryContext(ctx, query, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	list := []*HealthEvent{}
-	for rows.Next() {
-		e := &HealthEvent{}
-		if err := rows.Scan(&e.ID, &e.UserID, &e.CollectorID, &e.ComponentID, &e.Kind, &e.Name, &e.Check, &e.Detail, &e.Value, &e.TargetID, &e.OpenedMs, &e.ResolvedMs,
-			&e.Firing, &e.FiringTries, &e.Recovery, &e.RecoveryTry, &e.Error); err != nil {
-			return nil, err
-		}
-		list = append(list, e)
-	}
-	return list, rows.Err()
-}
-
-// openEvent starts an incident. With no target there is nothing to send.
-func (s *Store) openEvent(ctx context.Context, c *Component, f Finding, targetID string, now int64) error {
-	firing := notifyPending
-	if targetID == "" {
-		firing = notifyNone
-	}
-	_, err := s.write.ExecContext(ctx, `INSERT INTO health_events (user_id, collector_id, component_id, kind, name, check_name, detail, value, target_id, opened_ms, firing)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, c.UserID, c.CollectorID, c.ID, c.Kind, c.Name, f.Check, f.Detail, f.Value, targetID, now, firing)
-	return err
-}
-
-// resolveEvent ends an incident. A recovery is announced only when the firing
-// notification went out; one still waiting is dropped, since the trouble is over.
-func (s *Store) resolveEvent(ctx context.Context, e *HealthEvent, recovered bool, now int64) error {
-	firing, recovery := e.Firing, notifyNone
-	if firing == notifyPending {
-		firing = notifySkipped
-	}
-	if recovered && firing == notifySent {
-		recovery = notifyPending
-	}
-	_, err := s.write.ExecContext(ctx, `UPDATE health_events SET resolved_ms = ?, firing = ?, recovery = ? WHERE id = ? AND resolved_ms = 0`, now, firing, recovery, e.ID)
-	return err
-}
-
-// recordDelivery stores the result of one notification attempt. A failure is
-// tried again on a later tick until maxNotifyTries.
-func (s *Store) recordDelivery(ctx context.Context, e *HealthEvent, phase string, sendErr error) error {
-	status, message := notifySent, ""
-	tries := e.FiringTries + 1
-	if phase == "recovery" {
-		tries = e.RecoveryTry + 1
-	}
-	if sendErr != nil {
-		status, message = notifyPending, sendErr.Error()
-		if tries >= maxNotifyTries {
-			status = notifyFailed
-		}
-	}
-	query := `UPDATE health_events SET firing = ?, firing_tries = ?, error = ? WHERE id = ? AND firing = 'pending'`
-	if phase == "recovery" {
-		query = `UPDATE health_events SET recovery = ?, recovery_tries = ?, error = ? WHERE id = ? AND recovery = 'pending'`
-	}
-	_, err := s.write.ExecContext(ctx, query, status, tries, message, e.ID)
-	return err
-}
-
-// pruneHealth drops resolved incidents past retention and everything owned by
-// accounts that no longer exist.
-func (s *Store) pruneHealth(ctx context.Context, keepMs, now int64, users []string) error {
+// pruneHealth drops everything owned by accounts that no longer exist.
+func (s *Store) pruneHealth(ctx context.Context, users []string) error {
 	known := map[string]bool{}
 	for _, u := range users {
 		known[u] = true
 	}
-	rows, err := s.read.QueryContext(ctx, `SELECT DISTINCT user_id FROM collector_health UNION SELECT DISTINCT user_id FROM components UNION SELECT DISTINCT user_id FROM health_events`)
+	rows, err := s.read.QueryContext(ctx, `SELECT DISTINCT user_id FROM collector_health UNION SELECT DISTINCT user_id FROM components`)
 	if err != nil {
 		return err
 	}
@@ -453,15 +303,10 @@ func (s *Store) pruneHealth(ctx context.Context, keepMs, now int64, users []stri
 		return err
 	}
 	for _, id := range gone {
-		for _, q := range []string{`DELETE FROM components WHERE user_id = ?`, `DELETE FROM health_events WHERE user_id = ?`, `DELETE FROM collector_health WHERE user_id = ?`} {
+		for _, q := range []string{`DELETE FROM components WHERE user_id = ?`, `DELETE FROM collector_health WHERE user_id = ?`} {
 			if _, err := s.write.ExecContext(ctx, q, id); err != nil {
 				return err
 			}
-		}
-	}
-	if keepMs > 0 {
-		if _, err := s.deleteBatches(ctx, `DELETE FROM health_events WHERE id IN (SELECT id FROM health_events WHERE resolved_ms > 0 AND resolved_ms < ? LIMIT ?)`, now-keepMs); err != nil {
-			return err
 		}
 	}
 	return nil

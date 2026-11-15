@@ -63,7 +63,7 @@
         </td>
         <td>
           <span class="badge">
-            {{if $a.MonitorIDs}}{{len $a.MonitorIDs}} monitor{{if ne (len $a.MonitorIDs) 1}}s{{end}}{{else if not $a.Agents}}All servers{{else}}{{len $a.Agents}} server{{if ne (len $a.Agents) 1}}s{{end}}{{end}}
+            {{if $a.MonitorIDs}}{{len $a.MonitorIDs}} monitor{{if ne (len $a.MonitorIDs) 1}}s{{end}}{{else if $a.CrowdSec}}{{range $i, $s := $a.CrowdSec}}{{if $i}}, {{end}}{{if eq $s.Scope "all"}}All of {{index $.CollectorNames $s.CollectorID}}{{else}}{{$s.Name}}{{end}}{{end}}{{else if not $a.Agents}}All servers{{else}}{{len $a.Agents}} server{{if ne (len $a.Agents) 1}}s{{end}}{{end}}
           </span>
         </td>
         <td>
@@ -89,6 +89,7 @@
               data-destination="{{$a.Action.Destination}}"
               data-payload="{{$a.Action.Payload}}"
               data-monitors="{{range $i, $m := $a.MonitorIDs}}{{if $i}},{{end}}{{$m}}{{end}}"
+              data-crowdsec="{{range $i, $s := $a.CrowdSec}}{{if $i}}{{"\n"}}{{end}}{{$s.Key}}{{end}}"
               data-agents="{{range $i, $ag := $a.Agents}}{{if $i}},{{end}}{{$ag.AgentID}}{{end}}">
               Edit
             </button>

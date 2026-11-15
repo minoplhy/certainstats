@@ -3,6 +3,47 @@
 
   let panelPath = '';
 
+  // crowdsecRule shows the machines and bouncers picker for a CrowdSec condition
+  // and sets the threshold's unit and range from the selected option.
+  function crowdsecRule(selectEl, prefix, modal) {
+    const option = selectEl.selectedOptions && selectEl.selectedOptions[0];
+    const on = !!(option && option.hasAttribute('data-crowdsec'));
+    const group = document.querySelector('[data-crowdsec-rule=' + prefix + ']');
+    if (group) {
+      group.hidden = !on;
+      group.querySelectorAll('input').forEach(cb => { cb.disabled = !on; });
+      const hint = group.querySelector('[data-crowdsec-hint]');
+      if (hint) hint.textContent = on ? option.getAttribute('data-hint') || '' : '';
+    }
+    // The check does its own timing and always compares one way.
+    const operator = document.getElementById(prefix + '-operator');
+    const duration = document.getElementById(prefix + '-duration');
+    if (operator) operator.closest('.form-group').hidden = on;
+    if (duration) duration.closest('.form-group').hidden = on;
+    const threshold = document.getElementById(prefix + '-threshold');
+    if (threshold) {
+      if (on) {
+        threshold.min = option.getAttribute('data-min');
+        threshold.max = option.getAttribute('data-max');
+        threshold.step = '1';
+        if (prefix === 'create') threshold.value = option.getAttribute('data-default');
+      } else {
+        threshold.min = '0';
+        threshold.removeAttribute('max');
+        threshold.step = 'any';
+      }
+    }
+    if (on) {
+      const row = document.getElementById(prefix + '-threshold-row');
+      if (row) row.style.display = '';
+    }
+    if (on && modal) {
+      const unit = document.getElementById(prefix + '-threshold-unit');
+      if (unit) unit.textContent = '(' + option.getAttribute('data-unit') + ')';
+    }
+    return on;
+  }
+
   function handleTriggerTypeChange(selectEl, prefix) {
     const val = selectEl.value;
     const network = val === 'network_loss';
@@ -12,10 +53,14 @@
       group.querySelectorAll('input').forEach(cb => { cb.disabled = !network; });
     }
     const modal = document.querySelector('#' + (prefix === 'create' ? 'new' : prefix) + '-alert-modal');
-    if (modal) modal.querySelectorAll('input[name=agents]').forEach(cb => {
-      cb.disabled = network;
-      cb.closest('.form-fieldset').hidden = network;
-    });
+    const crowdsec = crowdsecRule(selectEl, prefix, modal);
+    if (modal) {
+      const noServers = network || crowdsec;
+      modal.querySelectorAll('input[name=agents]').forEach(cb => { cb.disabled = noServers; });
+      const servers = modal.querySelector('[data-click-action="toggleAllNodes"]');
+      if (servers) servers.closest('.form-fieldset').hidden = noServers;
+    }
+    if (crowdsec) return;
     const duration = document.getElementById(prefix + '-duration');
     if (duration) {
       duration.readOnly = network;
@@ -162,6 +207,11 @@
           const monitorIDs = (this.getAttribute('data-monitors') || '').split(',');
           document.querySelectorAll('#edit-alert-modal input[name=monitor_ids]').forEach(cb => {
             cb.checked = monitorIDs.includes(cb.value);
+          });
+          // One machine or bouncer selection per line: collector/scope/name.
+          const subjects = (this.getAttribute('data-crowdsec') || '').split('\n');
+          document.querySelectorAll('#edit-alert-modal input[name=crowdsec_subjects]').forEach(cb => {
+            cb.checked = subjects.includes(cb.value);
           });
 
           document.getElementById('edit-alert-id').value = id;

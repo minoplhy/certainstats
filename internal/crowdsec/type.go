@@ -4,15 +4,11 @@ import (
 	"certainstats/internal/collector"
 	"certainstats/internal/crowdsec/wire"
 	log "certainstats/internal/logger"
-	"certainstats/internal/notifications"
 	"certainstats/internal/store"
 	"context"
 	"encoding/json"
 	"fmt"
-	"sync/atomic"
 	"time"
-
-	"certainstats/internal/base/alert"
 
 	"github.com/fxamacker/cbor/v2"
 )
@@ -22,14 +18,12 @@ type Type struct {
 	Store      *Store
 	Collectors *collector.Service
 	Retention  Retention
-	// Targets resolves the notification target of a health incident; nil sends nothing.
-	Targets Targets
-	// Notify sends one notification; nil means notifications.DispatchNotification.
-	Notify func(alert.AlertAction, notifications.NotificationContext) error
+	// Rules holds CrowdSec alert rules and their incidents (the main database); nil alerts nothing.
+	Rules Rules
+	// Deliver sends a queued notification in the background (alertdelivery.Go).
+	Deliver func(eventID string)
 	// live overrides how a collector's live connection is found; tests set it.
 	live func(collectorID string) (since time.Time, ok bool)
-	// delivering is set while a background round of notifications runs.
-	delivering atomic.Bool
 }
 
 var _ collector.Type = (*Type)(nil)
@@ -54,7 +48,7 @@ func (t *Type) Setup() collector.TypeSetup {
 		Volumes: []string{credentialsPath + ":" + credentialsPath + ":ro"},
 		Note: "Install the collector on the machine that runs the CrowdSec Local API. If CrowdSec runs in Docker, the collector must share its network, " +
 			"the Local API must listen on that network, and url in " + credentialsPath + " must name the container, such as http://crowdsec:8080. " +
-			"Machine and bouncer health is optional and off by default: it reads CrowdSec's database, read-only, only when the host sets CROWDSEC_HEALTH=true.",
+			"Machine and bouncer health is optional and off by default: it reads CrowdSec's database, read-only, only when the host sets CROWDSEC_HEALTH=true. Alert rules for machines and bouncers are set up on the Alerts page.",
 	}
 }
 
@@ -184,7 +178,7 @@ func (t *Type) Maintain(ctx context.Context) {
 		return
 	}
 	log.Printf("[Maintenance] %s", res)
-	if err := t.Store.pruneHealth(ctx, t.Retention.RawMs, time.Now().UnixMilli(), users); err != nil {
+	if err := t.Store.pruneHealth(ctx, users); err != nil {
 		log.Printf("[CrowdSec] health maintenance: %v", err)
 	}
 }

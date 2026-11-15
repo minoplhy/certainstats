@@ -45,8 +45,8 @@ func EditAlertHandler(s store.AlertsStore) http.HandlerFunc {
 			return
 		}
 
-		if (req.Trigger.Type == alert.TriggerTypeNetworkLoss && (len(req.Agents) > 0 || len(req.MonitorIDs) == 0)) || (req.Trigger.Type != alert.TriggerTypeNetworkLoss && len(req.MonitorIDs) > 0) {
-			apiresponse.Error(w, 400, "Select monitors for network rules, agents for resource rules")
+		if msg := CheckSubjects(req.Trigger.Type, len(req.Agents), len(req.MonitorIDs), req.CrowdSec); msg != "" {
+			apiresponse.Error(w, http.StatusBadRequest, msg)
 			return
 		}
 
@@ -73,6 +73,7 @@ func EditAlertHandler(s store.AlertsStore) http.HandlerFunc {
 			UserID:     userID,
 			Nickname:   req.Nickname,
 			MonitorIDs: req.MonitorIDs,
+			CrowdSec:   req.CrowdSec,
 			Enabled:    req.Enabled,
 			Trigger:    req.Trigger,
 			Action:     req.Action,

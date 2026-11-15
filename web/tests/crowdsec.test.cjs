@@ -326,58 +326,86 @@ test('the Collectors page lists collectors and ?add= opens the add form with tha
   assert.ok(modals.some(m => m[0] === 'close' && m[1] === 'collectors-add-modal'));
 });
 
-test('machines and bouncers: a dense list, cautions that stay cautions, and mute', async () => {
-  const cs = helpers();
+function healthData(now) {
+  const machine = {id: 1, collector_id: 'col_a', collector: 'edge', kind: 'machine', name: 'web-01', group: '', version: 'v1.8.2', ip: '10.0.0.4', os: 'Debian 13', state: 'ok',
+    muted: false, validated: true, last_seen_ms: now - 30000, findings: [], firing: [], held: null, active: null};
+  const self = {...machine, id: 2, name: 'certainstats', state: 'self', last_seen_ms: 0};
+  const entry = (id, ip, held, state, extra = {}) => ({id, collector_id: 'col_a', collector: 'edge', kind: 'bouncer', name: 'fw@' + ip, group: 'fw', type: 'cs-firewall-bouncer',
+    version: 'v0.0.38', ip, state, muted: false, last_seen_ms: now - 5000, metrics_ms: now - 60000, held, active: {crowdsec: 1300, CAPI: 30000},
+    dropped: 412, processed: 51000, findings: [], firing: [], ...extra});
+  const broken = entry(3, '10.0.0.5', {crowdsec: 0, CAPI: 0}, 'caution', {findings: [{check: 'siblings', label: 'Bouncer behind its siblings',
+    detail: 'Holds 0 of the 31204 decisions its sibling fw@10.0.0.6 holds; its ipset or nftables set may be failing, check its log'}]});
+  const good = entry(4, '10.0.0.6', {crowdsec: 1204, CAPI: 30000}, 'ok');
+  const nginx = {...entry(5, '10.0.0.7', null, 'ok'), name: 'nginx', group: 'nginx', type: 'crowdsec-nginx-bouncer', metrics_ms: 0, held: null, active: null};
+  return {collectors: [{collector_id: 'col_a', name: 'edge', health: 'on', error: '', unavailable: []}], items: [machine, self, broken, good, nginx]};
+}
+
+test('machines and bouncers open in their own popup, as two Management-style lists', async () => {
   const now = Date.now();
-  const bouncer = {id: 2, collector: 'edge', kind: 'bouncer', name: 'fw-edge', type: 'cs-firewall-bouncer', version: 'v0.0.38', ip: '10.0.0.5', state: 'caution', muted: false,
-    last_seen_ms: now - 5000, held: 10, active: 100, dropped: 412,
-    findings: [{check: 'held', level: 'caution', label: 'Bouncer holds decisions', detail: "Holds 10 of 100 crowdsec decisions, may not be applying them; check the bouncer's log"}]};
-  const items = [
-    {id: 1, collector: 'edge', kind: 'machine', name: 'web-01', version: 'v1.8.2', state: 'ok', muted: false, validated: true, last_seen_ms: now - 30000, held: null, active: null, findings: []},
-    bouncer,
-    {id: 3, collector: 'edge', kind: 'machine', name: 'certainstats', state: 'self', muted: false, validated: true, last_seen_ms: 0, held: null, active: null, findings: []}
-  ];
-  const health = {collectors: [{collector_id: 'col_a', name: 'edge', health: 'on', error: '', unavailable: []}], items};
+  const health = healthData(now);
   const h = page('http://x/panel/crowdsec?hours=24', health);
+  const opened = [];
+  h.w.CertainStatsModal = {open: d => opened.push(d.id)};
   await settle();
-  assert.equal(h.q('[data-cs-components]').hidden, false);
-  assert.equal(h.q('[data-cs-components-count]').textContent, '2 machines, 1 bouncer · 1 needs a look');
-  const rows = [...h.w.document.querySelectorAll('.cs-comp-row')];
-  assert.deepEqual(rows.map(r => r.querySelector('.cs-comp-name').textContent), ['fw-edge', 'web-01', 'certainstats'], 'what needs a look comes first');
-  assert.match(rows[0].textContent, /may not be applying them/);
-  assert.match(rows[0].querySelector('.cs-comp-facts').textContent, /holds 10 of 100 decisions · 412 packets dropped · cs-firewall-bouncer · v0\.0\.38 · 10\.0\.0\.5/);
-  assert.ok(rows[0].querySelector('.status-dot').classList.contains('warn'), 'a caution is amber, never red');
-  assert.equal(rows[2].querySelector('button').hidden, true, "the collector's own login cannot be muted");
-  // A caution never changes the headline.
-  assert.equal(h.q('[data-cs-headline]').textContent, '2 alerts in the last 24 hours, most from ssh-bf.');
+  // Not at the top of the page: a hero figure and a button open it.
+  assert.equal(h.q('[data-cs-components]').tagName, 'DIALOG');
+  assert.equal(h.q('[data-cs-components-open]').hidden, false);
+  assert.equal(h.q('[data-cs-components-count]').textContent, '5 · 1 needs a look');
+  h.q('[data-cs-components-open]').click();
+  assert.deepEqual(opened, ['cs-components-modal']);
+
+  const machines = [...h.w.document.querySelectorAll('[data-cs-machines] > details.mgmt-item')];
+  const bouncers = [...h.w.document.querySelectorAll('[data-cs-bouncers] > details.mgmt-item')];
+  assert.deepEqual(machines.map(d => d.querySelector('.mgmt-name').textContent), ['web-01', 'certainstats']);
+  assert.deepEqual(bouncers.map(d => d.querySelector('.mgmt-name').textContent), ['fw', 'nginx'], 'a shared key is one row, what needs a look first');
+  assert.equal(h.q('[data-cs-bouncers-count]').textContent, '3 bouncers · 1 needs a look');
+  assert.match(bouncers[0].querySelector('summary').textContent, /Caution.*2 addresses on one key/);
+
+  // The machine's row opens to what CrowdSec records for it.
+  const facts = d => Object.fromEntries([...d.querySelectorAll('.cred-row')].map(r => [r.querySelector('dt').textContent, r.querySelector('dd').textContent]));
+  const m = facts(machines[0]);
+  assert.equal(m.Address, '10.0.0.4');
+  assert.equal(m.System, 'Debian 13');
+  assert.equal(m.Validated, 'Yes');
+  // Each address of the shared key shows its own reported data, side by side.
+  const entries = [...bouncers[0].querySelectorAll('.cs-comp-entry')];
+  assert.deepEqual(entries.map(e => e.querySelector('.cs-comp-entry-head .mono').textContent), ['fw@10.0.0.5', 'fw@10.0.0.6']);
+  const broken = facts(entries[0]), good = facts(entries[1]);
+  assert.equal(broken['Decisions held'], 'CAPI: 0 of 30,000 active\ncrowdsec: 0 of 1,300 active');
+  assert.equal(good['Decisions held'], 'CAPI: 30,000 of 30,000 active\ncrowdsec: 1,204 of 1,300 active');
+  assert.match(broken.Status, /its ipset or nftables set may be failing/);
+  assert.equal(good['Packets dropped'], '412');
+  assert.equal(entries[0].querySelector('dd.mono') !== null, true, 'numbers and times are monospace');
+  assert.equal(facts(bouncers[1])['Usage metrics'], 'Not sent by this bouncer');
+  // A caution never makes the headline bad.
   assert.equal(h.q('[data-cs-headline]').classList.contains('is-bad'), false);
 
-  rows[0].querySelector('button').click();
+  entries[0].querySelector('button').click();
   await settle();
-  assert.deepEqual(h.changes, ['PUT components/2/mute']);
+  assert.deepEqual(h.changes, ['PUT components/3/mute']);
+});
 
-  // An alert-level finding does, and a failed notification is said.
-  bouncer.state = 'alert';
-  bouncer.findings = [{check: 'pull', level: 'alert', label: 'Bouncer pull', detail: 'No pull for 3h', notify: 'failed', notify_error: 'webhook returned non-2xx status code: 500'}];
-  h.q('[data-cs-refresh]').click();
+test('a firing rule turns its machine or bouncer red and takes over the headline', async () => {
+  const now = Date.now();
+  const health = healthData(now);
+  const b = health.items[2];
+  b.state = 'alert';
+  b.firing = [{alert_id: 'alert_1', rule: 'Shared key out of step', check: 'siblings', notified: 'failed', error: 'webhook returned non-2xx status code: 500'}];
+  const h = page('http://x/panel/crowdsec?hours=24', health);
   await settle();
-  assert.equal(h.q('[data-cs-headline]').textContent, 'fw-edge needs attention: No pull for 3h.');
+  assert.equal(h.q('[data-cs-headline]').textContent, 'fw@10.0.0.5 needs attention: Holds 0 of the 31204 decisions its sibling fw@10.0.0.6 holds; its ipset or nftables set may be failing, check its log.');
   assert.ok(h.q('[data-cs-headline]').classList.contains('is-bad'));
-  assert.match(h.q('.cs-comp-row.is-alert').textContent, /Notification not delivered: webhook returned non-2xx status code: 500/);
-  assert.ok(h.q('.cs-comp-row.is-alert .status-dot').classList.contains('offline'));
-
-  const view = cs.parseView('?hours=24');
-  const ok = [{name: 'edge', connected: true, types: [{type: 'crowdsec', enabled: true, status: 'ok'}]}];
-  const two = {items: [{kind: 'machine', name: 'a', state: 'alert', findings: [{detail: 'x'}]}, {kind: 'bouncer', name: 'b', state: 'alert', findings: [{detail: 'y'}]}, {kind: 'bouncer', name: 'c', state: 'caution', findings: []}]};
-  assert.deepEqual({...cs.headline({alerts: 3}, view, ok, two)}, {bad: true, text: '1 machine and 1 bouncer need attention.'});
-  assert.equal(cs.componentText({state: 'never', kind: 'bouncer', findings: []}), 'Registered, never pulled decisions');
-  assert.equal(cs.componentText({state: 'unknown', kind: 'machine', findings: []}), 'Not judged: its collector is not reporting');
+  assert.ok(h.q('[data-cs-components-count]').classList.contains('is-bad'));
+  const group = h.q('[data-cs-bouncers] > details.mgmt-item');
+  assert.equal(group.dataset.state, 'alert');
+  assert.match(group.querySelector('.cs-comp-entry').textContent, /Alert rule.*Shared key out of step, notification not delivered: webhook returned non-2xx status code: 500/);
 });
 
 test('machine and bouncer health stays out of the way until a host switches it on', async () => {
   const off = page('http://x/panel/crowdsec?hours=24', {collectors: [{collector_id: 'col_a', name: 'edge', health: 'off', error: '', unavailable: []}], items: []});
   await settle();
-  assert.equal(off.q('[data-cs-components]').hidden, true);
+  assert.equal(off.q('[data-cs-components-open]').hidden, true);
+  assert.equal(off.q('[data-cs-components-stat]').hidden, true);
 
   const mixed = page('http://x/panel/crowdsec?hours=24', {collectors: [
     {collector_id: 'col_a', name: 'edge', health: 'error', error: 'unable to open database file', unavailable: []},
@@ -385,68 +413,108 @@ test('machine and bouncer health stays out of the way until a host switches it o
     {collector_id: 'col_c', name: 'lapi-3', health: 'on', error: '', unavailable: [{check: 'held', label: 'Bouncer holds decisions', needs: 'metrics, decisions'}]}
   ], items: []});
   await settle();
-  assert.equal(mixed.q('[data-cs-components]').hidden, false);
+  assert.equal(mixed.q('[data-cs-components-open]').hidden, false);
   const notes = [...mixed.w.document.querySelectorAll('[data-cs-components-notes] li')].map(li => li.textContent);
   assert.deepEqual(notes, [
     "edge: CrowdSec's database could not be read: unable to open database file",
     'lapi-2: machine and bouncer health is not switched on (CROWDSEC_HEALTH=true on its host).',
     'lapi-3: not available, the host does not let these be read: Bouncer holds decisions (needs metrics, decisions).'
   ]);
+  assert.equal(mixed.q('[data-cs-machines-empty]').hidden, false);
 });
 
-test('the Collectors page builds the health settings form from the check registry', async () => {
+test('popup rows are updated in place on refresh, and an open row stays open', async () => {
+  const now = Date.now();
+  const health = healthData(now);
+  const h = page('http://x/panel/crowdsec?hours=24', health);
+  await settle();
+  const group = h.q('[data-cs-bouncers] > details.mgmt-item');
+  const entry = group.querySelector('.cs-comp-entry');
+  const web = h.q('[data-cs-machines] > details.mgmt-item');
+  group.open = true;
+  // The broken entry recovers, nginx is removed from CrowdSec.
+  health.items[2] = {...health.items[2], state: 'ok', findings: [], held: {crowdsec: 1204, CAPI: 30000}};
+  health.items.splice(4, 1);
+  h.q('[data-cs-refresh]').click();
+  await settle();
+  const after = h.q('[data-cs-bouncers] > details.mgmt-item');
+  assert.equal(after, group, 'the group row is the same node');
+  assert.equal(after.open, true, 'an open row stays open');
+  assert.equal(after.querySelector('.cs-comp-entry'), entry, 'an entry is the same node, updated');
+  assert.match(entry.textContent, /crowdsec: 1,204 of 1,300 active/);
+  assert.equal(h.q('[data-cs-machines] > details.mgmt-item'), web);
+  assert.deepEqual([...h.w.document.querySelectorAll('[data-cs-bouncers] > details .mgmt-name')].map(n => n.textContent), ['fw'], 'nginx left the list');
+});
+
+test('the Collectors list keeps rows, open state and open forms across refreshes', async () => {
   const pageHtml = fs.readFileSync('web/templates/collectors.html', 'utf8').replace(/\{\{[^}]*\}\}/g, '');
   const dom = new JSDOM('<body data-panel-path="/panel">' + pageHtml + partial('collectors/add_modal.html') + '</body>', {url: 'http://x/panel/collectors', runScripts: 'outside-only'});
   const w = dom.window;
   open.push(w);
-  const settings = {
-    target_id: '', targets: [{target_id: 'tgt_1', name: 'Ops'}],
-    checks: {pull: {level: 'alert', values: {minutes: 60}}, later: {level: 'caution', values: {errors: 1}}},
-    registry: [
-      {name: 'pull', label: 'Bouncer pull', kind: 'bouncer', proves: 'The bouncer is running and fetching decisions.', params: [{key: 'minutes', label: 'Quiet for', unit: 'minutes', min: 2, max: 43200, default: 60}]},
-      // A check this page has never heard of still gets a row.
-      {name: 'later', label: 'Added later', kind: 'bouncer', proves: 'Something a later source reports.', params: [{key: 'errors', label: 'Errors', unit: '', min: 1, max: 100, default: 1}]}
-    ]
-  };
-  const saved = [];
-  w.fetch = async (input, init = {}) => {
+  const collector = {collector_id: 'col_a', name: 'edge', connected: true, last_seen_at: Date.now(), version: '1.0', types: [{type: 'crowdsec', label: 'CrowdSec', enabled: true, reported_on: true, status: 'ok'}]};
+  w.fetch = async input => {
     const u = new URL(input, 'http://x');
-    if (u.pathname === '/panel/api/collectors/col_a/crowdsec/health') {
-      if (init.method === 'PUT') saved.push(JSON.parse(init.body));
-      return {ok: true, status: 200, json: async () => settings};
-    }
-    if (u.pathname === '/panel/api/collectors') return {ok: true, status: 200, json: async () => ({
-      items: [{collector_id: 'col_a', name: 'edge', connected: false, first_connected_at: 1, last_seen_at: Date.now(), types: [{type: 'crowdsec', label: 'CrowdSec', enabled: true}]}],
-      types: [{type: 'crowdsec', label: 'CrowdSec'}]
-    })};
+    if (u.pathname === '/panel/api/collectors') return {ok: true, status: 200, json: async () => ({items: [JSON.parse(JSON.stringify(collector))], types: [{type: 'crowdsec', label: 'CrowdSec'}]})};
     return {ok: false, status: 404, json: async () => ({error: 'not found'})};
   };
-  let busyDuringRefresh = null;
   w.CertainStatsModal = {open() {}, close() {}, confirm: async () => false};
   w.CertainStatsTelemetry = {showToast() {}};
   w.setInterval = () => 0;
   w.eval(COLLECTORS);
   await settle();
   const item = w.document.querySelector('details.mgmt-item');
-  // Settings can be prepared while the collector is offline.
-  [...item.querySelectorAll('button')].find(b => b.textContent === 'Health alerts…').click();
-  await settle();
-  const form = item.querySelector('form.collector-health');
-  assert.ok(form);
-  assert.match(form.textContent, /only when the collector's host sets CROWDSEC_HEALTH=true/);
-  assert.deepEqual([...form.querySelectorAll('legend')].map(l => l.textContent), ['Bouncer pull', 'Added later']);
-  assert.deepEqual([...form.querySelector('[data-level]').options].map(o => o.value), ['off', 'caution', 'alert']);
-  const minutes = form.querySelector('[data-check="pull"] [data-param="minutes"]');
-  assert.equal(minutes.value, '60');
-  assert.equal(minutes.min, '2');
-  busyDuringRefresh = !!w.document.querySelector('.collector-health');
-  assert.equal(busyDuringRefresh, true, 'the periodic refresh must see the open form');
+  item.open = true;
+  assert.equal([...item.querySelectorAll('button')].some(b => b.textContent === 'Health alerts…'), false, 'health alerts live on the Alerts page now');
+  [...item.querySelectorAll('button')].find(b => b.textContent === 'Read again…').click();
+  assert.ok(item.querySelector('form.collector-backfill'));
 
-  form.querySelector('select[aria-label="Notify"]').value = 'tgt_1';
-  form.querySelector('[data-check="pull"] [data-level]').value = 'caution';
-  minutes.value = '240';
-  form.dispatchEvent(new w.Event('submit', {cancelable: true}));
-  await settle();
-  assert.deepEqual(saved, [{target_id: 'tgt_1', checks: {pull: {level: 'caution', values: {minutes: 240}}, later: {level: 'caution', values: {errors: 1}}}}]);
-  assert.equal(item.querySelector('form.collector-health'), null, 'the form closes after saving');
+  collector.connected = false;
+  collector.first_connected_at = 1;
+  collector.name = 'edge-2';
+  await w.CertainStatsCollectors.refresh();
+  assert.equal(w.document.querySelector('details.mgmt-item'), item, 'the row is the same node');
+  assert.equal(item.open, true, 'an open row stays open');
+  assert.ok(item.querySelector('form.collector-backfill'), 'an open form survives');
+  assert.equal(item.querySelector('.mgmt-name').textContent, 'edge-2');
+  assert.match(item.querySelector('summary').textContent, /Offline/);
+  assert.equal([...item.querySelectorAll('button')].some(b => b.textContent === 'Read again…'), false, 'Read again needs a connection');
+});
+
+test('the Alerts rule modal offers CrowdSec conditions with a machines and bouncers picker', () => {
+  const raw = name => fs.readFileSync('web/templates/partials/' + name, 'utf8');
+  const block = (text, name) => text.split('{{define "' + name + '"}}')[1].split('{{end}}\n\n')[0];
+  const cs = raw('alerts/crowdsec_subjects.html');
+  const modal = raw('alerts/new_alert_modal.html')
+    .replace('{{template "alerts_crowdsec_triggers" .}}', block(cs, 'alerts_crowdsec_triggers'))
+    .replace('{{template "alerts_crowdsec_subjects" .}}', block(cs, 'alerts_crowdsec_subjects'))
+    .replace(/\{\{[^}]*\}\}/g, '');
+  const dom = new JSDOM('<body>' + modal + '</body>', {runScripts: 'outside-only'});
+  const w = dom.window;
+  open.push(w);
+  w.eval(fs.readFileSync('web/static/admin/js/admin_alerts.js', 'utf8'));
+  const select = w.document.getElementById('create-trigger-type');
+  const picker = w.document.querySelector('[data-crowdsec-rule="create"]');
+  const subjects = () => [...picker.querySelectorAll('input[name=crowdsec_subjects]')];
+  const servers = w.document.querySelector('[data-click-action="toggleAllNodes"]').closest('.form-fieldset');
+  assert.equal(picker.hidden, true);
+  assert.ok(subjects().length > 0 && subjects().every(i => i.disabled), 'not posted unless a CrowdSec condition is chosen');
+
+  const option = [...select.options].find(o => o.hasAttribute('data-crowdsec'));
+  assert.ok(option, 'CrowdSec conditions are offered');
+  option.setAttribute('data-unit', 'minutes');
+  select.value = option.value;
+  w.handleTriggerTypeChange(select, 'create');
+  assert.equal(picker.hidden, false);
+  assert.ok(subjects().every(i => !i.disabled));
+  assert.equal(servers.hidden, true, 'no servers for a CrowdSec rule');
+  assert.equal(w.document.getElementById('create-operator').closest('.form-group').hidden, true);
+  assert.equal(w.document.getElementById('create-duration').closest('.form-group').hidden, true);
+  assert.equal(w.document.getElementById('create-threshold-unit').textContent, '(minutes)');
+
+  select.value = 'cpu_usage';
+  w.handleTriggerTypeChange(select, 'create');
+  assert.equal(picker.hidden, true);
+  assert.ok(subjects().every(i => i.disabled));
+  assert.equal(servers.hidden, false);
+  assert.equal(w.document.getElementById('create-duration').closest('.form-group').hidden, false);
 });

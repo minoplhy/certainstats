@@ -1,0 +1,56 @@
+{{define "alerts_crowdsec_triggers"}}
+{{if .CrowdSecSubjects}}
+<optgroup label="CrowdSec">
+  {{range .CrowdSecTriggers}}
+  <option value="{{.Type}}" data-crowdsec data-unit="{{.Unit}}" data-default="{{.Default}}" data-min="{{.Min}}" data-max="{{.Max}}" data-hint="{{.Hint}}">{{.Label}}</option>
+  {{end}}
+</optgroup>
+{{end}}
+{{end}}
+
+{{define "alerts_crowdsec_subjects"}}
+<div class="fieldset-head">
+  <h3 class="fieldset-title">Machines and bouncers</h3>
+</div>
+<p class="form-hint" data-crowdsec-hint></p>
+{{if not .CrowdSecSubjects}}
+<p class="form-hint">No collector reports CrowdSec machines and bouncers yet. Switch on CROWDSEC_HEALTH=true on a collector's host first.</p>
+{{end}}
+<div class="cs-subjects">
+  {{range .CrowdSecSubjects}}
+  {{$cid := .CollectorID}}
+  <div class="cs-subjects-collector">
+    <label class="cs-subject cs-subject-all">
+      <input type="checkbox" name="crowdsec_subjects" value="{{$cid}}/all" disabled>
+      <span><strong>Every machine and bouncer of {{.Name}}</strong> <span class="muted">including ones added later</span></span>
+    </label>
+    {{if .Machines}}<p class="cs-subjects-kind">Machines</p>{{end}}
+    {{range .Machines}}
+    <label class="cs-subject" data-kind="machine">
+      <input type="checkbox" name="crowdsec_subjects" value="{{$cid}}/machine/{{.}}" disabled>
+      <span class="mono">{{.}}</span>
+    </label>
+    {{end}}
+    {{if or .Groups .Bouncers}}<p class="cs-subjects-kind">Bouncers</p>{{end}}
+    {{range .Groups}}
+    <label class="cs-subject" data-kind="bouncer">
+      <input type="checkbox" name="crowdsec_subjects" value="{{$cid}}/group/{{.Name}}" disabled>
+      <span><span class="mono">{{.Name}}</span> <span class="muted">every address using this key ({{len .Entries}} now, new ones included)</span></span>
+    </label>
+    {{range .Entries}}
+    <label class="cs-subject cs-subject-entry" data-kind="bouncer">
+      <input type="checkbox" name="crowdsec_subjects" value="{{$cid}}/bouncer/{{.}}" disabled>
+      <span class="mono">{{.}}</span>
+    </label>
+    {{end}}
+    {{end}}
+    {{range .Bouncers}}
+    <label class="cs-subject" data-kind="bouncer">
+      <input type="checkbox" name="crowdsec_subjects" value="{{$cid}}/bouncer/{{.}}" disabled>
+      <span class="mono">{{.}}</span>
+    </label>
+    {{end}}
+  </div>
+  {{end}}
+</div>
+{{end}}

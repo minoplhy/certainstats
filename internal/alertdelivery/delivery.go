@@ -50,11 +50,21 @@ func Dispatch(ctx context.Context, db store.AlertsStore, eventID string) error {
 			phase = "RESOLVED"
 			value = 0
 		}
-		err = notifications.DispatchNotification(action, notifications.NotificationContext{
+		nctx := notifications.NotificationContext{
 			MonitorID: h.MonitorID, MonitorTarget: h.Monitor.Target, MonitorProtocol: h.Monitor.Protocol, DNSServer: h.Monitor.Server,
 			AgentID: h.AgentID, Nickname: h.AgentNickname, TriggerType: string(h.Trigger.Type), Status: phase, Value: value,
 			Operator: string(h.Trigger.Operator), Threshold: h.Trigger.Threshold, WentOfflineAt: &h.TriggeredAt, ResolvedAt: h.ResolvedAt,
-		})
+		}
+		if h.SubjectKind == "crowdsec" {
+			// A CrowdSec machine or bouncer: its own name, its collector and what fired.
+			nctx.Nickname, nctx.Collector, nctx.SubjectKind, nctx.Detail = h.Subject.Name, h.Subject.Collector, h.Subject.Kind, h.Subject.Detail
+			nctx.TriggerLabel = "CrowdSec: " + h.Subject.Label
+			nctx.ValueText = fmt.Sprintf("%.0f %s", value, h.Subject.Unit)
+			if e.Phase == "recovery" {
+				nctx.ValueText = "Recovered"
+			}
+		}
+		err = notifications.DispatchNotification(action, nctx)
 	}
 	if err != nil {
 		status = "failed"

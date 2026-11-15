@@ -2,12 +2,12 @@
 <div class="cs-page" data-cs-page>
   {{template "crowdsec_hero" .}}
   <div data-cs-main>
-    {{template "crowdsec_components" .}}
     {{template "crowdsec_filters" .}}
     {{template "crowdsec_panels" .}}
     {{template "crowdsec_table" .}}
   </div>
   {{template "crowdsec_ip_view" .}}
+  {{template "crowdsec_components" .}}
 </div>
 
 <script src="{{.StaticPath}}/{{asset "admin/js/collectors.js"}}" integrity="{{integrity "admin/js/collectors.js"}}"></script>

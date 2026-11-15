@@ -1,11 +1,31 @@
 {{define "crowdsec_components"}}
-<section class="page-section cs-components" aria-labelledby="cs-components-title" data-cs-components hidden>
-  <div class="section-header">
-    <h2 class="section-title" id="cs-components-title">Machines and bouncers</h2>
-    <span class="muted mono" data-cs-components-count></span>
+<dialog id="cs-components-modal" class="modal modal-lg" aria-labelledby="cs-components-title" data-cs-components>
+  <div class="modal-header">
+    <div>
+      <h2 class="modal-title" id="cs-components-title">Machines and bouncers</h2>
+      <p class="modal-subtitle">What each collector's Local API knows about them, read from CrowdSec's database. <a href="{{.PanelPath}}/alerts">Set up alerts</a></p>
+    </div>
+    {{template "modal_close"}}
   </div>
-  <p class="cs-status" role="status" aria-live="polite" data-cs-components-message></p>
-  <ul class="cs-comp-notes" data-cs-components-notes></ul>
-  <ul class="cs-comp-list" aria-labelledby="cs-components-title" data-cs-components-list></ul>
-</section>
+  <div class="modal-body">
+    <p class="cs-status" role="status" aria-live="polite" data-cs-components-message></p>
+    <ul class="cs-comp-notes" data-cs-components-notes hidden></ul>
+    <section class="cs-comp-section" aria-labelledby="cs-machines-title">
+      <div class="section-header">
+        <h3 class="section-title" id="cs-machines-title">Machines</h3>
+        <span class="muted mono" data-cs-machines-count></span>
+      </div>
+      <div class="mgmt-list" data-cs-machines></div>
+      <p class="muted" data-cs-machines-empty hidden>No machines reported.</p>
+    </section>
+    <section class="cs-comp-section" aria-labelledby="cs-bouncers-title">
+      <div class="section-header">
+        <h3 class="section-title" id="cs-bouncers-title">Bouncers</h3>
+        <span class="muted mono" data-cs-bouncers-count></span>
+      </div>
+      <div class="mgmt-list" data-cs-bouncers></div>
+      <p class="muted" data-cs-bouncers-empty hidden>No bouncers reported.</p>
+    </section>
+  </div>
+</dialog>
 {{end}}
