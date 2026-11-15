@@ -1,17 +1,21 @@
-package main
+// Package collectoragent is certainstats-collector: it loads its settings,
+// keeps one WebSocket open to CertainStats and runs the switched-on types
+// (modules) over it. cmd/certainstats-collector only parses flags and calls Run,
+// Once or Check.
+package collectoragent
 
 import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"net/url"
 	"strings"
 	"sync"
 	"time"
 
-	"certainstats/cmd/certainstats-collector/module"
 	"certainstats/internal/collector/wire"
+	"certainstats/internal/collectoragent/module"
+	log "certainstats/internal/logger"
 
 	"github.com/fxamacker/cbor/v2"
 	"golang.org/x/net/websocket"
@@ -42,7 +46,7 @@ func connectURL(hub string) (wsURL, origin string, err error) {
 	return u.String(), origin, nil
 }
 
-func dial(ctx context.Context, cfg config) (*link, error) {
+func dial(ctx context.Context, cfg Config) (*link, error) {
 	wsURL, origin, err := connectURL(cfg.HubURL)
 	if err != nil {
 		return nil, err
@@ -52,8 +56,8 @@ func dial(ctx context.Context, cfg config) (*link, error) {
 		return nil, err
 	}
 	wc.Header.Set(wire.HeaderToken, cfg.Token)
-	wc.Header.Set(wire.HeaderVersion, version)
-	wc.Header.Set("User-Agent", "certainstats-collector/"+version)
+	wc.Header.Set(wire.HeaderVersion, cfg.Version)
+	wc.Header.Set("User-Agent", "certainstats-collector/"+cfg.Version)
 	conn, err := wc.DialContext(ctx)
 	if err != nil {
 		var de *websocket.DialError
@@ -109,9 +113,9 @@ func (l *link) hello() (wire.Hello, error) {
 	return h, cbor.Unmarshal(env.Body, &h)
 }
 
-// session serves one connection until it drops or ctx ends. It reports whether
+// Session serves one connection until it drops or ctx ends. It reports whether
 // the connection got as far as running modules.
-func session(ctx context.Context, cfg config, mods []module.Module, once bool) (bool, error) {
+func Session(ctx context.Context, cfg Config, mods []module.Module, once bool) (bool, error) {
 	l, err := dial(ctx, cfg)
 	if err != nil {
 		return false, err
@@ -129,7 +133,7 @@ func session(ctx context.Context, cfg config, mods []module.Module, once bool) (
 	for _, m := range mods {
 		names = append(names, m.Name())
 	}
-	if err := l.send(wire.MsgPing, wire.Ping{Version: version, Types: names}); err != nil {
+	if err := l.send(wire.MsgPing, wire.Ping{Version: cfg.Version, Types: names}); err != nil {
 		return false, err
 	}
 	log.Printf("connected to CertainStats as %q", h.Name)
@@ -179,7 +183,7 @@ func session(ctx context.Context, cfg config, mods []module.Module, once bool) (
 				l.close() // unblocks the reader
 				return
 			case <-t.C:
-				if err := l.send(wire.MsgPing, wire.Ping{Version: version, Types: names}); err != nil {
+				if err := l.send(wire.MsgPing, wire.Ping{Version: cfg.Version, Types: names}); err != nil {
 					cancel()
 				}
 			}

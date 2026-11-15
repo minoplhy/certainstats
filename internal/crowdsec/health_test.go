@@ -316,7 +316,7 @@ func (r *healthRig) tick(now int64) {
 
 func (r *healthRig) events() []*HealthEvent {
 	r.t.Helper()
-	list, err := r.typ.Store.events(context.Background(), `1 = 1`)
+	list, err := r.typ.Store.events(context.Background(), eventsAll)
 	if err != nil {
 		r.t.Fatal(err)
 	}

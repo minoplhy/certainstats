@@ -122,9 +122,11 @@ note) by implementing `collector.Setup`.
 1. Server: a package implementing `collector.Type` (`internal/collector/type.go`):
    a name, label and prefix, connect, message and disconnect handlers, and its
    two route trees. Register it in `cmd/certainstats/main.go`.
-2. Binary: a package implementing `module.Module`
-   (`cmd/certainstats-collector/module`), listed in `available()` in
-   `cmd/certainstats-collector/main.go`. Its switch is `COLLECT_<NAME>`.
+2. Binary: a package under `internal/collectoragent/` implementing
+   `module.Module` (`internal/collectoragent/module`), listed in `Available()`
+   in `internal/collectoragent/config.go`. Its switch is `COLLECT_<NAME>`.
+   `cmd/certainstats-collector` is only the entrypoint (flags, then `Run`,
+   `Once` or `Check`).
 3. Setup steps: an entry in `TYPE_SETUP` in
    `web/src/js/components/collectors/setup.js`.
 4. Its own page and docs.
@@ -133,5 +135,5 @@ note) by implementing `collector.Setup`.
 
 `go test ./internal/collector/...` covers tokens, routing by prefix, ignored and
 disabled types, oversized frames, connection replacement, token reset, removal
-and owner isolation. `go test ./cmd/certainstats-collector/...` runs the real
+and owner isolation. `go test ./internal/collectoragent/...` runs the real
 collector against a fake CrowdSec Local API and a real server.

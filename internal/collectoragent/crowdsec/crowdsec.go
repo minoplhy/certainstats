@@ -4,18 +4,18 @@
 package crowdsec
 
 import (
+	log "certainstats/internal/logger"
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"net/http"
 	"os"
 	"sort"
 	"strconv"
 	"time"
 
-	"certainstats/cmd/certainstats-collector/module"
 	cwire "certainstats/internal/collector/wire"
+	"certainstats/internal/collectoragent/module"
 	"certainstats/internal/crowdsec/wire"
 
 	"github.com/fxamacker/cbor/v2"
@@ -218,6 +218,7 @@ func resyncOf(env cwire.Envelope) (int64, bool) {
 		return 0, false
 	}
 	var rs wire.Resync
+	// A resync this collector cannot read is ignored; the regular poll continues.
 	if cbor.Unmarshal(env.Body, &rs) != nil {
 		return 0, false
 	}
@@ -259,6 +260,8 @@ func (r *runner) report(err error) {
 	if r.last != nil && *r.last == st {
 		return
 	}
+	// A failed send leaves last unset, so the status is sent again on the next pass;
+	// the connection error itself surfaces in the session.
 	if r.send(wire.MsgStatus, st) == nil {
 		r.last = &st
 	}

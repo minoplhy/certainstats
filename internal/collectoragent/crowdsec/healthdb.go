@@ -76,6 +76,7 @@ func healthFromEnv(getenv func(string) string) healthConfig {
 type healthDB struct {
 	db      *sql.DB
 	dialect string // "sqlite", "postgres" or "mysql"
+	q       queries
 }
 
 func dialectOf(dsn string) string {
@@ -89,10 +90,11 @@ func dialectOf(dsn string) string {
 }
 
 func openHealthDB(dsn string) (*healthDB, error) {
-	h := &healthDB{dialect: dialectOf(dsn)}
+	h := &healthDB{dialect: dialectOf(dsn), q: sqliteQueries}
 	var err error
 	switch h.dialect {
 	case "postgres":
+		h.q = postgresQueries
 		var cfg *pgx.ConnConfig
 		if cfg, err = pgx.ParseConfig(dsn); err != nil {
 			// The parser's message can repeat the DSN, password included.
@@ -101,6 +103,7 @@ func openHealthDB(dsn string) (*healthDB, error) {
 		cfg.RuntimeParams["default_transaction_read_only"] = "on"
 		h.db = stdlib.OpenDB(*cfg)
 	case "mysql":
+		h.q = mysqlQueries
 		var cfg *mysql.Config
 		if cfg, err = mysqlConfig(dsn); err != nil {
 			return nil, err
@@ -134,7 +137,7 @@ func mysqlConfig(dsn string) (*mysql.Config, error) {
 	}
 	cfg := mysql.NewConfig()
 	cfg.User = u.User.Username()
-	cfg.Passwd, _ = u.User.Password()
+	cfg.Passwd, _ = u.User.Password() // the second value only says whether one was given
 	cfg.Net = "tcp"
 	cfg.Addr = u.Host
 	if u.Port() == "" {
@@ -150,22 +153,6 @@ func mysqlConfig(dsn string) (*mysql.Config, error) {
 }
 
 func (h *healthDB) close() { h.db.Close() }
-
-// ident quotes a column name that is a keyword in some dialect.
-func (h *healthDB) ident(name string) string {
-	if h.dialect == "mysql" {
-		return "`" + name + "`"
-	}
-	return `"` + name + `"`
-}
-
-// arg numbers a placeholder the way the dialect wants it.
-func (h *healthDB) arg(n int) string {
-	if h.dialect == "postgres" {
-		return fmt.Sprintf("$%d", n)
-	}
-	return "?"
-}
 
 // timeArg is a point in time in the form the dialect compares stored times with.
 // SQLite keeps times as text starting "2006-01-02 15:04:05", in UTC.

@@ -82,12 +82,17 @@ type lapi struct {
 
 var errUnauthorized = errors.New("Local API rejected the machine login")
 
+// login returns a valid JWT, logging in when there is none. The lock only guards
+// the token; it is never held during the request. Two logins at once (--check
+// racing a pass) are harmless: the last token stored wins.
 func (c *lapi) login(ctx context.Context) (string, error) {
 	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.token != "" && time.Now().Before(c.expires) {
-		return c.token, nil
+	token, valid := c.token, c.token != "" && time.Now().Before(c.expires)
+	c.mu.Unlock()
+	if valid {
+		return token, nil
 	}
+	// Marshalling a map of strings cannot fail.
 	body, _ := json.Marshal(map[string]any{"machine_id": c.creds.Login, "password": c.creds.Password, "scenarios": []string{}})
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.creds.URL+"/v1/watchers/login", bytes.NewReader(body))
 	if err != nil {
@@ -113,12 +118,14 @@ func (c *lapi) login(ctx context.Context) (string, error) {
 	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&out); err != nil || out.Token == "" {
 		return "", fmt.Errorf("Local API login: unexpected response")
 	}
-	c.token = out.Token
-	c.expires = time.Now().Add(30 * time.Minute)
+	expires := time.Now().Add(30 * time.Minute)
 	if t, err := time.Parse(time.RFC3339, out.Expire); err == nil {
-		c.expires = t.Add(-time.Minute)
+		expires = t.Add(-time.Minute)
 	}
-	return c.token, nil
+	c.mu.Lock()
+	c.token, c.expires = out.Token, expires
+	c.mu.Unlock()
+	return out.Token, nil
 }
 
 func (c *lapi) dropToken() {
@@ -180,6 +187,7 @@ func (c *lapi) get(ctx context.Context, from, to time.Time, limit int) ([]wire.A
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
+		// The body only adds detail to the error; a failed read leaves it out.
 		msg, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
 		return nil, resp.StatusCode, fmt.Errorf("Local API alerts: %s %s", resp.Status, strings.TrimSpace(string(msg)))
 	}

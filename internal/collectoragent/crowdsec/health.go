@@ -1,11 +1,11 @@
 package crowdsec
 
 import (
+	log "certainstats/internal/logger"
 	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"log"
 	"strings"
 	"time"
 
@@ -18,6 +18,8 @@ const (
 	slowEvery = 5 * time.Minute
 	// metricsRows bounds how far back the newest metrics row of each bouncer is looked for.
 	metricsRows = 3000
+	// activeOrigins bounds the origin groups counted; real setups have a handful.
+	activeOrigins = 1000
 )
 
 // health reads machines and bouncers from CrowdSec's database. It exists only
@@ -138,12 +140,12 @@ func (h *health) machines(ctx context.Context) ([]wire.Component, error) {
 			return nil
 		}
 	}
-	limit := fmt.Sprintf(" FROM machines ORDER BY machine_id LIMIT %d", wire.MaxComponents+1)
-	err := h.db.query(ctx, scan(true), `SELECT machine_id, last_heartbeat, version, ip_address, is_validated, osname, osversion`+limit)
+	err := h.db.query(ctx, scan(true), h.db.q.machinesOS, wire.MaxComponents+1)
 	if err != nil {
-		// Older CrowdSec has no OS columns.
+		// The first error is dropped on purpose: older CrowdSec has no OS columns,
+		// and the read without them reports any real problem.
 		list = nil
-		err = h.db.query(ctx, scan(false), `SELECT machine_id, last_heartbeat, version, ip_address, is_validated`+limit)
+		err = h.db.query(ctx, scan(false), h.db.q.machines, wire.MaxComponents+1)
 	}
 	return list, err
 }
@@ -159,7 +161,7 @@ func (h *health) bouncers(ctx context.Context) ([]wire.Component, error) {
 		list = append(list, wire.Component{Kind: wire.KindBouncer, Name: name.String, Type: typ.String, Version: version.String, IP: ip.String,
 			LastSeenMs: dbTimeMs(seen), Revoked: dbBool(revoked), Validated: true})
 		return nil
-	}, fmt.Sprintf(`SELECT name, last_pull, %s, version, ip_address, revoked FROM bouncers ORDER BY name LIMIT %d`, h.db.ident("type"), wire.MaxComponents+1))
+	}, h.db.q.bouncers, wire.MaxComponents+1)
 	return list, err
 }
 
@@ -168,9 +170,6 @@ func (h *health) bouncers(ctx context.Context) ([]wire.Component, error) {
 // Values are counted once, since a bouncer holds each address once.
 func (h *health) activeDecisions(ctx context.Context, now time.Time) (map[string]int64, error) {
 	out := map[string]int64{}
-	q := fmt.Sprintf(`SELECT origin, CASE WHEN origin = 'lists' THEN scenario ELSE '' END AS list, COUNT(DISTINCT value)
-		FROM decisions WHERE %s > %s AND %s = 'ban' AND NOT simulated AND scope IN ('Ip', 'Range') GROUP BY 1, 2`,
-		h.db.ident("until"), h.db.arg(1), h.db.ident("type"))
 	err := h.db.query(ctx, func(rows *sql.Rows) error {
 		var origin, list sql.NullString
 		var n int64
@@ -183,7 +182,7 @@ func (h *health) activeDecisions(ctx context.Context, now time.Time) (map[string
 		}
 		out[key] += n
 		return nil
-	}, q, h.db.timeArg(now))
+	}, h.db.q.active, h.db.timeArg(now), activeOrigins)
 	return out, err
 }
 
@@ -213,7 +212,10 @@ func (h *health) bouncerMetrics(ctx context.Context) (map[string]bouncerMetrics,
 			return nil
 		}
 		var p metricsPayload
-		if json.Unmarshal([]byte(dbText(payload)), &p) != nil {
+		if err := json.Unmarshal([]byte(dbText(payload)), &p); err != nil {
+			// A payload this reader does not understand (another bouncer's format,
+			// or a damaged row) only loses that bouncer's numbers; its liveness is still read.
+			log.Debugf("crowdsec: health: usage metrics of %s not understood: %v", name.String, err)
 			return nil
 		}
 		m := bouncerMetrics{at: dbTimeMs(at)}
@@ -234,7 +236,7 @@ func (h *health) bouncerMetrics(ctx context.Context) (map[string]bouncerMetrics,
 		}
 		out[name.String] = m
 		return nil
-	}, fmt.Sprintf(`SELECT generated_by, received_at, payload FROM metrics WHERE generated_type = 'RC' ORDER BY id DESC LIMIT %d`, metricsRows))
+	}, h.db.q.metrics, metricsRows)
 	return out, err
 }
 
@@ -249,7 +251,7 @@ func (h *health) check(ctx context.Context) string {
 	if h.db.dialect == "postgres" {
 		// Asking about a privilege writes nothing.
 		var canWrite any
-		err := h.db.query(ctx, func(rows *sql.Rows) error { return rows.Scan(&canWrite) }, `SELECT has_table_privilege(current_user, 'bouncers', 'INSERT')`)
+		err := h.db.query(ctx, func(rows *sql.Rows) error { return rows.Scan(&canWrite) }, canWritePostgres)
 		if err == nil && dbBool(canWrite) {
 			log.Printf("warning: the CROWDSEC_DB user may write to CrowdSec's database; the collector only reads, so give it a SELECT-only user")
 		}

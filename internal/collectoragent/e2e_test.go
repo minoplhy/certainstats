@@ -1,4 +1,4 @@
-package main
+package collectoragent
 
 import (
 	"bytes"
@@ -18,7 +18,7 @@ import (
 
 	"certainstats/internal/collector"
 	ctxkeys "certainstats/internal/context"
-	"certainstats/internal/crowdsec"
+	csserver "certainstats/internal/crowdsec"
 	cswire "certainstats/internal/crowdsec/wire"
 	"certainstats/internal/security"
 	"certainstats/internal/store/sqlite"
@@ -96,7 +96,7 @@ func lapiAlert(i int, start time.Time) map[string]any {
 type e2e struct {
 	srv     *httptest.Server
 	lapi    *fakeLAPI
-	store   *crowdsec.Store
+	store   *csserver.Store
 	svc     *collector.Service
 	token   string
 	id      string
@@ -114,14 +114,14 @@ func newE2E(t *testing.T) *e2e {
 	if err := db.CreateUser(context.Background(), "u1", "u1", "x", false); err != nil {
 		t.Fatal(err)
 	}
-	cs, err := crowdsec.Open(filepath.Join(dir, "crowdsec.db"))
+	cs, err := csserver.Open(filepath.Join(dir, "crowdsec.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { cs.Close() })
 	svc := collector.NewService(db, db)
 	svc.Limits = security.NewIPLimiter(1e6, 1e6) // tests dial often from one IP
-	if err := svc.Register(&crowdsec.Type{Store: cs, Collectors: svc}); err != nil {
+	if err := svc.Register(&csserver.Type{Store: cs, Collectors: svc}); err != nil {
 		t.Fatal(err)
 	}
 	r := chi.NewRouter()
@@ -155,13 +155,13 @@ func newE2E(t *testing.T) *e2e {
 
 func (e *e2e) once(t *testing.T) {
 	t.Helper()
-	cfg, mods, err := loadConfig(e.getenv)
+	cfg, mods, err := LoadConfig(e.getenv, "test")
 	if err != nil {
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
-	if _, err := session(ctx, cfg, mods, true); err != nil {
+	if _, err := Session(ctx, cfg, mods, true); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -302,24 +302,24 @@ func (e *e2e) waitState(t *testing.T, want func(map[string]any) bool) map[string
 func TestConfigAndCheck(t *testing.T) {
 	e := newE2E(t)
 	env := map[string]string{"HUB_URL": e.srv.URL, "TOKEN": e.token}
-	if _, _, err := loadConfig(func(k string) string { return env[k] }); err == nil || !strings.Contains(err.Error(), "COLLECT_CROWDSEC=true") {
+	if _, _, err := LoadConfig(func(k string) string { return env[k] }, "test"); err == nil || !strings.Contains(err.Error(), "COLLECT_CROWDSEC=true") {
 		t.Fatalf("no type switched on must name the switch: %v", err)
 	}
-	cfg, mods, err := loadConfig(e.getenv)
+	cfg, mods, err := LoadConfig(e.getenv, "test")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := runCheck(context.Background(), cfg, mods); err != nil {
+	if err := Check(context.Background(), cfg, mods); err != nil {
 		t.Fatalf("check: %v", err)
 	}
 	cfg.Token = "csc_bad"
-	if err := runCheck(context.Background(), cfg, mods); err == nil || !strings.Contains(err.Error(), "TOKEN") {
+	if err := Check(context.Background(), cfg, mods); err == nil || !strings.Contains(err.Error(), "TOKEN") {
 		t.Fatalf("bad token must be named: %v", err)
 	}
 	cfg.Token = e.token
 	os.WriteFile(e.getenv("CROWDSEC_LAPI_CREDENTIALS"), []byte("url: x\n"), 0o600)
-	_, mods, _ = loadConfig(e.getenv)
-	if err := runCheck(context.Background(), cfg, mods); err == nil || !strings.Contains(err.Error(), "login and password") {
+	_, mods, _ = LoadConfig(e.getenv, "test")
+	if err := Check(context.Background(), cfg, mods); err == nil || !strings.Contains(err.Error(), "login and password") {
 		t.Fatalf("broken credentials must be named: %v", err)
 	}
 }
@@ -328,10 +328,10 @@ func TestResync(t *testing.T) {
 	e := newE2E(t)
 	now := time.Now().Truncate(time.Second)
 	e.lapi.alerts = append(e.lapi.alerts, lapiAlert(1, now.Add(-48*time.Hour)), lapiAlert(2, now.Add(-time.Minute)))
-	cfg, mods, _ := loadConfig(e.getenv)
+	cfg, mods, _ := LoadConfig(e.getenv, "test")
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
-	go func() { defer close(done); session(ctx, cfg, mods, false) }()
+	go func() { defer close(done); Session(ctx, cfg, mods, false) }()
 	deadline := time.Now().Add(10 * time.Second)
 	for e.get(t, "/crowdsec/summary?hours=72")["alerts"] != float64(2) && time.Now().Before(deadline) {
 		time.Sleep(20 * time.Millisecond)

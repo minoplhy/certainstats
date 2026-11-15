@@ -87,7 +87,7 @@ func (t *Type) components(w http.ResponseWriter, r *http.Request) {
 		fail(w, "components", err)
 		return
 	}
-	open, err := t.Store.events(ctx, `user_id = ? AND resolved_ms = 0`, user)
+	open, err := t.Store.events(ctx, eventsOpenByUser, user)
 	if err != nil {
 		fail(w, "components", err)
 		return

@@ -307,7 +307,7 @@ view can be linked and Back works.
 late alerts, filters, raw and rollup agreement, owner isolation and pruning;
 for health, each check's levels and thresholds, what is not judged, incidents
 opening and resolving once, the retry cap, removal, and the routes.
-`go test ./cmd/certainstats-collector/...` runs the collector against a fake
+`go test ./internal/collectoragent/...` runs the collector against a fake
 Local API: backfill, JWT reuse and renewal, restarts without duplicates, window
 splitting, an unreachable Local API, `--check` and resync; and against a SQLite
 file shaped like CrowdSec's database: nothing read without the switch, every

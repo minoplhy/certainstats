@@ -200,7 +200,11 @@ func (s *Store) SaveReport(ctx context.Context, userID, collectorID string, rep 
 			if !read {
 				continue
 			}
-			if err := closeEvents(ctx, tx, now, `collector_id = ? AND component_id IN (SELECT id FROM components WHERE collector_id = ? AND kind = ? AND updated_ms < ?)`, collectorID, collectorID, kind, now); err != nil {
+			// Their open incidents end without a notification.
+			if _, err := tx.ExecContext(ctx, `UPDATE health_events SET resolved_ms = ?, recovery = 'none',
+				firing = CASE WHEN firing = 'pending' THEN 'skipped' ELSE firing END
+				WHERE resolved_ms = 0 AND collector_id = ? AND component_id IN (SELECT id FROM components WHERE collector_id = ? AND kind = ? AND updated_ms < ?)`,
+				now, collectorID, collectorID, kind, now); err != nil {
 				return err
 			}
 			if _, err := tx.ExecContext(ctx, `DELETE FROM components WHERE collector_id = ? AND kind = ? AND updated_ms < ?`, collectorID, kind, now); err != nil {
@@ -211,18 +215,13 @@ func (s *Store) SaveReport(ctx context.Context, userID, collectorID string, rep 
 	return tx.Commit()
 }
 
-type execer interface {
-	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
-}
-
-// closeEvents ends open incidents matching where without notifying anyone.
-func closeEvents(ctx context.Context, db execer, now int64, where string, args ...any) error {
-	_, err := db.ExecContext(ctx, `UPDATE health_events SET resolved_ms = ?, recovery = 'none',
-		firing = CASE WHEN firing = 'pending' THEN 'skipped' ELSE firing END WHERE resolved_ms = 0 AND `+where, append([]any{now}, args...)...)
-	return err
-}
-
-const componentColumns = `id, user_id, collector_id, kind, name, version, ip, type, os, signals, findings, progress, muted, first_seen_ms, updated_ms`
+// Every read is a complete statement; none is assembled from parts.
+const (
+	componentsByUser = `SELECT id, user_id, collector_id, kind, name, version, ip, type, os, signals, findings, progress, muted, first_seen_ms, updated_ms
+		FROM components WHERE user_id = ? ORDER BY kind DESC, name, id`
+	componentsByCollector = `SELECT id, user_id, collector_id, kind, name, version, ip, type, os, signals, findings, progress, muted, first_seen_ms, updated_ms
+		FROM components WHERE collector_id = ? ORDER BY kind DESC, name, id`
+)
 
 func scanComponent(rows *sql.Rows) (*Component, error) {
 	c := &Component{Signals: map[string]json.RawMessage{}, Progress: map[string]progress{}}
@@ -230,14 +229,16 @@ func scanComponent(rows *sql.Rows) (*Component, error) {
 	if err := rows.Scan(&c.ID, &c.UserID, &c.CollectorID, &c.Kind, &c.Name, &c.Version, &c.IP, &c.Type, &c.OS, &signals, &findings, &prog, &c.Muted, &c.FirstSeenMs, &c.UpdatedMs); err != nil {
 		return nil, err
 	}
+	// These columns are written only by this package. A damaged one reads as
+	// empty and is rewritten by the next report or evaluation.
 	_ = json.Unmarshal([]byte(signals), &c.Signals)
 	_ = json.Unmarshal([]byte(findings), &c.Findings)
 	_ = json.Unmarshal([]byte(prog), &c.Progress)
 	return c, nil
 }
 
-func (s *Store) components(ctx context.Context, where string, args ...any) ([]*Component, error) {
-	rows, err := s.read.QueryContext(ctx, `SELECT `+componentColumns+` FROM components WHERE `+where+` ORDER BY kind DESC, name, id`, args...)
+func (s *Store) components(ctx context.Context, query string, args ...any) ([]*Component, error) {
+	rows, err := s.read.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -255,11 +256,11 @@ func (s *Store) components(ctx context.Context, where string, args ...any) ([]*C
 
 // Components lists an owner's machines and bouncers, machines first.
 func (s *Store) Components(ctx context.Context, userID string) ([]*Component, error) {
-	return s.components(ctx, `user_id = ?`, userID)
+	return s.components(ctx, componentsByUser, userID)
 }
 
 func (s *Store) collectorComponents(ctx context.Context, collectorID string) ([]*Component, error) {
-	return s.components(ctx, `collector_id = ?`, collectorID)
+	return s.components(ctx, componentsByCollector, collectorID)
 }
 
 // saveEvaluation stores a component's findings and progress after an evaluation.
@@ -284,7 +285,12 @@ func (s *Store) SetMuted(ctx context.Context, userID string, id int64, muted boo
 	return nil
 }
 
-const healthColumns = `collector_id, user_id, target_id, checks, error, parts, active, reported_ms`
+const (
+	healthOne = `SELECT collector_id, user_id, target_id, checks, error, parts, active, reported_ms
+		FROM collector_health WHERE collector_id = ? AND user_id = ?`
+	healthReported = `SELECT collector_id, user_id, target_id, checks, error, parts, active, reported_ms
+		FROM collector_health WHERE reported_ms > 0 ORDER BY collector_id`
+)
 
 func scanHealth(row interface{ Scan(...any) error }) (*CollectorHealth, error) {
 	h := &CollectorHealth{Checks: map[string]CheckSetting{}, Parts: []string{}, Active: map[string]int64{}}
@@ -292,6 +298,7 @@ func scanHealth(row interface{ Scan(...any) error }) (*CollectorHealth, error) {
 	if err := row.Scan(&h.CollectorID, &h.UserID, &h.TargetID, &checks, &h.Error, &parts, &active, &h.ReportedMs); err != nil {
 		return nil, err
 	}
+	// A damaged column reads as empty: defaults for the checks, nothing reported.
 	_ = json.Unmarshal([]byte(checks), &h.Checks)
 	_ = json.Unmarshal([]byte(parts), &h.Parts)
 	_ = json.Unmarshal([]byte(active), &h.Active)
@@ -300,15 +307,16 @@ func scanHealth(row interface{ Scan(...any) error }) (*CollectorHealth, error) {
 
 // Health returns a collector's settings and last report; defaults when it has none yet.
 func (s *Store) Health(ctx context.Context, userID, collectorID string) (*CollectorHealth, error) {
-	h, err := scanHealth(s.read.QueryRowContext(ctx, `SELECT `+healthColumns+` FROM collector_health WHERE collector_id = ? AND user_id = ?`, collectorID, userID))
+	h, err := scanHealth(s.read.QueryRowContext(ctx, healthOne, collectorID, userID))
 	if errors.Is(err, sql.ErrNoRows) {
 		return &CollectorHealth{CollectorID: collectorID, UserID: userID, Checks: map[string]CheckSetting{}, Parts: []string{}, Active: map[string]int64{}}, nil
 	}
 	return h, err
 }
 
-func (s *Store) healthList(ctx context.Context, where string, args ...any) ([]*CollectorHealth, error) {
-	rows, err := s.read.QueryContext(ctx, `SELECT `+healthColumns+` FROM collector_health WHERE `+where+` ORDER BY collector_id`, args...)
+// reportedHealth lists every collector that has sent a health report.
+func (s *Store) reportedHealth(ctx context.Context) ([]*CollectorHealth, error) {
+	rows, err := s.read.QueryContext(ctx, healthReported)
 	if err != nil {
 		return nil, err
 	}
@@ -342,10 +350,19 @@ func (s *Store) dropCollectorHealth(ctx context.Context, collectorID string) err
 	return nil
 }
 
-const eventColumns = `id, user_id, collector_id, component_id, kind, name, check_name, detail, value, target_id, opened_ms, resolved_ms, firing, firing_tries, recovery, recovery_tries, error`
+const (
+	eventsOpenByCollector = `SELECT id, user_id, collector_id, component_id, kind, name, check_name, detail, value, target_id, opened_ms, resolved_ms, firing, firing_tries, recovery, recovery_tries, error
+		FROM health_events WHERE collector_id = ? AND resolved_ms = 0 ORDER BY id`
+	eventsOpenByUser = `SELECT id, user_id, collector_id, component_id, kind, name, check_name, detail, value, target_id, opened_ms, resolved_ms, firing, firing_tries, recovery, recovery_tries, error
+		FROM health_events WHERE user_id = ? AND resolved_ms = 0 ORDER BY id`
+	eventsPending = `SELECT id, user_id, collector_id, component_id, kind, name, check_name, detail, value, target_id, opened_ms, resolved_ms, firing, firing_tries, recovery, recovery_tries, error
+		FROM health_events WHERE firing = 'pending' OR recovery = 'pending' ORDER BY id`
+	eventsAll = `SELECT id, user_id, collector_id, component_id, kind, name, check_name, detail, value, target_id, opened_ms, resolved_ms, firing, firing_tries, recovery, recovery_tries, error
+		FROM health_events ORDER BY id`
+)
 
-func (s *Store) events(ctx context.Context, where string, args ...any) ([]*HealthEvent, error) {
-	rows, err := s.read.QueryContext(ctx, `SELECT `+eventColumns+` FROM health_events WHERE `+where+` ORDER BY id`, args...)
+func (s *Store) events(ctx context.Context, query string, args ...any) ([]*HealthEvent, error) {
+	rows, err := s.read.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -401,7 +418,11 @@ func (s *Store) recordDelivery(ctx context.Context, e *HealthEvent, phase string
 			status = notifyFailed
 		}
 	}
-	_, err := s.write.ExecContext(ctx, `UPDATE health_events SET `+phase+` = ?, `+phase+`_tries = ?, error = ? WHERE id = ? AND `+phase+` = 'pending'`, status, tries, message, e.ID)
+	query := `UPDATE health_events SET firing = ?, firing_tries = ?, error = ? WHERE id = ? AND firing = 'pending'`
+	if phase == "recovery" {
+		query = `UPDATE health_events SET recovery = ?, recovery_tries = ?, error = ? WHERE id = ? AND recovery = 'pending'`
+	}
+	_, err := s.write.ExecContext(ctx, query, status, tries, message, e.ID)
 	return err
 }
 
@@ -432,8 +453,8 @@ func (s *Store) pruneHealth(ctx context.Context, keepMs, now int64, users []stri
 		return err
 	}
 	for _, id := range gone {
-		for _, table := range []string{"components", "health_events", "collector_health"} {
-			if _, err := s.write.ExecContext(ctx, `DELETE FROM `+table+` WHERE user_id = ?`, id); err != nil {
+		for _, q := range []string{`DELETE FROM components WHERE user_id = ?`, `DELETE FROM health_events WHERE user_id = ?`, `DELETE FROM collector_health WHERE user_id = ?`} {
+			if _, err := s.write.ExecContext(ctx, q, id); err != nil {
 				return err
 			}
 		}

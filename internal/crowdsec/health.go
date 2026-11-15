@@ -72,7 +72,7 @@ func (t *Type) Tick(ctx context.Context) {
 
 // Evaluate runs the checks for every collector that can be judged at now.
 func (t *Type) Evaluate(ctx context.Context, now int64) error {
-	list, err := t.Store.healthList(ctx, `reported_ms > 0`)
+	list, err := t.Store.reportedHealth(ctx)
 	if err != nil {
 		return err
 	}
@@ -103,7 +103,7 @@ func (t *Type) evaluateCollector(ctx context.Context, h *CollectorHealth, self s
 	if err != nil {
 		return err
 	}
-	open, err := t.Store.events(ctx, `collector_id = ? AND resolved_ms = 0`, h.CollectorID)
+	open, err := t.Store.events(ctx, eventsOpenByCollector, h.CollectorID)
 	if err != nil {
 		return err
 	}
@@ -143,7 +143,7 @@ func (t *Type) evaluateCollector(ctx context.Context, h *CollectorHealth, self s
 
 // Deliver sends every notification that is waiting, one attempt each.
 func (t *Type) Deliver(ctx context.Context) {
-	pending, err := t.Store.events(ctx, `firing = 'pending' OR recovery = 'pending'`)
+	pending, err := t.Store.events(ctx, eventsPending)
 	if err != nil {
 		log.Printf("[CrowdSec] health notifications: %v", err)
 		return
@@ -155,9 +155,18 @@ func (t *Type) Deliver(ctx context.Context) {
 			phase = "recovery"
 		}
 		if names[e.UserID] == nil {
-			names[e.UserID], _ = t.Collectors.Store.CollectorNames(ctx, e.UserID)
+			list, err := t.Collectors.Store.CollectorNames(ctx, e.UserID)
+			if err != nil {
+				log.Printf("[CrowdSec] health notifications: collector names: %v", err)
+				list = map[string]string{}
+			}
+			names[e.UserID] = list
 		}
-		sendErr := t.send(ctx, e, phase, names[e.UserID][e.CollectorID])
+		name := names[e.UserID][e.CollectorID]
+		if name == "" {
+			name = e.CollectorID // still says which collector, if its name is unavailable
+		}
+		sendErr := t.send(ctx, e, phase, name)
 		if sendErr != nil {
 			log.Printf("[CrowdSec] health notification for %s %s: %v", e.Kind, e.Name, sendErr)
 		}

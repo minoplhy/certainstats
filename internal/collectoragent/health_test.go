@@ -1,4 +1,4 @@
-package main
+package collectoragent
 
 import (
 	"context"
@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"certainstats/internal/crowdsec"
+	csserver "certainstats/internal/crowdsec"
 
 	_ "modernc.org/sqlite"
 )
@@ -91,7 +91,7 @@ func (e *e2e) with(extra map[string]string) {
 }
 
 // waitHealth polls the server's record of the collector's health until want accepts it.
-func (e *e2e) waitHealth(t *testing.T, want func(*crowdsec.CollectorHealth) bool) *crowdsec.CollectorHealth {
+func (e *e2e) waitHealth(t *testing.T, want func(*csserver.CollectorHealth) bool) *csserver.CollectorHealth {
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)
 	for {
@@ -109,13 +109,13 @@ func (e *e2e) waitHealth(t *testing.T, want func(*crowdsec.CollectorHealth) bool
 	}
 }
 
-func (e *e2e) components(t *testing.T) map[string]*crowdsec.Component {
+func (e *e2e) components(t *testing.T) map[string]*csserver.Component {
 	t.Helper()
 	list, err := e.store.Components(context.Background(), "u1")
 	if err != nil {
 		t.Fatal(err)
 	}
-	out := map[string]*crowdsec.Component{}
+	out := map[string]*csserver.Component{}
 	for _, c := range list {
 		out[c.Kind+":"+c.Name] = c
 	}
@@ -152,7 +152,7 @@ func TestHealthReadsCrowdSecDatabase(t *testing.T) {
 	before, _ := os.Stat(path)
 	e.with(map[string]string{"CROWDSEC_HEALTH": "true", "CROWDSEC_DB": path})
 	e.once(t)
-	h := e.waitHealth(t, func(h *crowdsec.CollectorHealth) bool { return h.ReportedMs > 0 })
+	h := e.waitHealth(t, func(h *csserver.CollectorHealth) bool { return h.ReportedMs > 0 })
 	if h.Error != "" || strings.Join(h.Parts, ",") != "machines,bouncers,metrics,decisions" {
 		t.Fatalf("report: %+v", h)
 	}
@@ -169,13 +169,13 @@ func TestHealthReadsCrowdSecDatabase(t *testing.T) {
 	if web1 == nil || web1.Version != "v1.8.2" || web1.IP != "10.0.0.5" || web1.OS != "Debian 13" {
 		t.Fatalf("web-01 %+v", web1)
 	}
-	if !strings.Contains(string(web1.Signals[crowdsec.SourceDB]), `"validated":true`) {
-		t.Fatalf("web-01 signals %s", web1.Signals[crowdsec.SourceDB])
+	if !strings.Contains(string(web1.Signals[csserver.SourceDB]), `"validated":true`) {
+		t.Fatalf("web-01 signals %s", web1.Signals[csserver.SourceDB])
 	}
-	var sig crowdsec.DBSignals
-	read := func(c *crowdsec.Component) crowdsec.DBSignals {
-		sig = crowdsec.DBSignals{}
-		if err := jsonUnmarshal(c.Signals[crowdsec.SourceDB], &sig); err != nil {
+	var sig csserver.DBSignals
+	read := func(c *csserver.Component) csserver.DBSignals {
+		sig = csserver.DBSignals{}
+		if err := jsonUnmarshal(c.Signals[csserver.SourceDB], &sig); err != nil {
 			t.Fatal(err)
 		}
 		return sig
@@ -199,7 +199,7 @@ func TestHealthReadsCrowdSecDatabase(t *testing.T) {
 		sig.Held["crowdsec"] != 30 || sig.Held["lists:firehol_level1"] != 1 || sig.Dropped != 412 || sig.Processed != 51000 {
 		t.Fatalf("fw-edge signals %+v", sig)
 	}
-	if strings.Contains(fmt.Sprint(e.get(t, "/crowdsec/components")), "must-not-leave") || strings.Contains(string(fw.Signals[crowdsec.SourceDB]), "must-not-leave") {
+	if strings.Contains(fmt.Sprint(e.get(t, "/crowdsec/components")), "must-not-leave") || strings.Contains(string(fw.Signals[csserver.SourceDB]), "must-not-leave") {
 		t.Fatal("the raw metrics payload must not leave the host")
 	}
 	if read(comps["bouncer:old-nginx"]); !sig.Revoked || sig.LastSeenMs != 0 {
@@ -224,7 +224,7 @@ func TestHealthPartsAndOlderCrowdSec(t *testing.T) {
 	e := newE2E(t)
 	e.with(map[string]string{"CROWDSEC_HEALTH": "true", "CROWDSEC_DB": crowdsecDB(t, now, false)})
 	e.once(t)
-	h := e.waitHealth(t, func(h *crowdsec.CollectorHealth) bool { return h.ReportedMs > 0 })
+	h := e.waitHealth(t, func(h *csserver.CollectorHealth) bool { return h.ReportedMs > 0 })
 	if h.Error != "" || strings.Join(h.Parts, ",") != "machines,bouncers,decisions" || len(e.components(t)) != 5 {
 		t.Fatalf("without a metrics table: %+v", h)
 	}
@@ -233,7 +233,7 @@ func TestHealthPartsAndOlderCrowdSec(t *testing.T) {
 	e = newE2E(t)
 	e.with(map[string]string{"CROWDSEC_HEALTH": "TRUE", "CROWDSEC_DB": crowdsecDB(t, now, true), "CROWDSEC_HEALTH_READ": "machines"})
 	e.once(t)
-	h = e.waitHealth(t, func(h *crowdsec.CollectorHealth) bool { return h.ReportedMs > 0 })
+	h = e.waitHealth(t, func(h *csserver.CollectorHealth) bool { return h.ReportedMs > 0 })
 	if strings.Join(h.Parts, ",") != "machines" || len(h.Active) != 0 || len(e.components(t)) != 3 {
 		t.Fatalf("machines only: %+v, %d components", h, len(e.components(t)))
 	}
@@ -241,7 +241,7 @@ func TestHealthPartsAndOlderCrowdSec(t *testing.T) {
 	e = newE2E(t)
 	e.with(map[string]string{"CROWDSEC_HEALTH": "true", "CROWDSEC_DB": crowdsecDB(t, now, true), "CROWDSEC_HEALTH_READ": "machines,logs"})
 	e.once(t)
-	h = e.waitHealth(t, func(h *crowdsec.CollectorHealth) bool { return h.ReportedMs > 0 })
+	h = e.waitHealth(t, func(h *csserver.CollectorHealth) bool { return h.ReportedMs > 0 })
 	if !strings.Contains(h.Error, `unknown part "logs"`) {
 		t.Fatalf("an unknown part must be named: %+v", h)
 	}
@@ -252,7 +252,7 @@ func TestHealthDatabaseUnreadable(t *testing.T) {
 	missing := filepath.Join(t.TempDir(), "nope", "crowdsec.db")
 	e.with(map[string]string{"CROWDSEC_HEALTH": "true", "CROWDSEC_DB": missing})
 	e.once(t)
-	h := e.waitHealth(t, func(h *crowdsec.CollectorHealth) bool { return h.ReportedMs > 0 })
+	h := e.waitHealth(t, func(h *csserver.CollectorHealth) bool { return h.ReportedMs > 0 })
 	if !strings.Contains(h.Error, "cannot read CrowdSec's machines table") {
 		t.Fatalf("report: %+v", h)
 	}
@@ -264,11 +264,11 @@ func TestHealthDatabaseUnreadable(t *testing.T) {
 		t.Fatalf("health must not fail the collector: %v", st)
 	}
 	// --check warns, and passes.
-	cfg, mods, err := loadConfig(e.getenv)
+	cfg, mods, err := LoadConfig(e.getenv, "test")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := runCheck(context.Background(), cfg, mods); err != nil {
+	if err := Check(context.Background(), cfg, mods); err != nil {
 		t.Fatalf("an unreadable health database must not fail --check: %v", err)
 	}
 }

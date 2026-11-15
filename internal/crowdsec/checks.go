@@ -277,7 +277,7 @@ type outcome struct {
 func (c *Component) db() DBSignals {
 	var s DBSignals
 	if raw, ok := c.Signals[SourceDB]; ok {
-		_ = json.Unmarshal(raw, &s)
+		_ = json.Unmarshal(raw, &s) // damaged signals read as none: nothing is judged until the next report
 	}
 	return s
 }
