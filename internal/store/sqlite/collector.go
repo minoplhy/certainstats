@@ -19,14 +19,14 @@ func scanCollector(row scanner) (*store.Collector, error) {
 	return &c, nil
 }
 
-func (s *Store) CollectorCreate(ctx context.Context, c store.Collector, tokenHash string, types []string) error {
+func (s *Store) CollectorCreate(ctx context.Context, c store.Collector, token, tokenHash string, types []string) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
-	if _, err := tx.ExecContext(ctx, `INSERT INTO collectors (collector_id, user_id, name, token_hash, agent_id, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
-		c.CollectorID, c.UserID, c.Name, tokenHash, c.AgentID, c.CreatedAt); err != nil {
+	if _, err := tx.ExecContext(ctx, `INSERT INTO collectors (collector_id, user_id, name, token, token_hash, agent_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		c.CollectorID, c.UserID, c.Name, token, tokenHash, c.AgentID, c.CreatedAt); err != nil {
 		return err
 	}
 	for _, typ := range types {
@@ -148,12 +148,20 @@ func (s *Store) CollectorUpdate(ctx context.Context, collectorID, userID string,
 // CollectorRevoke keeps the row so stored data keeps its collector name; the token
 // stops working at once. The hash is replaced so the old token cannot match again.
 func (s *Store) CollectorRevoke(ctx context.Context, collectorID, userID string) error {
-	return mustChange(s.db.ExecContext(ctx, `UPDATE collectors SET revoked_at = ?, token_hash = 'revoked:' || collector_id WHERE collector_id = ? AND user_id = ? AND revoked_at = 0`,
+	return mustChange(s.db.ExecContext(ctx, `UPDATE collectors SET revoked_at = ?, token = '', token_hash = 'revoked:' || collector_id WHERE collector_id = ? AND user_id = ? AND revoked_at = 0`,
 		time.Now().UnixMilli(), collectorID, userID))
 }
 
-func (s *Store) CollectorResetToken(ctx context.Context, collectorID, userID, tokenHash string) error {
-	return mustChange(s.db.ExecContext(ctx, `UPDATE collectors SET token_hash = ? WHERE collector_id = ? AND user_id = ? AND revoked_at = 0`, tokenHash, collectorID, userID))
+func (s *Store) CollectorResetToken(ctx context.Context, collectorID, userID, token, tokenHash string) error {
+	return mustChange(s.db.ExecContext(ctx, `UPDATE collectors SET token = ?, token_hash = ? WHERE collector_id = ? AND user_id = ? AND revoked_at = 0`, token, tokenHash, collectorID, userID))
+}
+
+// CollectorToken returns a live collector's token, empty for one created before
+// tokens were kept. It is sql.ErrNoRows when the collector is gone.
+func (s *Store) CollectorToken(ctx context.Context, collectorID, userID string) (string, error) {
+	var token string
+	err := s.db.QueryRowContext(ctx, `SELECT token FROM collectors WHERE collector_id = ? AND user_id = ? AND revoked_at = 0`, collectorID, userID).Scan(&token)
+	return token, err
 }
 
 func (s *Store) CollectorSeen(ctx context.Context, collectorID, version string, at int64) error {

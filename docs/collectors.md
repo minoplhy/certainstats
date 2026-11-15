@@ -41,6 +41,7 @@ messages, are ignored, so a newer collector still works with an older server.
 | --- | --- | --- |
 | server → collector | `hello` | Collector ID and name, the types enabled for it, keepalive interval |
 | collector → server | `ping` | Collector version and the types switched on locally; sent on connect and every 30 seconds |
+| server → collector | `pong` | Answers each `ping`, so both directions carry traffic on a quiet host; the collector also drops a connection silent for 90 seconds |
 
 The rest of the exchange belongs to the types. Wire types live in
 `internal/collector/wire`, imported by the server and the binary.
@@ -49,7 +50,9 @@ The rest of the exchange belongs to the types. Wire types live in
 
 1. In CertainStats, open the Collectors dialog, choose **Add collector**, give it
    a name, optionally the node it runs on, and tick the types it collects. The
-   token is shown once, with setup steps for systemd and Docker Compose.
+   install dialog that agents use opens with the Hub URL, the token and setup
+   steps for systemd and Docker Compose. **Install** on the collector's row opens
+   it again at any time; resetting the token opens it with the new token.
 2. The panel URL must be reachable from the host. A reverse proxy in front must
    pass WebSocket upgrades and keep idle connections open longer than 30
    seconds, as Beszel agents already need.
@@ -85,8 +88,9 @@ signed-in session; mutations need the CSRF token.
 | --- | --- | --- |
 | GET | `/collectors/connect` | Collector WebSocket |
 | GET | `/collectors` | Collectors with live status and each type's state, plus the available types |
-| POST | `/collectors` | Create with `name`, optional `agent_id` and `types`; returns the token once |
+| POST | `/collectors` | Create with `name`, optional `agent_id` and `types`; returns the token |
 | GET, PATCH, DELETE | `/collectors/{id}` | Read; change `name` or `agent_id`; remove |
+| GET | `/collectors/{id}/install` | Install steps with the token, as provision messages (the format of `/agent/install/{id}`) |
 | POST | `/collectors/{id}/token` | Replace the token and disconnect |
 | PUT, DELETE | `/collectors/{id}/<type>` | Enable or disable a type for this collector |
 | … | `/collectors/{id}/<type>/…` | The type's per-collector routes |
@@ -96,12 +100,19 @@ Collector IDs start with `col_`, so they never collide with `connect` or a type 
 
 ## Storage
 
-The main SQLite database holds `collectors` (name, SHA-256 hash of the token,
-linked node, first and last connection, version) and `collector_types` (one row
+The main SQLite database holds `collectors` (name, the token and its SHA-256
+hash, linked node, first and last connection, version) and `collector_types` (one row
 per type a collector may send: enabled, whether the host has it switched on,
 status, last error, and the type's small JSON state). Removing a collector keeps
 its row, with a token that can never match, so data it already sent keeps its
 name. Each type keeps its own data where it suits it.
+
+The token is kept, as agent tokens are, so the install steps can be shown again;
+connections are matched by the hash. Collectors created before tokens were kept
+show a placeholder and a note to reset the token.
+
+A type adds its own install steps (settings, host commands, Docker mounts, a
+note) by implementing `collector.Setup`.
 
 ## Adding a type
 

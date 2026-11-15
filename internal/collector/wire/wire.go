@@ -27,6 +27,10 @@ const (
 
 	MsgHello = "hello"
 	MsgPing  = "ping"
+	// MsgPong answers every ping, so the server-to-collector direction carries traffic
+	// too: the collector's read deadline and proxies' idle timers (nginx's
+	// proxy_read_timeout counts only that direction) would otherwise expire on a quiet host.
+	MsgPong = "pong"
 )
 
 // Envelope wraps every frame.

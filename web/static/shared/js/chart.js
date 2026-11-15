@@ -82,9 +82,13 @@
     if (Array.isArray(pt)) return pt[1];
     return null;
   }
-  function calculateDowntimes(points, queryEndTime, tsSpan) {
+  function expectedStepOf(tsSpan, stepMs) {
+    if (stepMs > 0) return stepMs;
+    return tsSpan ? Math.max(6e4, tsSpan / 1e3) : 6e4;
+  }
+  function calculateDowntimes(points, queryEndTime, tsSpan, stepMs) {
     if (!points || points.length === 0) return [];
-    const expectedStep = tsSpan ? Math.max(6e4, tsSpan / 1e3) : 6e4;
+    const expectedStep = expectedStepOf(tsSpan, stepMs);
     const threshold = Math.max(18e4, expectedStep * 2.5);
     const intervals = [];
     for (let i = 1; i < points.length; i++) {
@@ -110,9 +114,9 @@
     }
     return intervals;
   }
-  function buildCleanSeries(points, queryEndTime, tsSpan) {
+  function buildCleanSeries(points, queryEndTime, tsSpan, stepMs) {
     if (!points || points.length < 2) return points || [];
-    const expectedStep = tsSpan ? Math.max(6e4, tsSpan / 1e3) : 6e4;
+    const expectedStep = expectedStepOf(tsSpan, stepMs);
     const threshold = Math.max(18e4, expectedStep * 2.5);
     const result = [];
     for (let i = 0; i < points.length; i++) {
@@ -257,7 +261,7 @@
     });
   }
   function drawSeries(view) {
-    const { ctx, b, seriesList, queryEndTime, minTs, maxTs, tsSpan, effectiveMax, surfaceColor } = view;
+    const { ctx, b, seriesList, queryEndTime, minTs, maxTs, tsSpan, stepMs, effectiveMax, surfaceColor } = view;
     const toXY = (p) => ({
       x: b.padding.left + (Math.max(minTs, Math.min(maxTs, p.timestamp)) - minTs) / tsSpan * b.graphWidth,
       y: b.padding.top + b.graphHeight - Math.min(p.value, effectiveMax) / effectiveMax * b.graphHeight
@@ -267,7 +271,7 @@
     seriesList.forEach((series) => {
       const rawData = series.data || [];
       if (rawData.length === 0) return;
-      const cleanData = buildCleanSeries(rawData, queryEndTime, tsSpan);
+      const cleanData = buildCleanSeries(rawData, queryEndTime, tsSpan, stepMs);
       const color = resolveColor(series.color);
       const segments = [[]];
       cleanData.forEach((p) => {
@@ -572,7 +576,8 @@
       b = getBounds(chart);
     }
     const primarySeries = seriesList[0] && seriesList[0].data ? seriesList[0].data : [];
-    const downtimes = calculateDowntimes(primarySeries, queryEndTime, tsSpan);
+    const stepMs = chart.stepMs;
+    const downtimes = calculateDowntimes(primarySeries, queryEndTime, tsSpan, stepMs);
     const view = {
       ctx,
       b,
@@ -582,6 +587,7 @@
       minTs,
       maxTs,
       tsSpan,
+      stepMs,
       effectiveMax,
       primarySeries,
       downtimes,
@@ -702,6 +708,8 @@
       minMax: options.minMax !== void 0 && options.minMax !== null ? options.minMax : 1,
       onZoom: options.onZoom || null,
       queryEndTime: options.queryEndTime || Date.now(),
+      // Known spacing of a bucketed series; gaps are judged against it instead of the range.
+      stepMs: options.stepMs || null,
       // Brush Selection State
       isDragging: false,
       dragStartX: null,
@@ -717,8 +725,9 @@
     listen(window, "resize", redraw);
     listen(window, "certainstats_theme_change", onThemeChange);
     return {
-      updateSeries: function(newSeriesList, newHours, newYMax, newQueryEndTime, newCustomRange, newMaxAdd) {
+      updateSeries: function(newSeriesList, newHours, newYMax, newQueryEndTime, newCustomRange, newMaxAdd, newStepMs) {
         chart.seriesList = newSeriesList || [];
+        if (newStepMs !== void 0) chart.stepMs = newStepMs;
         if (newHours !== void 0) chart.hours = newHours;
         if (newYMax !== void 0) chart.yMax = newYMax !== null ? newYMax : null;
         if (newQueryEndTime !== void 0) chart.queryEndTime = newQueryEndTime;

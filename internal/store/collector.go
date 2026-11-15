@@ -39,14 +39,17 @@ func (c *Collector) Type(typ string) (CollectorType, bool) {
 }
 
 type CollectorStore interface {
-	CollectorCreate(ctx context.Context, c Collector, tokenHash string, types []string) error
+	// CollectorCreate keeps the token, as agent tokens are kept, and its hash for lookups.
+	CollectorCreate(ctx context.Context, c Collector, token, tokenHash string, types []string) error
 	CollectorList(ctx context.Context, userID string) ([]Collector, error)
 	CollectorGet(ctx context.Context, collectorID, userID string) (*Collector, error)
 	// CollectorByTokenHash resolves a live (not revoked) collector from its token hash.
 	CollectorByTokenHash(ctx context.Context, tokenHash string) (*Collector, error)
 	CollectorUpdate(ctx context.Context, collectorID, userID string, name, agentID *string) error
 	CollectorRevoke(ctx context.Context, collectorID, userID string) error
-	CollectorResetToken(ctx context.Context, collectorID, userID, tokenHash string) error
+	CollectorResetToken(ctx context.Context, collectorID, userID, token, tokenHash string) error
+	// CollectorToken returns the kept token, empty for collectors made before tokens were kept.
+	CollectorToken(ctx context.Context, collectorID, userID string) (string, error)
 	// CollectorSeen records a connection or keepalive; first marks the first connection.
 	CollectorSeen(ctx context.Context, collectorID, version string, at int64) error
 	CollectorNames(ctx context.Context, userID string) (map[string]string, error)

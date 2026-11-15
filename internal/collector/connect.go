@@ -148,5 +148,5 @@ func (s *Service) ping(ctx context.Context, c *Conn, body cbor.RawMessage) error
 	if err := s.Store.CollectorSeen(ctx, c.Collector.CollectorID, p.Version, time.Now().UnixMilli()); err != nil {
 		log.Printf("[Collector] %s: %v", c.Collector.CollectorID, err)
 	}
-	return nil
+	return c.Send(wire.MsgPong, nil)
 }

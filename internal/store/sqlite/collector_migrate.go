@@ -1,5 +1,7 @@
 package sqlite
 
+import "strings"
+
 // collectorSchema adds collectors and the types each may send. Additive and idempotent.
 var collectorSchema = []string{
 	`CREATE TABLE IF NOT EXISTS collectors (
@@ -28,9 +30,21 @@ var collectorSchema = []string{
 	)`,
 }
 
+// collectorColumnsAdded are additive columns; "duplicate column" means already applied.
+var collectorColumnsAdded = []string{
+	// token is kept, like agent tokens, so install steps can be shown again.
+	// Collectors created before it have '' until their token is reset.
+	`ALTER TABLE collectors ADD COLUMN token TEXT NOT NULL DEFAULT ''`,
+}
+
 func (s *Store) migrateCollectors() error {
 	for _, stmt := range collectorSchema {
 		if _, err := s.db.Exec(stmt); err != nil {
+			return err
+		}
+	}
+	for _, stmt := range collectorColumnsAdded {
+		if _, err := s.db.Exec(stmt); err != nil && !strings.Contains(err.Error(), "duplicate column") {
 			return err
 		}
 	}

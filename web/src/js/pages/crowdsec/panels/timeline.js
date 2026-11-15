@@ -13,12 +13,14 @@ export function drawTimeline(existing, canvasId, data, range, onZoom) {
   const series = [{label: 'Alerts', color: '--s1', fill: true, data: data.points.map(p => ({timestamp: p[0], value: p[1]}))}];
   const customRange = {start: range.start, end: range.end};
   const hours = Math.max(1, Math.round((range.end - range.start) / 3600000));
+  // Buckets are width_ms apart; without it the chart reads wide buckets as outages.
+  const stepMs = data.width_ms || null;
   if (existing) {
-    existing.updateSeries(series, hours, null, range.end, customRange);
+    existing.updateSeries(series, hours, null, range.end, customRange, undefined, stepMs);
     return existing;
   }
   return window.CertainStatsChart.renderMultiChart(canvasId, {
-    seriesList: series, hours, customRange, queryEndTime: range.end, minMax: 1,
+    seriesList: series, hours, customRange, queryEndTime: range.end, minMax: 1, stepMs,
     formatter: v => formatCount(Math.round(v)), onZoom
   });
 }

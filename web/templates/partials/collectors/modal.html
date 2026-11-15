@@ -53,28 +53,5 @@
       <button type="submit" class="btn btn-primary" data-collectors-create>Create collector</button>
     </div>
   </form>
-
-  <div data-collectors-step="setup" hidden>
-    <div class="modal-header">
-      <div>
-        <h2 class="modal-title" data-collectors-setup-title>Collector created</h2>
-        <p class="modal-subtitle">Copy the token now; it is shown only once. Then follow the steps on the host.</p>
-      </div>
-      {{template "modal_close"}}
-    </div>
-    <div class="modal-body collector-setup">
-      <div class="instruction-item">
-        <div class="instruction-label">Token</div>
-        <div class="instruction-copy-badge">
-          <code class="instruction-copy-val font-mono" data-collectors-token></code>
-          <button type="button" class="instruction-inline-copy-btn" data-collectors-copy-token>Copy</button>
-        </div>
-      </div>
-      <div data-collectors-setup></div>
-    </div>
-    <div class="modal-footer">
-      <button type="button" class="btn btn-primary" data-collectors-done>Done</button>
-    </div>
-  </div>
 </dialog>
 {{end}}

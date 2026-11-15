@@ -26,6 +26,25 @@ func (t *Type) Name() string   { return wire.TypeName }
 func (t *Type) Label() string  { return "CrowdSec" }
 func (t *Type) Prefix() string { return wire.Prefix }
 
+// credentialsPath is where the setup steps put the collector's machine login.
+const credentialsPath = "/etc/certainstats/crowdsec-lapi.yaml"
+
+var _ collector.Setup = (*Type)(nil)
+
+// Setup is CrowdSec's part of the install steps.
+func (t *Type) Setup() collector.TypeSetup {
+	return collector.TypeSetup{
+		Env: [][2]string{{"COLLECT_CROWDSEC", "true"}, {"CROWDSEC_LAPI_CREDENTIALS", credentialsPath}},
+		Prepare: []collector.Step{{
+			Label:   "Register a machine login for the collector on the CrowdSec server (as root)",
+			Command: "mkdir -p /etc/certainstats\ncscli machines add certainstats --auto -f " + credentialsPath + "\nchmod 600 " + credentialsPath,
+		}},
+		Volumes: []string{credentialsPath + ":" + credentialsPath + ":ro"},
+		Note: "Install the collector on the machine that runs the CrowdSec Local API. If CrowdSec runs in Docker, the collector must share its network, " +
+			"the Local API must listen on that network, and url in " + credentialsPath + " must name the container, such as http://crowdsec:8080.",
+	}
+}
+
 // state is the type's small per-collector state, kept in collector_types.state_json.
 type state struct {
 	CursorMs int64  `json:"cursor_ms"`

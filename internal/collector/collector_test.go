@@ -196,6 +196,10 @@ func TestCollectorLifecycle(t *testing.T) {
 		t.Fatalf("type config not sent: %s", env.Type)
 	}
 	send(t, c, wire.MsgPing, wire.Ping{Version: "1.2.4", Types: []string{"fake"}})
+	// Every ping is answered, so a quiet connection still carries traffic both ways.
+	if env := recv(t, c); env.Type != wire.MsgPong {
+		t.Fatalf("ping answered with %q, want pong", env.Type)
+	}
 	send(t, c, "zz_unknown", nil)
 	send(t, c, "fk_hello", nil)
 	waitFor(t, "fake message", func() bool { return len(h.typ.seen()) == 1 && h.typ.seen()[0] == "fk_hello" })
@@ -304,5 +308,57 @@ func TestConnectAttemptsAreLimited(t *testing.T) {
 	}
 	if codes[0] != 401 || codes[1] != 401 || codes[2] != 429 {
 		t.Fatalf("status codes %v, want 401 401 429", codes)
+	}
+}
+
+// setupType is a type with its own install steps.
+type setupType struct{ fakeType }
+
+func (s *setupType) Name() string   { return "withsetup" }
+func (s *setupType) Prefix() string { return "ws_" }
+func (s *setupType) Setup() TypeSetup {
+	return TypeSetup{Env: [][2]string{{"COLLECT_WITHSETUP", "true"}}, Prepare: []Step{{Label: "Prepare", Command: "echo ready"}}, Note: "Needs <root>"}
+}
+
+func TestInstallSteps(t *testing.T) {
+	h := newHarness(t)
+	if err := h.svc.Register(&setupType{}); err != nil {
+		t.Fatal(err)
+	}
+	_, created := h.api("u1", "POST", "/", map[string]any{"name": "edge", "types": []string{"withsetup", "fake"}})
+	id, token := created["collector_id"].(string), created["token"].(string)
+
+	install := func(user string) (int, string) {
+		resp, out := h.api(user, "GET", "/"+id+"/install", nil)
+		raw, _ := json.Marshal(out["messages"])
+		return resp.StatusCode, string(raw)
+	}
+	code, body := install("u1")
+	for _, want := range []string{token, h.srv.URL, "COLLECT_WITHSETUP=true", "COLLECT_FAKE=true", "echo ready", "certainstats-collector:latest", "Needs \\u0026lt;root\\u0026gt;"} {
+		if code != 200 || !strings.Contains(body, want) {
+			t.Fatalf("install %d lacks %q: %s", code, want, body)
+		}
+	}
+	if code, _ := install("u2"); code != 404 {
+		t.Fatalf("another owner got %d", code)
+	}
+
+	_, reset := h.api("u1", "POST", "/"+id+"/token", nil)
+	if _, body := install("u1"); !strings.Contains(body, reset["token"].(string)) || strings.Contains(body, token) {
+		t.Fatal("install must show the new token after a reset")
+	}
+
+	// A collector made before tokens were kept shows a placeholder and says to reset.
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	enc.Encode(h.svc.instructions("", "https://stats.example", []string{"fake"}))
+	if old := buf.String(); !strings.Contains(old, "Reset the token") || !strings.Contains(old, "TOKEN="+tokenMissing) {
+		t.Fatalf("missing token not explained: %s", old)
+	}
+
+	h.api("u1", "DELETE", "/"+id, nil)
+	if code, _ := install("u1"); code != 404 {
+		t.Fatalf("removed collector got %d", code)
 	}
 }

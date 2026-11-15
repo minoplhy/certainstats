@@ -56,7 +56,7 @@ export function drawOutages(view) {
 }
 
 export function drawSeries(view) {
-  const { ctx, b, seriesList, queryEndTime, minTs, maxTs, tsSpan, effectiveMax, surfaceColor } = view;
+  const { ctx, b, seriesList, queryEndTime, minTs, maxTs, tsSpan, stepMs, effectiveMax, surfaceColor } = view;
   // 3. Draw Metric Series Paths (smooth curves, soft area, latest-point marker)
   const toXY = p => ({
     x: b.padding.left + ((Math.max(minTs, Math.min(maxTs, p.timestamp)) - minTs) / tsSpan) * b.graphWidth,
@@ -68,7 +68,7 @@ export function drawSeries(view) {
   seriesList.forEach(series => {
     const rawData = series.data || [];
     if (rawData.length === 0) return;
-    const cleanData = buildCleanSeries(rawData, queryEndTime, tsSpan);
+    const cleanData = buildCleanSeries(rawData, queryEndTime, tsSpan, stepMs);
     const color = resolveColor(series.color);
 
     const segments = [[]];

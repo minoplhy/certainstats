@@ -573,36 +573,6 @@ dialog.modal[open] {
   color: var(--text-2);
 }
 
-.collector-setup,
-.collector-setup [data-collectors-setup] {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.collector-setup > *,
-.instruction-tab-panel > * {
-  flex-shrink: 0;
-}
-
-.instruction-tab-panel {
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
-  padding-top: 4px;
-  counter-reset: step;
-}
-
-.instruction-tab-panel[hidden] {
-  display: none;
-}
-
-.instruction-tab-panel .instruction-label::before {
-  counter-increment: step;
-  content: counter(step) ". ";
-  color: var(--accent);
-}
-
 .instruction-command-box {
   background: var(--code-bg);
   border-radius: var(--r);

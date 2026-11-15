@@ -22,6 +22,8 @@ export function renderMultiChart(canvasId, options) {
     minMax: (options.minMax !== undefined && options.minMax !== null) ? options.minMax : 1,
     onZoom: options.onZoom || null,
     queryEndTime: options.queryEndTime || Date.now(),
+    // Known spacing of a bucketed series; gaps are judged against it instead of the range.
+    stepMs: options.stepMs || null,
 
     // Brush Selection State
     isDragging: false,
@@ -41,8 +43,9 @@ export function renderMultiChart(canvasId, options) {
   listen(window, 'certainstats_theme_change', onThemeChange);
 
   return {
-    updateSeries: function (newSeriesList, newHours, newYMax, newQueryEndTime, newCustomRange, newMaxAdd) {
+    updateSeries: function (newSeriesList, newHours, newYMax, newQueryEndTime, newCustomRange, newMaxAdd, newStepMs) {
       chart.seriesList = newSeriesList || [];
+      if (newStepMs !== undefined) chart.stepMs = newStepMs;
       if (newHours !== undefined) chart.hours = newHours;
       if (newYMax !== undefined) chart.yMax = (newYMax !== null) ? newYMax : null;
       if (newQueryEndTime !== undefined) chart.queryEndTime = newQueryEndTime;

@@ -292,8 +292,9 @@
     const series = [{ label: "Alerts", color: "--s1", fill: true, data: data.points.map((p) => ({ timestamp: p[0], value: p[1] })) }];
     const customRange = { start: range.start, end: range.end };
     const hours = Math.max(1, Math.round((range.end - range.start) / 36e5));
+    const stepMs = data.width_ms || null;
     if (existing) {
-      existing.updateSeries(series, hours, null, range.end, customRange);
+      existing.updateSeries(series, hours, null, range.end, customRange, void 0, stepMs);
       return existing;
     }
     return window.CertainStatsChart.renderMultiChart(canvasId, {
@@ -302,6 +303,7 @@
       customRange,
       queryEndTime: range.end,
       minMax: 1,
+      stepMs,
       formatter: (v) => formatCount(Math.round(v)),
       onZoom
     });
@@ -500,9 +502,10 @@
       fact(facts, "Scope", full.scope ? full.scope + " " + full.value : "", true);
       if (full.simulated) fact(facts, "Mode", "Simulation: no decision was enforced");
       if (full.message) fact(facts, "Message", full.message);
+      const list = full.decisions || [];
       const decisions = el("div", "cs-decision-list");
-      decisions.append(el("h4", "incident-event-heading", full.decisions.length ? "Decisions" : "No decisions were taken"));
-      for (const d of full.decisions) {
+      decisions.append(el("h4", "incident-event-heading", list.length ? "Decisions" : "No decisions were taken"));
+      for (const d of list) {
         const line = el("div", "cs-decision");
         line.append(
           el("span", "badge " + (d.type === "ban" ? "badge-offline" : "badge-warn"), d.type || "decision"),

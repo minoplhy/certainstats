@@ -53,14 +53,6 @@
     if (type.status === "ok") return { level: "ok", text: "Reporting" };
     return { level: "warn", text: "Connected, waiting for first report" };
   }
-  async function copy(text, label) {
-    try {
-      await navigator.clipboard.writeText(text);
-      window.CertainStatsTelemetry?.showToast((label || "Value") + " copied", true);
-    } catch (e) {
-      window.CertainStatsTelemetry?.showToast("Copy failed; select the text and copy it by hand", false);
-    }
-  }
 
   // web/src/js/components/collectors/list.js
   function createList(ctx2) {
@@ -157,11 +149,12 @@
       head.append(dot, renameControl(c), facts);
       const actions = el("div", "collector-row-actions");
       actions.append(
+        button("Install", "btn btn-secondary btn-sm", () => ctx2.showInstall(c)),
         button("Reset token", "btn btn-ghost btn-sm", async () => {
           if (!await confirm({ title: "Reset the token of " + c.name + "?", message: "The collector disconnects at once and stays offline until its TOKEN setting is replaced.", label: "Reset token", danger: true })) return;
           act(async () => {
-            const out = await api("collectors/" + c.collector_id + "/token", { method: "POST" });
-            ctx2.showToken(c, out.token);
+            await api("collectors/" + c.collector_id + "/token", { method: "POST" });
+            ctx2.showInstall(c);
           });
         }),
         button("Remove", "btn btn-ghost btn-sm btn-danger", async () => {
@@ -185,100 +178,6 @@
       for (const c of state2.items) ui.list.append(row(c));
     }
     return { render };
-  }
-
-  // web/src/js/components/collectors/setup.js
-  var RELEASES = "https://github.com/minoplhy/certainstats/releases/latest";
-  var IMAGE = "ghcr.io/minoplhy/certainstats-collector:latest";
-  var CROWDSEC_CREDS = "/etc/certainstats/crowdsec-lapi.yaml";
-  var TYPE_SETUP = {
-    crowdsec: {
-      env: [["COLLECT_CROWDSEC", "true"], ["CROWDSEC_LAPI_CREDENTIALS", CROWDSEC_CREDS]],
-      prepare: [{
-        label: "Register a machine login for the collector on the CrowdSec server (as root)",
-        command: "mkdir -p /etc/certainstats\ncscli machines add certainstats --auto -f " + CROWDSEC_CREDS + "\nchmod 600 " + CROWDSEC_CREDS
-      }],
-      volumes: [CROWDSEC_CREDS + ":" + CROWDSEC_CREDS + ":ro"],
-      note: "Install the collector on the machine that runs the CrowdSec Local API. If CrowdSec runs in Docker, the collector must share its network, the Local API must listen on that network, and url in " + CROWDSEC_CREDS + " must name the container, such as http://crowdsec:8080."
-    }
-  };
-  function hubURL() {
-    return window.location.origin + (document.body?.getAttribute("data-panel-path") || "").replace(/\/+$/, "");
-  }
-  function envLines(token, types) {
-    const lines = [["HUB_URL", hubURL()], ["TOKEN", token]];
-    for (const type of types) lines.push(...TYPE_SETUP[type]?.env || []);
-    return lines;
-  }
-  function commandBlock(label, text) {
-    const item = el("div", "instruction-item");
-    item.append(el("div", "instruction-label", label));
-    const box = el("div", "instruction-command-box");
-    box.append(el("pre", "instruction-command-code font-mono", text));
-    const btn = el("button", "instruction-copy-btn", "Copy");
-    btn.type = "button";
-    btn.addEventListener("click", () => copy(text, "Command"));
-    box.append(btn);
-    item.append(box);
-    return item;
-  }
-  function noteBlock(text) {
-    return el("div", "instruction-note", text);
-  }
-  function systemdSteps(token, types) {
-    const env = envLines(token, types).map(([k, v]) => k + "=" + v).join("\n");
-    const steps = [];
-    for (const type of types) for (const p of TYPE_SETUP[type]?.prepare || []) steps.push([p.label, p.command]);
-    steps.push([
-      "Install the collector (pick the file for your CPU from " + RELEASES + ")",
-      "curl -fsSL -o /tmp/certainstats-collector.tar.gz " + RELEASES + "/download/certainstats-collector-linux-amd64.tar.gz\ntar -xzf /tmp/certainstats-collector.tar.gz -C /tmp\ninstall -m 755 /tmp/certainstats-collector-linux-amd64 /usr/local/bin/certainstats-collector"
-    ]);
-    steps.push(["Write its settings", "install -m 600 /dev/null /etc/certainstats/collector.env\ncat > /etc/certainstats/collector.env <<'EOF'\n" + env + "\nEOF"]);
-    steps.push(["Check every prerequisite", "set -a; . /etc/certainstats/collector.env; set +a\ncertainstats-collector --check"]);
-    steps.push(["Run it as a service", "cat > /etc/systemd/system/certainstats-collector.service <<'EOF'\n[Unit]\nDescription=CertainStats collector\nAfter=network-online.target crowdsec.service\nWants=network-online.target\n\n[Service]\nEnvironmentFile=/etc/certainstats/collector.env\nExecStart=/usr/local/bin/certainstats-collector\nRestart=always\nRestartSec=10\n\n[Install]\nWantedBy=multi-user.target\nEOF\nsystemctl daemon-reload\nsystemctl enable --now certainstats-collector"]);
-    return steps;
-  }
-  function composeFile(token, types) {
-    const env = envLines(token, types).map(([k, v]) => "      " + k + ': "' + v + '"').join("\n");
-    const volumes = types.flatMap((type) => TYPE_SETUP[type]?.volumes || []);
-    let yaml = "services:\n  certainstats-collector:\n    image: " + IMAGE + "\n    restart: unless-stopped\n    environment:\n" + env + "\n";
-    if (volumes.length) yaml += "    volumes:\n" + volumes.map((v) => "      - " + v).join("\n") + "\n";
-    if (types.includes("crowdsec")) yaml += "    # Join the network CrowdSec runs on, so the Local API is reachable.\n    # networks: [crowdsec]\n";
-    return yaml;
-  }
-  function renderSetup(container, token, types) {
-    container.replaceChildren();
-    const prepare = [];
-    for (const type of types) for (const p of TYPE_SETUP[type]?.prepare || []) prepare.push(commandBlock(p.label, p.command));
-    const tabs = [
-      { name: "systemd", build: () => systemdSteps(token, types).map(([label, cmd]) => commandBlock(label, cmd)) },
-      { name: "Docker Compose", build: () => [...prepare, commandBlock("docker-compose.yml", composeFile(token, types)), commandBlock("Check every prerequisite", "docker compose run --rm certainstats-collector --check"), commandBlock("Start it", "docker compose up -d certainstats-collector\ndocker compose logs -f certainstats-collector")] }
-    ];
-    const header = el("div", "instruction-tabs-header");
-    header.setAttribute("role", "tablist");
-    const panels = el("div", "instruction-tabs-panels");
-    tabs.forEach((tab, i) => {
-      const btn = el("button", "instruction-tab-btn" + (i === 0 ? " active" : ""), tab.name);
-      btn.type = "button";
-      btn.setAttribute("role", "tab");
-      btn.setAttribute("aria-selected", String(i === 0));
-      const panel = el("div", "instruction-tab-panel");
-      panel.hidden = i !== 0;
-      panel.append(...tab.build());
-      btn.addEventListener("click", () => {
-        header.querySelectorAll(".instruction-tab-btn").forEach((b, j) => {
-          b.classList.toggle("active", j === i);
-          b.setAttribute("aria-selected", String(j === i));
-        });
-        panels.querySelectorAll(".instruction-tab-panel").forEach((p, j) => {
-          p.hidden = j !== i;
-        });
-      });
-      header.append(btn);
-      panels.append(panel);
-    });
-    container.append(header, panels);
-    for (const type of types) if (TYPE_SETUP[type]?.note) container.append(noteBlock(TYPE_SETUP[type].note));
   }
 
   // web/src/js/components/collectors/index.js
@@ -308,12 +207,15 @@
       node.hidden = node.dataset.collectorsStep !== name;
     });
   }
-  function showToken(collector, token, types) {
-    ctx.ui.setupTitle.textContent = (types ? "Collector created: " : "New token for ") + collector.name;
-    ctx.ui.token.textContent = token;
-    ctx.ui.copyToken.onclick = () => copy(token, "Token");
-    renderSetup(ctx.ui.setup, token, types || collector.types.filter((t) => t.enabled).map((t) => t.type));
-    step("setup");
+  function showInstall(collector) {
+    const modal = document.getElementById("reinstall-modal");
+    const container = document.getElementById("reinstall-instructions-container");
+    const renderer = window.CertainStatsProvisionRenderer;
+    if (!modal || !container || !renderer?.loadInstructions) return;
+    const title = document.getElementById("reinstall-modal-title");
+    if (title) title.textContent = "Install " + collector.name;
+    renderer.loadInstructions("/api/collectors/" + encodeURIComponent(collector.collector_id) + "/install", container, "installation", "collector");
+    window.CertainStatsModal?.open(modal);
   }
   function renderTypeOptions(preselect) {
     ctx.ui.types.replaceChildren();
@@ -342,27 +244,15 @@
         types: q("types"),
         formMessage: q("form-message"),
         back: q("back"),
-        create: q("create"),
-        token: q("token"),
-        copyToken: q("copy-token"),
-        setup: q("setup"),
-        setupTitle: q("setup-title"),
-        done: q("done")
+        create: q("create")
       }
     };
-    ctx.showToken = (c, token) => showToken(c, token);
+    ctx.showInstall = showInstall;
     ctx.list = createList(ctx);
     const form = root.querySelector('form[data-collectors-step="create"]');
     ctx.ui.add.addEventListener("click", () => open({ create: true }));
     ctx.ui.back.addEventListener("click", () => step("list"));
-    ctx.ui.done.addEventListener("click", () => {
-      step("list");
-      ctx.ui.token.textContent = "";
-    });
-    root.addEventListener("close", () => {
-      step("list");
-      ctx.ui.token.textContent = "";
-    });
+    root.addEventListener("close", () => step("list"));
     form.addEventListener("submit", async (e) => {
       e.preventDefault();
       const types = [...ctx.ui.types.querySelectorAll("input:checked")].map((i) => i.value);
@@ -370,9 +260,10 @@
       ctx.ui.create.disabled = true;
       try {
         const created = await api("collectors", { method: "POST", body: JSON.stringify({ name: ctx.ui.name.value, agent_id: ctx.ui.node.value, types }) });
-        showToken(created, created.token, types);
+        step("list");
         refresh().catch(() => {
         });
+        showInstall(created);
       } catch (err) {
         ctx.ui.formMessage.textContent = err.message;
       } finally {

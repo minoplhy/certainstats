@@ -38,10 +38,17 @@ export function getPtVal(pt) {
   return null;
 }
 
+// expectedStepOf is the normal spacing between points: stepMs when the caller knows
+// it (bucketed series), otherwise roughly 1,000 samples across the range.
+function expectedStepOf(tsSpan, stepMs) {
+  if (stepMs > 0) return stepMs;
+  return tsSpan ? Math.max(60000, tsSpan / 1000) : 60000;
+}
+
 // Downtime Gap Detection Algorithm
-export function calculateDowntimes(points, queryEndTime, tsSpan) {
+export function calculateDowntimes(points, queryEndTime, tsSpan, stepMs) {
   if (!points || points.length === 0) return [];
-  const expectedStep = tsSpan ? Math.max(60000, tsSpan / 1000) : 60000;
+  const expectedStep = expectedStepOf(tsSpan, stepMs);
   const threshold = Math.max(180000, expectedStep * 2.5);
 
   const intervals = [];
@@ -71,9 +78,9 @@ export function calculateDowntimes(points, queryEndTime, tsSpan) {
 }
 
 // Build chart series with null points across outages
-export function buildCleanSeries(points, queryEndTime, tsSpan) {
+export function buildCleanSeries(points, queryEndTime, tsSpan, stepMs) {
   if (!points || points.length < 2) return points || [];
-  const expectedStep = tsSpan ? Math.max(60000, tsSpan / 1000) : 60000;
+  const expectedStep = expectedStepOf(tsSpan, stepMs);
   const threshold = Math.max(180000, expectedStep * 2.5);
 
   const result = [];

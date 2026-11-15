@@ -33,6 +33,7 @@ func (s *Service) Routes(r chi.Router, auth func(http.Handler) http.Handler) {
 			one.Patch("/", s.update)
 			one.Delete("/", s.revoke)
 			one.Post("/token", s.resetToken)
+			one.Get("/install", s.install)
 			for _, t := range s.Types() {
 				name := t.Name()
 				one.Route("/"+name, func(tr chi.Router) {
@@ -195,7 +196,7 @@ func (s *Service) create(w http.ResponseWriter, r *http.Request) {
 		c.AgentID = *req.AgentID
 	}
 	token := newToken()
-	if err := s.Store.CollectorCreate(r.Context(), c, HashToken(token), req.Types); err != nil {
+	if err := s.Store.CollectorCreate(r.Context(), c, token, HashToken(token), req.Types); err != nil {
 		log.Printf("[Collector] create: %v", err)
 		apiresponse.Error(w, http.StatusInternalServerError, "Failed to create collector")
 		return
@@ -245,7 +246,7 @@ func (s *Service) revoke(w http.ResponseWriter, r *http.Request) {
 func (s *Service) resetToken(w http.ResponseWriter, r *http.Request) {
 	c := FromRequest(r)
 	token := newToken()
-	if err := s.Store.CollectorResetToken(r.Context(), c.CollectorID, userID(r), HashToken(token)); err != nil {
+	if err := s.Store.CollectorResetToken(r.Context(), c.CollectorID, userID(r), token, HashToken(token)); err != nil {
 		apiresponse.Error(w, http.StatusInternalServerError, "Failed to reset token")
 		return
 	}

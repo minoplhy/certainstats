@@ -40,9 +40,10 @@ async function loadDetails(alert, body) {
     fact(facts, 'Scope', full.scope ? full.scope + ' ' + full.value : '', true);
     if (full.simulated) fact(facts, 'Mode', 'Simulation: no decision was enforced');
     if (full.message) fact(facts, 'Message', full.message);
+    const list = full.decisions || [];
     const decisions = el('div', 'cs-decision-list');
-    decisions.append(el('h4', 'incident-event-heading', full.decisions.length ? 'Decisions' : 'No decisions were taken'));
-    for (const d of full.decisions) {
+    decisions.append(el('h4', 'incident-event-heading', list.length ? 'Decisions' : 'No decisions were taken'));
+    for (const d of list) {
       const line = el('div', 'cs-decision');
       line.append(el('span', 'badge ' + (d.type === 'ban' ? 'badge-offline' : 'badge-warn'), d.type || 'decision'),
         el('span', 'mono', d.scope + ' ' + d.value), el('span', 'muted', d.origin),

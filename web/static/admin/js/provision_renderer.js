@@ -219,66 +219,45 @@
     container.appendChild(listContainer);
   }
 
-  function loadInstallInstructions(agentId, containerEl) {
+  // loadInstructions fetches {messages} from apiPath (under the panel path) and renders
+  // them into containerEl. what names them in messages, e.g. "installation".
+  function loadInstructions(apiPath, containerEl, what, key) {
     if (!containerEl) return;
     containerEl.innerHTML = `
       <div class="loading-state">
-        Fetching installation instructions...
+        Fetching ${escapeHtml(what)} instructions...
       </div>`;
 
     const panelPath = window.CertainStatsTelemetry ? window.CertainStatsTelemetry.getPanelPath() : '';
-    fetch((panelPath || '') + '/api/agent/install/' + encodeURIComponent(agentId))
+    fetch((panelPath || '') + apiPath)
       .then(r => r.json().then(data => ({ ok: r.ok, data })))
       .then(({ ok, data }) => {
         if (!ok || !data || !Array.isArray(data.messages)) {
           containerEl.innerHTML = `
             <div class="instruction-warning">
               ${ICONS.warning}
-              <div>Failed to load installation instructions: ${escapeHtml((data && data.message) || 'Unknown error')}</div>
+              <div>Failed to load ${escapeHtml(what)} instructions: ${escapeHtml((data && data.message) || 'Unknown error')}</div>
             </div>`;
           return;
         }
 
-        renderInstructions(containerEl, data.messages, 'reinstall');
+        renderInstructions(containerEl, data.messages, key || what);
       })
       .catch(() => {
         containerEl.innerHTML = `
           <div class="instruction-warning">
             ${ICONS.warning}
-            <div>Network error loading installation instructions.</div>
+            <div>Network error loading ${escapeHtml(what)} instructions.</div>
           </div>`;
       });
   }
 
+  function loadInstallInstructions(agentId, containerEl) {
+    loadInstructions('/api/agent/install/' + encodeURIComponent(agentId), containerEl, 'installation', 'reinstall');
+  }
+
   function loadUninstallInstructions(agentId, containerEl) {
-    if (!containerEl) return;
-    containerEl.innerHTML = `
-      <div class="loading-state">
-        Fetching uninstall instructions...
-      </div>`;
-
-    const panelPath = window.CertainStatsTelemetry ? window.CertainStatsTelemetry.getPanelPath() : '';
-    fetch((panelPath || '') + '/api/agent/uninstall/' + encodeURIComponent(agentId))
-      .then(r => r.json().then(data => ({ ok: r.ok, data })))
-      .then(({ ok, data }) => {
-        if (!ok || !data || !Array.isArray(data.messages)) {
-          containerEl.innerHTML = `
-            <div class="instruction-warning">
-              ${ICONS.warning}
-              <div>Failed to load uninstall instructions: ${escapeHtml((data && data.message) || 'Unknown error')}</div>
-            </div>`;
-          return;
-        }
-
-        renderInstructions(containerEl, data.messages, 'uninstall');
-      })
-      .catch(() => {
-        containerEl.innerHTML = `
-          <div class="instruction-warning">
-            ${ICONS.warning}
-            <div>Network error loading uninstall instructions.</div>
-          </div>`;
-      });
+    loadInstructions('/api/agent/uninstall/' + encodeURIComponent(agentId), containerEl, 'uninstall', 'uninstall');
   }
 
   function provisionAgent(type, nickname, onComplete) {
@@ -357,6 +336,7 @@
 
   window.CertainStatsProvisionRenderer = {
     renderInstructions: renderInstructions,
+    loadInstructions: loadInstructions,
     loadInstallInstructions: loadInstallInstructions,
     loadUninstallInstructions: loadUninstallInstructions,
     provisionAgent: provisionAgent,

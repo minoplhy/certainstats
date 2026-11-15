@@ -75,9 +75,10 @@ export function draw(chart) {
   }
 
   const primarySeries = (seriesList[0] && seriesList[0].data) ? seriesList[0].data : [];
-  const downtimes = calculateDowntimes(primarySeries, queryEndTime, tsSpan);
+  const stepMs = chart.stepMs;
+  const downtimes = calculateDowntimes(primarySeries, queryEndTime, tsSpan, stepMs);
   const view = {
-    ctx, b, seriesList, formatter, queryEndTime, minTs, maxTs, tsSpan, effectiveMax, primarySeries, downtimes,
+    ctx, b, seriesList, formatter, queryEndTime, minTs, maxTs, tsSpan, stepMs, effectiveMax, primarySeries, downtimes,
     gridColor, axisTextColor, crosshairColor, ttBg, ttBorder, ttHeader, ttLabel, ttVal, badColor, surfaceColor, monoFont, bodyFont,
     isDragging: chart.isDragging, dragStartX: chart.dragStartX, currentDragX: chart.currentDragX, hoverX: chart.hoverX
   };

@@ -92,11 +92,12 @@ export function createList(ctx) {
     head.append(dot, renameControl(c), facts);
     const actions = el('div', 'collector-row-actions');
     actions.append(
+      button('Install', 'btn btn-secondary btn-sm', () => ctx.showInstall(c)),
       button('Reset token', 'btn btn-ghost btn-sm', async () => {
         if (!await confirm({title: 'Reset the token of ' + c.name + '?', message: 'The collector disconnects at once and stays offline until its TOKEN setting is replaced.', label: 'Reset token', danger: true})) return;
         act(async () => {
-          const out = await api('collectors/' + c.collector_id + '/token', {method: 'POST'});
-          ctx.showToken(c, out.token);
+          await api('collectors/' + c.collector_id + '/token', {method: 'POST'});
+          ctx.showInstall(c);
         });
       }),
       button('Remove', 'btn btn-ghost btn-sm btn-danger', async () => {
