@@ -297,11 +297,15 @@
     const node = document.querySelector('[data-kn-chart-message="' + group + '"]');
     if (node) node.textContent = text;
   }
-  function drawChart(key, canvasId, series, data, formatter) {
+  function countMax(series) {
+    const top = Math.max(0, ...series.flatMap((s) => s.data.map((p) => p.value)));
+    return Math.max(4, Math.ceil(top / 4) * 4);
+  }
+  function drawChart(key, canvasId, series, data, formatter, yMax = null) {
     const customRange = { start: data.start, end: data.end };
     const chart = state.charts[key];
     if (chart) {
-      chart.updateSeries(series, state.view.hours, null, data.end, customRange, void 0, data.step);
+      chart.updateSeries(series, state.view.hours, yMax, data.end, customRange, void 0, data.step);
       return chart;
     }
     state.charts[key] = window.CertainStatsChart?.renderMultiChart(canvasId, {
@@ -312,6 +316,7 @@
       minMax: 1,
       stepMs: data.step,
       formatter,
+      yMax,
       onZoom: (start, end) => state.onZoom?.(start, end)
     });
     return state.charts[key];
@@ -421,7 +426,7 @@
     const ui = state.ui;
     const b = data.breakdown;
     const series = [{ label: "Queries", color: "--s1", fill: true, data: b.series.map((p) => ({ timestamp: p[0], value: p[1] })) }];
-    drawChart("dnstap", "kn-chart-dnstap", series, data, (v) => formatCount(Math.round(v)));
+    drawChart("dnstap", "kn-chart-dnstap", series, data, (v) => formatCount(Math.round(v)), countMax(series));
     ui.dnstapTotal.textContent = formatCount(b.total);
     ui.dnstapMessage.textContent = b.total ? "" : "No dnstap traffic matches in this range.";
     const notes = [b.exact ? "Totals are exact" : "Filtered by name, so totals are lower bounds"];

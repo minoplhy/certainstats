@@ -212,6 +212,7 @@ func (s *Store) Dnstap(ctx context.Context, q Query, dim string, limit int) (Bre
 		b.Total += n
 		b.Series = append(b.Series, [2]int64{t, n})
 	}
+	b.Series = zeroFill(b.Series, q.Start, q.End, step)
 	where := "user_id = ? AND queries_only = 1 AND bucket >= ? AND bucket < ?"
 	args := []any{q.UserID, q.Start, q.End}
 	if q.CollectorID != "" {
@@ -224,6 +225,35 @@ func (s *Store) Dnstap(ctx context.Context, q Query, dim string, limit int) (Bre
 	}
 	b.QueriesOnly = qo > 0
 	return b, nil
+}
+
+// maxFill bounds how many buckets zeroFill writes; the page's windows stay
+// near 1,000.
+const maxFill = 5000
+
+// zeroFill gives every bucket of [start, end) a point. Only buckets with
+// traffic have rows, and a quiet minute means no queries, not an outage: the
+// chart would otherwise draw the gaps as offline bands.
+func zeroFill(series [][2]int64, start, end, step int64) [][2]int64 {
+	if step <= 0 || end <= start || (end-start)/step > maxFill {
+		return series
+	}
+	first := start - start%step
+	out := make([][2]int64, 0, (end-first)/step+1)
+	i := 0
+	for t := first; t < end; t += step {
+		for i < len(series) && series[i][0] < t {
+			out = append(out, series[i]) // off-grid rows are kept as they are
+			i++
+		}
+		if i < len(series) && series[i][0] == t {
+			out = append(out, series[i])
+			i++
+			continue
+		}
+		out = append(out, [2]int64{t, 0})
+	}
+	return append(out, series[i:]...)
 }
 
 func sizeOrder(k string) int {

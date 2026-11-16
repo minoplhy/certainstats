@@ -98,3 +98,20 @@ func TestEndpointsTakeHoursOrStartEnd(t *testing.T) {
 		t.Fatalf("bad range: %d %v", code, body)
 	}
 }
+
+func TestDnstapSeriesHasEveryBucket(t *testing.T) {
+	m := minuteMs
+	got := zeroFill([][2]int64{{2 * m, 5}, {4 * m, 1}}, 0, 6*m, m)
+	want := [][2]int64{{0, 0}, {m, 0}, {2 * m, 5}, {3 * m, 0}, {4 * m, 1}, {5 * m, 0}}
+	if len(got) != len(want) {
+		t.Fatalf("got %v", got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("got %v, want %v", got, want)
+		}
+	}
+	if out := zeroFill(nil, 0, (maxFill+1)*m, m); len(out) != 0 {
+		t.Fatalf("an oversized window must not be filled, got %d points", len(out))
+	}
+}

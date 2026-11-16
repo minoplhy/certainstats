@@ -1,7 +1,7 @@
 import { state } from './state.js';
 import { get, isAbort } from './api.js';
 import { apiParams } from './view.js';
-import { drawChart } from './charts.js';
+import { drawChart, countMax } from './charts.js';
 import { el, formatCount, zoneName } from './format.js';
 
 // Each card is one dimension; clicking a row filters by it where a filter exists.
@@ -90,7 +90,7 @@ function drawSeries(data) {
   const ui = state.ui;
   const b = data.breakdown;
   const series = [{label: 'Queries', color: '--s1', fill: true, data: b.series.map(p => ({timestamp: p[0], value: p[1]}))}];
-  drawChart('dnstap', 'kn-chart-dnstap', series, data, v => formatCount(Math.round(v)));
+  drawChart('dnstap', 'kn-chart-dnstap', series, data, v => formatCount(Math.round(v)), countMax(series));
   ui.dnstapTotal.textContent = formatCount(b.total);
   ui.dnstapMessage.textContent = b.total ? '' : 'No dnstap traffic matches in this range.';
   const notes = [b.exact ? 'Totals are exact' : 'Filtered by name, so totals are lower bounds'];

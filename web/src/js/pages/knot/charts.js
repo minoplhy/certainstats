@@ -37,18 +37,25 @@ function message(group, text) {
   if (node) node.textContent = text;
 }
 
+// countMax is a y-axis top for whole counts: a multiple of the four grid
+// steps, so every gridline lands on an integer.
+export function countMax(series) {
+  const top = Math.max(0, ...series.flatMap(s => s.data.map(p => p.value)));
+  return Math.max(4, Math.ceil(top / 4) * 4);
+}
+
 // drawChart hands one response to the shared chart engine: the axis is the
 // window the server answered for, the step its bucket width, and brushing
 // zooms the whole page (state.onZoom).
-export function drawChart(key, canvasId, series, data, formatter) {
+export function drawChart(key, canvasId, series, data, formatter, yMax = null) {
   const customRange = {start: data.start, end: data.end};
   const chart = state.charts[key];
   if (chart) {
-    chart.updateSeries(series, state.view.hours, null, data.end, customRange, undefined, data.step);
+    chart.updateSeries(series, state.view.hours, yMax, data.end, customRange, undefined, data.step);
     return chart;
   }
   state.charts[key] = window.CertainStatsChart?.renderMultiChart(canvasId, {
-    seriesList: series, hours: state.view.hours, customRange, queryEndTime: data.end, minMax: 1, stepMs: data.step, formatter,
+    seriesList: series, hours: state.view.hours, customRange, queryEndTime: data.end, minMax: 1, stepMs: data.step, formatter, yMax,
     onZoom: (start, end) => state.onZoom?.(start, end)
   });
   return state.charts[key];
