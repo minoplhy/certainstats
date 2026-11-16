@@ -2,13 +2,14 @@
 
 A collector is a small program, `certainstats-collector`, installed on a host to
 send CertainStats data from software running there. What it sends is a **type**.
-CrowdSec is the first type; see [CrowdSec](crowdsec.md). Collectors are separate
+The types are [CrowdSec](crowdsec.md) and [Knot DNS](knot.md). Collectors are separate
 from agents: an agent reports a machine's own metrics, a collector reports what
 other software on it sees. A collector can be linked to the node it runs on, but
 it never appears in the Agent Hub, on public dashboards or in node counts.
 
 Collectors are private and owner scoped. They are managed on the Collectors
-page (`/collectors`, in the main navigation), which the CrowdSec page links to.
+page (`/collectors`, in the main navigation), which the CrowdSec and Knot DNS
+pages link to.
 
 ## How it connects
 
@@ -34,13 +35,13 @@ collectors can be connected at once.
 Every frame is a CBOR envelope `{type, body}`, at most 1 MiB in either
 direction. Message types without a prefix belong to the collector itself. Each
 collector type owns a prefix, and the server routes frames by it; CrowdSec uses
-`cs_`. Frames for a type that is not enabled for the collector, and unknown
+`cs_` and Knot DNS `kn_`. Frames for a type that is not enabled for the collector, and unknown
 messages, are ignored, so a newer collector still works with an older server.
 
 | Direction | Message | Content |
 | --- | --- | --- |
 | server → collector | `hello` | Collector ID and name, the types enabled for it, keepalive interval |
-| collector → server | `ping` | Collector version and the types switched on locally; sent on connect and every 30 seconds |
+| collector → server | `ping` | Collector version and the types switched on locally (each by its switch); sent on connect and every 30 seconds |
 | server → collector | `pong` | Answers each `ping`, so both directions carry traffic on a quiet host; the collector also drops a connection silent for 90 seconds |
 
 The rest of the exchange belongs to the types. Wire types live in
@@ -67,11 +68,11 @@ The rest of the exchange belongs to the types. Wire types live in
    | --- | --- |
    | `HUB_URL` | The panel URL, such as `https://stats.example.com` |
    | `TOKEN` | The token from step 1 |
-   | `COLLECT_<TYPE>=true` | Switches a type on, such as `COLLECT_CROWDSEC=true`. With none, the collector exits and says so |
+   | Each type's switch | Switches a type on: `COLLECT_<TYPE>=true` unless the type names its own. CrowdSec uses `COLLECT_CROWDSEC=true`; Knot DNS must be switched on explicitly with `ENABLE_KNOT_DNS=true` (`COLLECT_KNOT` does nothing). With none, the collector exits and names every switch |
 
    Each type adds its own settings, prefixed with its name. Some are switches
    for optional reading that is off by default, such as CrowdSec's
-   `CROWDSEC_HEALTH`.
+   `CROWDSEC_HEALTH` or Knot's `KNOT_DNSTAP`.
 5. Keep the host clock correct (NTP); data and cursors are timestamps.
 
 `certainstats-collector --check` tests each prerequisite and names the first
@@ -80,7 +81,7 @@ version.
 
 The page lists one row per collector and shows where it stands, per type: "Waiting for first
 connection", "Offline", "Connected, CrowdSec not switched on
-(COLLECT_CROWDSEC=true)", "Connected, <error>", or "Reporting".
+(COLLECT_CROWDSEC=true)" (each type names its own switch), "Connected, <error>", or "Reporting".
 
 ## Private API
 
@@ -90,7 +91,7 @@ signed-in session; mutations need the CSRF token.
 | Method | Path | Behaviour |
 | --- | --- | --- |
 | GET | `/collectors/connect` | Collector WebSocket |
-| GET | `/collectors` | Collectors with live status and each type's state, plus the available types |
+| GET | `/collectors` | Collectors with live status and each type's state, plus the available types; each type carries its `switch` |
 | POST | `/collectors` | Create with `name`, optional `agent_id` and `types`; returns the token |
 | GET, PATCH, DELETE | `/collectors/{id}` | Read; change `name` or `agent_id`; remove |
 | GET | `/collectors/{id}/install` | Install steps with the token, as provision messages (the format of `/agent/install/{id}`) |
@@ -110,6 +111,13 @@ status, last error, and the type's small JSON state). Removing a collector keeps
 its row, with a token that can never match, so data it already sent keeps its
 name. Each type keeps its own data where it suits it.
 
+Time series from collectors go to their own Prometheus TSDB, `DATA_DIR/collector_tsdb`,
+never to the agent TSDB. A busy collector can neither evict agent metrics nor take
+agent query slots: `internal/collector/tsdb` owns the database and its own read
+limiter (8 concurrent reads; a read that waits 2 seconds for a slot gets 503). Its
+size is set by `COLLECTOR_RETENTION_DURATION` (default 90 days) and
+`COLLECTOR_STORAGE_MAX_BYTES`, independent of the agent TSDB's settings.
+
 The token is kept, as agent tokens are, so the install steps can be shown again;
 connections are matched by the hash. Collectors created before tokens were kept
 show a placeholder and a note to reset the token.
@@ -121,14 +129,17 @@ note) by implementing `collector.Setup`.
 
 1. Server: a package implementing `collector.Type` (`internal/collector/type.go`):
    a name, label and prefix, connect, message and disconnect handlers, and its
-   two route trees. Register it in `cmd/certainstats/main.go`.
+   two route trees. Register it in `cmd/certainstats/main.go`. Time series go to
+   the collector TSDB (`internal/collector/tsdb`).
 2. Binary: a package under `internal/collectoragent/` implementing
    `module.Module` (`internal/collectoragent/module`), listed in `Available()`
-   in `internal/collectoragent/config.go`. Its switch is `COLLECT_<NAME>`.
+   in `internal/collectoragent/config.go`. Its switch is `COLLECT_<NAME>`, unless
+   both the module and the server type implement `Switch()` (`module.Switcher`,
+   `collector.Switcher`) to name another, as Knot DNS does with `ENABLE_KNOT_DNS`.
    `cmd/certainstats-collector` is only the entrypoint (flags, then `Run`,
    `Once` or `Check`).
-3. Setup steps: an entry in `TYPE_SETUP` in
-   `web/src/js/components/collectors/setup.js`.
+3. Setup steps: implement `collector.Setup` on the server type
+   (`internal/collector/setup.go`); without it the steps only set the switch.
 4. Its own page and docs.
 
 ## Verification
@@ -136,4 +147,6 @@ note) by implementing `collector.Setup`.
 `go test ./internal/collector/...` covers tokens, routing by prefix, ignored and
 disabled types, oversized frames, connection replacement, token reset, removal
 and owner isolation. `go test ./internal/collectoragent/...` runs the real
-collector against a fake CrowdSec Local API and a real server.
+collector against a fake CrowdSec Local API, a fake Knot control socket and a
+real server. `go test ./internal/collector/tsdb/...` covers the collector TSDB
+and its limiter.

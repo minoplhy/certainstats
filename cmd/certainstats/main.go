@@ -24,10 +24,12 @@ import (
 	"certainstats/internal/alertdelivery"
 	"certainstats/internal/auth"
 	"certainstats/internal/collector"
+	ctsdb "certainstats/internal/collector/tsdb"
 	"certainstats/internal/compress"
 	b_ctx "certainstats/internal/context"
 	"certainstats/internal/crowdsec"
 	"certainstats/internal/dashboard"
+	"certainstats/internal/knot"
 	"certainstats/internal/lifecycle"
 	"certainstats/internal/metrics"
 	"certainstats/internal/networkservice"
@@ -142,14 +144,45 @@ func main() {
 		log.Fatalf("crowdsec store: %v", err)
 	}
 	defer crowdsecStore.Close()
+	// Collector time series live in their own TSDB, apart from agent metrics.
+	collectorKeep, err := retentionEnvDefault("COLLECTOR_RETENTION_DURATION", ctsdb.DefaultRetention)
+	if err != nil {
+		log.Fatalf("config: %v", err)
+	}
+	collectorMax, err := bytesEnv("COLLECTOR_STORAGE_MAX_BYTES")
+	if err != nil {
+		log.Fatalf("config: %v", err)
+	}
+	collectorTSDB, err := ctsdb.Open(filepath.Join(dataDir, "collector_tsdb"), ctsdb.Options{RetentionMs: collectorKeep.Milliseconds(), MaxBytes: collectorMax})
+	if err != nil {
+		log.Fatalf("collector tsdb: %v", err)
+	}
+	knotMinuteKeep, err := retentionEnvDefault("KNOT_DNSTAP_RAW_RETENTION", knot.DefaultMinuteRetention)
+	if err != nil {
+		log.Fatalf("config: %v", err)
+	}
+	knotHourlyKeep, err := retentionEnvDefault("KNOT_DNSTAP_ROLLUP_RETENTION", knot.DefaultHourlyRetention)
+	if err != nil {
+		log.Fatalf("config: %v", err)
+	}
+	knotStore, err := knot.Open(filepath.Join(dataDir, "knot.db"))
+	if err != nil {
+		log.Fatalf("knot store: %v", err)
+	}
+	defer knotStore.Close()
 	collectors := collector.NewService(db, db)
 	crowdsecType := &crowdsec.Type{Store: crowdsecStore, Collectors: collectors, Rules: db, Deliver: func(eventID string) { alertdelivery.Go(db, eventID) }, Retention: crowdsec.Retention{RawMs: rawKeep.Milliseconds(), RollupMs: rollupKeep.Milliseconds()}}
 	if err := collectors.Register(crowdsecType); err != nil {
 		log.Fatalf("collectors: %v", err)
 	}
+	knotType := &knot.Type{Store: knotStore, TSDB: collectorTSDB, Collectors: collectors,
+		Retention: knot.Retention{MinuteMs: knotMinuteKeep.Milliseconds(), HourlyMs: knotHourlyKeep.Milliseconds()}}
+	if err := collectors.Register(knotType); err != nil {
+		log.Fatalf("collectors: %v", err)
+	}
 
 	routine := &routine.Routine{
-		Maintenance: []func(context.Context){crowdsecType.Maintain},
+		Maintenance: []func(context.Context){crowdsecType.Maintain, knotType.Maintain},
 		Tick:        []func(context.Context){crowdsecType.Tick},
 		Store:       db,
 		Network:     networkService,
@@ -302,6 +335,7 @@ func main() {
 
 		rt.Get("/network-monitors", webHandler.RequireAuthWeb(webHandler.NetworkMonitorsHandler))
 		rt.Get("/crowdsec", webHandler.RequireAuthWeb(webHandler.CrowdSecHandler))
+		rt.Get("/knot", webHandler.RequireAuthWeb(webHandler.KnotHandler))
 		rt.Get("/collectors", webHandler.RequireAuthWeb(webHandler.CollectorsHandler))
 
 		rt.Get("/alerts", webHandler.RequireAuthWeb(webHandler.AlertsListHandler))
@@ -529,5 +563,8 @@ func main() {
 	}
 	if err := tdb.Close(); err != nil {
 		log.Printf("TSDB close: %v", err)
+	}
+	if err := collectorTSDB.Close(); err != nil {
+		log.Printf("collector TSDB close: %v", err)
 	}
 }

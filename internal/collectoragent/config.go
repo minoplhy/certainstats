@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"certainstats/internal/collectoragent/crowdsec"
+	"certainstats/internal/collectoragent/knot"
 	"certainstats/internal/collectoragent/module"
 	log "certainstats/internal/logger"
 )
@@ -22,20 +23,20 @@ type Config struct {
 
 // Available lists every type this binary can collect.
 func Available(getenv func(string) string, version string) []module.Module {
-	return []module.Module{crowdsec.New(getenv, version)}
+	return []module.Module{crowdsec.New(getenv, version), knot.New(getenv, version)}
 }
 
 func enabledModules(getenv func(string) string, version string) []module.Module {
 	var on []module.Module
 	for _, m := range Available(getenv, version) {
-		if strings.EqualFold(strings.TrimSpace(getenv("COLLECT_"+strings.ToUpper(m.Name()))), "true") {
+		if strings.EqualFold(strings.TrimSpace(getenv(module.SwitchOf(m))), "true") {
 			on = append(on, m)
 		}
 	}
 	return on
 }
 
-// LoadConfig reads HUB_URL, TOKEN and the COLLECT_<TYPE> switches.
+// LoadConfig reads HUB_URL, TOKEN and each type's switch (COLLECT_<TYPE> unless the type names its own).
 func LoadConfig(getenv func(string) string, version string) (Config, []module.Module, error) {
 	cfg := Config{HubURL: strings.TrimSpace(getenv("HUB_URL")), Token: strings.TrimSpace(getenv("TOKEN")), Version: version}
 	if cfg.HubURL == "" {
@@ -51,7 +52,7 @@ func LoadConfig(getenv func(string) string, version string) (Config, []module.Mo
 	if len(mods) == 0 {
 		var names []string
 		for _, m := range Available(getenv, version) {
-			names = append(names, "COLLECT_"+strings.ToUpper(m.Name())+"=true")
+			names = append(names, module.SwitchOf(m)+"=true")
 		}
 		return cfg, nil, fmt.Errorf("no type is switched on; set %s", strings.Join(names, " or "))
 	}

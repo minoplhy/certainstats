@@ -1,0 +1,41 @@
+{{define "knot_hero"}}
+<section class="hero" aria-labelledby="kn-headline">
+  <div class="hero-eyebrow">
+    <span>Knot DNS</span><span aria-hidden="true">·</span><span data-kn-server-count>Servers</span>
+  </div>
+  <h1 class="hero-title" id="kn-headline" data-kn-headline>Loading…</h1>
+  <div class="hero-stats">
+    <div class="hero-stat">
+      <span class="hero-stat-label">Total requests</span>
+      <span class="hero-stat-value"><span data-kn-stat-requests>–</span></span>
+    </div>
+    <div class="hero-stat">
+      <span class="hero-stat-label">Queries per second</span>
+      <span class="hero-stat-value"><span data-kn-stat-qps>–</span></span>
+    </div>
+    <div class="hero-stat">
+      <span class="hero-stat-label">NXDOMAIN</span>
+      <span class="hero-stat-value"><span data-kn-stat-nxdomain>–</span></span>
+    </div>
+    <div class="hero-stat">
+      <span class="hero-stat-label">SERVFAIL</span>
+      <span class="hero-stat-value"><span data-kn-stat-servfail>–</span></span>
+    </div>
+    <div class="hero-stat">
+      <span class="hero-stat-label">Zone transfers</span>
+      <span class="hero-stat-value"><span data-kn-stat-transfers>–</span></span>
+    </div>
+  </div>
+  <p class="kn-note" role="status" aria-live="polite" data-kn-stat-note></p>
+  <div class="hero-actions">
+    <a class="btn btn-secondary" href="{{.PanelPath}}/collectors">Collectors</a>
+    <button type="button" class="btn btn-ghost" data-kn-refresh>Refresh</button>
+  </div>
+</section>
+
+<div class="empty-state" data-kn-empty hidden>
+  <h2 class="empty-state-title">Connect your first Knot DNS server</h2>
+  <p>A collector on the machine that runs Knot DNS reads its counters and zone status through Knot's control socket, using read-only commands. Traffic is counted from when the collector first reads it.</p>
+  <a class="btn btn-primary" href="{{.PanelPath}}/collectors?add=knot">Add collector</a>
+</div>
+{{end}}

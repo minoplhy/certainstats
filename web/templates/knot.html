@@ -1,0 +1,16 @@
+{{define "content"}}
+<div class="kn-page" data-kn-page>
+  {{template "knot_hero" .}}
+  <div data-kn-main hidden>
+    {{template "knot_toolbar" .}}
+    {{template "knot_checks" .}}
+    {{template "knot_zone_view" .}}
+    {{template "knot_panels" .}}
+    {{template "knot_dnstap" .}}
+    {{template "knot_zones" .}}
+  </div>
+</div>
+
+<script type="application/json" id="page-config" data-module="CertainStatsKnot">{{bootstrap .}}</script>
+<script src="{{.StaticPath}}/{{asset "admin/js/knot.js"}}" integrity="{{integrity "admin/js/knot.js"}}"></script>
+{{end}}

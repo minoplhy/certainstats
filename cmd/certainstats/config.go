@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -174,6 +175,27 @@ func updateAllowedOrigins(panelURL, panelHost, publicURL, publicHost string) {
 	if len(origins) > 0 {
 		os.Setenv("ALLOWED_ORIGINS", strings.Join(origins, ","))
 	}
+}
+
+// retentionEnvDefault is retentionEnv with a default for an unset variable; 0 still keeps data forever.
+func retentionEnvDefault(key string, def time.Duration) (time.Duration, error) {
+	if strings.TrimSpace(os.Getenv(key)) == "" {
+		return def, nil
+	}
+	return retentionEnv(key)
+}
+
+// bytesEnv reads a size limit in bytes; empty or 0 is no limit.
+func bytesEnv(key string) (int64, error) {
+	raw := strings.TrimSpace(os.Getenv(key))
+	if raw == "" {
+		return 0, nil
+	}
+	n, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil || n < 0 {
+		return 0, fmt.Errorf("%s must be a number of bytes, or 0 for no limit", key)
+	}
+	return n, nil
 }
 
 // retentionEnv reads a retention setting in Go duration syntax; empty or 0 keeps data forever.

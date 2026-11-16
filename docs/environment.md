@@ -35,6 +35,10 @@ Choose one way to place the panel and public dashboards; mixing them stops start
 | `STORAGE_MAX_BYTES` | `0` (unlimited) | TSDB block retention size in bytes; not a whole-volume quota. |
 | `CROWDSEC_RAW_RETENTION` | `0` (unlimited) | How long CrowdSec alerts and decisions are kept in `crowdsec.db`, e.g. `4320h`. At least `1h`. See [CrowdSec](crowdsec.md). |
 | `CROWDSEC_ROLLUP_RETENTION` | `0` (unlimited) | How long CrowdSec hourly counts are kept. At least `1h`. |
+| `COLLECTOR_RETENTION_DURATION` | `2160h` (90 days) | Retention of the collectors' own TSDB, `collector_tsdb`, separate from the agent TSDB. `0` keeps data forever. Knot DNS counters live here. |
+| `COLLECTOR_STORAGE_MAX_BYTES` | `0` (unlimited) | Block retention size of `collector_tsdb`, in bytes. Independent of `STORAGE_MAX_BYTES`. |
+| `KNOT_DNSTAP_RAW_RETENTION` | `168h` (7 days) | How long Knot DNS dnstap minute buckets are kept in `knot.db`. `0` keeps them forever. At least `1h`. See [Knot DNS](knot.md). |
+| `KNOT_DNSTAP_ROLLUP_RETENTION` | `2160h` (90 days) | How long Knot DNS dnstap hourly buckets are kept. `0` keeps them forever. At least `1h`. |
 
 `ALLOWED_ORIGINS` adds explicit HTTP(S) origins to same-origin browser WebSockets. Empty configuration no longer permits arbitrary origins. Forwarded HTTPS indicators require a trusted proxy. Browser HTTP defaults are a ten-second header timeout, thirty-second read/write timeouts and sixty-second idle timeout. Forms/JSON are limited to 1 MiB; agent submissions remain 16 KiB. Collector frames are limited to 1 MiB; the collector's own settings are described in [collectors](collectors.md).
 

@@ -16,6 +16,12 @@ func (h *WebHandler) CrowdSecHandler(w http.ResponseWriter, r *http.Request) {
 	h.Renderer.RenderHTTP(w, http.StatusOK, "crowdsec.html", pd)
 }
 
+// KnotHandler serves the Knot DNS page. Its data loads from /api/collectors/knot.
+func (h *WebHandler) KnotHandler(w http.ResponseWriter, r *http.Request) {
+	pd := h.newPageData(r, "Knot DNS", "knot", nil)
+	h.Renderer.RenderHTTP(w, http.StatusOK, "knot.html", pd)
+}
+
 // CollectorsHandler serves the Collectors page. Its list loads from /api/collectors;
 // Nodes fills the add form's node picker and is not part of the page bootstrap.
 func (h *WebHandler) CollectorsHandler(w http.ResponseWriter, r *http.Request) {

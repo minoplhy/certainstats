@@ -1,0 +1,151 @@
+import { state } from './state.js';
+import { begin, get, isAbort } from './api.js';
+import { parseView, toQuery, counterParams, addFilter, removeFilter, dnstapOnly, FILTERS } from './view.js';
+import { el, button, zoneName } from './format.js';
+import { renderHero, renderChecks } from './hero.js';
+import { loadCharts } from './charts.js';
+import { loadDnstap } from './dnstap.js';
+import { renderZones, renderZoneView } from './zones.js';
+
+const ROLES = {
+  main: 'main', empty: 'empty', refresh: 'refresh', headline: 'headline', serverCount: 'server-count',
+  statRequests: 'stat-requests', statQps: 'stat-qps', statNxdomain: 'stat-nxdomain', statServfail: 'stat-servfail',
+  statTransfers: 'stat-transfers', statNote: 'stat-note', server: 'server', range: 'range', addFilter: 'add-filter',
+  filterField: 'filter-field', filterValue: 'filter-value', chips: 'chips', sourceNote: 'source-note',
+  checks: 'checks', checkList: 'check-list', zoneView: 'zone-view', zoneTitle: 'zone-title', zoneNote: 'zone-note',
+  zoneRows: 'zone-rows', zoneClose: 'zone-close', dnstap: 'dnstap', dnstapNote: 'dnstap-note', dnstapTotal: 'dnstap-total',
+  dnstapMessage: 'dnstap-message', breakdowns: 'breakdowns', zoneCount: 'zone-count', zoneSearch: 'zone-search',
+  zoneList: 'zone-list', zonesMessage: 'zones-message'
+};
+
+const FIELD_LABELS = {zone: 'Zone', qname: 'Name', qtype: 'Query type', rcode: 'Response code'};
+
+// update records the view in the URL and reloads.
+function update() {
+  const query = toQuery(state.view).toString();
+  const url = window.location.pathname + (query ? '?' + query : '');
+  if (url !== window.location.pathname + window.location.search) history.pushState({}, '', url);
+  load();
+}
+
+function filter(field, value) {
+  addFilter(state.view, field, value);
+  update();
+}
+
+function renderChips() {
+  const ui = state.ui;
+  ui.chips.replaceChildren(...FILTERS.filter(f => state.view[f]).map(f => {
+    const chip = el('span', 'cs-chip');
+    chip.append(el('span', 'cs-chip-field', FIELD_LABELS[f]), el('span', 'cs-chip-op', 'is'),
+      el('span', 'cs-chip-value', f === 'zone' || f === 'qname' ? zoneName(state.view[f]) : state.view[f]));
+    const x = button('', 'cs-icon-btn', () => { removeFilter(state.view, f); update(); });
+    x.setAttribute('aria-label', 'Remove ' + FIELD_LABELS[f] + ' filter');
+    x.textContent = '×';
+    chip.append(x);
+    return chip;
+  }));
+}
+
+function renderServers() {
+  const sel = state.ui.server;
+  const servers = state.overview?.servers || [];
+  const want = [''].concat(servers.map(s => s.collector_id));
+  const have = [...sel.options].map(o => o.value);
+  if (want.join('\n') !== have.join('\n')) {
+    sel.replaceChildren(new Option('All servers', ''), ...servers.map(s => new Option(s.name, s.collector_id)));
+  }
+  if (state.view.server && !servers.some(s => s.collector_id === state.view.server)) state.view.server = '';
+  sel.value = state.view.server;
+}
+
+// sourceNote explains which source answers the current filters.
+function sourceNote() {
+  const v = state.view;
+  const servers = state.overview?.servers || [];
+  const zoneStats = servers.some(s => s.zone_stats);
+  const dnstap = servers.some(s => s.dnstap || s.last_dnstap_ms);
+  const notes = [];
+  let chartNote = '';
+  if (v.zone && !zoneStats) {
+    chartNote = 'Per-zone counters are off, so charts cannot split by zone. Set KNOT_ZONE_STATS=true on the collector.';
+    notes.push(chartNote);
+  }
+  if (dnstapOnly(v)) {
+    notes.push('Knot\'s counters cannot filter by name, query type or response code, so the charts above show all traffic' + (v.zone ? ' for the zone' : '') + '. ' +
+      (dnstap ? 'Queries from dnstap below answer the filtered question.' : 'Switch on dnstap (KNOT_DNSTAP=true) to filter by these.'));
+  }
+  state.ui.sourceNote.hidden = !notes.length;
+  state.ui.sourceNote.textContent = notes.join(' ');
+  return chartNote;
+}
+
+export async function load() {
+  const ui = state.ui;
+  const signal = begin('load');
+  renderChips();
+  ui.range.value = state.view.range;
+  try {
+    state.overview = await get('', signal);
+  } catch (e) {
+    if (isAbort(e)) return;
+    ui.headline.textContent = 'Could not load Knot DNS: ' + e.message;
+    return;
+  }
+  const servers = state.overview.servers;
+  ui.empty.hidden = servers.length > 0;
+  ui.main.hidden = servers.length === 0;
+  renderServers();
+  renderChecks();
+  if (!servers.length) {
+    renderHero(null);
+    return;
+  }
+  const chartNote = sourceNote();
+  const v = state.view;
+  const tasks = [
+    get('totals?' + counterParams(v), signal).then(t => renderHero(chartNote ? null : t)).catch(e => { if (!isAbort(e)) ui.statNote.textContent = 'Could not load totals: ' + e.message; }),
+    loadCharts(signal, chartNote),
+    loadDnstap(signal, filter),
+    get('zones', signal).then(z => { state.zones = z.zones; renderZones(openZone); }).catch(e => { if (!isAbort(e)) ui.zonesMessage.textContent = 'Could not load zones: ' + e.message; })
+  ];
+  ui.zoneView.hidden = !v.zone || v.zone === '(none)';
+  if (!ui.zoneView.hidden) {
+    tasks.push(get('zones/' + encodeURIComponent(v.zone), signal).then(renderZoneView).catch(e => {
+      if (isAbort(e)) return;
+      ui.zoneTitle.textContent = zoneName(v.zone);
+      ui.zoneNote.textContent = e.status === 404 ? 'No server reports this zone.' : 'Could not load: ' + e.message;
+      ui.zoneRows.replaceChildren();
+    }));
+  }
+  await Promise.all(tasks);
+  state.loaded = true;
+}
+
+function openZone(zone) {
+  filter('zone', zone);
+  window.scrollTo({top: 0});
+}
+
+export function init(root, config) {
+  state.panelPath = (document.body?.getAttribute('data-panel-path') || '').replace(/\/+$/, '');
+  state.view = parseView(window.location.search);
+  for (const [key, role] of Object.entries(ROLES)) state.ui[key] = root.querySelector('[data-kn-' + role + ']');
+  const ui = state.ui;
+  ui.refresh.addEventListener('click', load);
+  ui.server.addEventListener('change', () => { state.view.server = ui.server.value; update(); });
+  ui.range.addEventListener('change', () => { state.view.range = ui.range.value; update(); });
+  ui.addFilter.addEventListener('submit', e => {
+    e.preventDefault();
+    const value = ui.filterValue.value.trim();
+    if (!value) return;
+    ui.filterValue.value = '';
+    filter(ui.filterField.value, value);
+  });
+  ui.zoneClose.addEventListener('click', () => { removeFilter(state.view, 'zone'); update(); });
+  ui.zoneSearch.addEventListener('input', () => renderZones(openZone));
+  window.addEventListener('popstate', () => { state.view = parseView(window.location.search); load(); });
+  // Counters arrive every minute; refresh while the page is visible.
+  setInterval(() => { if (!document.hidden && state.loaded) load(); }, 60000);
+  load();
+}

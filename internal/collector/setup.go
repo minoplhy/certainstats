@@ -29,22 +29,26 @@ type Step struct {
 
 // TypeSetup is what a type adds to the install steps.
 type TypeSetup struct {
-	Env     [][2]string // COLLECT_<TYPE> and the type's own settings
+	Env     [][2]string // the type's switch and its own settings
 	Prepare []Step      // host commands, run before installing the collector
 	Volumes []string    // Docker Compose mounts, host:container[:ro]
 	Note    string      // plain text shown under the steps
 }
 
-// Setup is implemented by types that need more than COLLECT_<TYPE>=true.
+// Setup is implemented by types that need more than their switch set to true.
 type Setup interface {
 	Setup() TypeSetup
 }
 
 func (s *Service) typeSetup(name string) TypeSetup {
-	if t, ok := s.types[name].(Setup); ok {
-		return t.Setup()
+	t := s.types[name]
+	if st, ok := t.(Setup); ok {
+		return st.Setup()
 	}
-	return TypeSetup{Env: [][2]string{{"COLLECT_" + strings.ToUpper(name), "true"}}}
+	if t == nil {
+		return TypeSetup{Env: [][2]string{{"COLLECT_" + strings.ToUpper(name), "true"}}}
+	}
+	return TypeSetup{Env: [][2]string{{SwitchOf(t), "true"}}}
 }
 
 // hubURL is the panel address the collector should dial, as the agent steps build it.

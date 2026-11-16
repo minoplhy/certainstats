@@ -70,6 +70,8 @@ func (s *Service) resolve(next http.Handler) http.Handler {
 type typeView struct {
 	store.CollectorType
 	Label string `json:"label"`
+	// Switch is the variable that switches the type on at the collector host.
+	Switch string `json:"switch"`
 }
 
 type collectorView struct {
@@ -84,11 +86,11 @@ type collectorView struct {
 func (s *Service) view(c store.Collector, agentNames map[string]string) collectorView {
 	v := collectorView{Collector: c, AgentName: agentNames[c.AgentID], Types: []typeView{}}
 	for _, t := range c.Types {
-		label := t.Type
+		label, sw := t.Type, "COLLECT_"+strings.ToUpper(t.Type)
 		if reg := s.types[t.Type]; reg != nil {
-			label = reg.Label()
+			label, sw = reg.Label(), SwitchOf(reg)
 		}
-		v.Types = append(v.Types, typeView{CollectorType: t, Label: label})
+		v.Types = append(v.Types, typeView{CollectorType: t, Label: label, Switch: sw})
 	}
 	if conn := s.conns.get(c.CollectorID); conn != nil {
 		v.Connected, v.ConnectedSince = true, conn.Since.UnixMilli()
@@ -126,7 +128,7 @@ func (s *Service) list(w http.ResponseWriter, r *http.Request) {
 	}
 	types := []map[string]string{}
 	for _, t := range s.Types() {
-		types = append(types, map[string]string{"type": t.Name(), "label": t.Label()})
+		types = append(types, map[string]string{"type": t.Name(), "label": t.Label(), "switch": SwitchOf(t)})
 	}
 	apiresponse.JSON(w, http.StatusOK, map[string]any{"items": items, "types": types})
 }

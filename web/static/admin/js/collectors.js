@@ -42,7 +42,7 @@
     return Math.floor(s / 86400) + "d ago";
   }
   function typeState(collector, type) {
-    const env = "COLLECT_" + type.type.toUpperCase();
+    const env = type.switch || "COLLECT_" + type.type.toUpperCase();
     if (!type.enabled) return { level: "warn", text: "Disabled" };
     if (!collector.connected) {
       if (!collector.first_connected_at) return { level: "warn", text: "Waiting for first connection" };

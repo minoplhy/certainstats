@@ -1,0 +1,23 @@
+{{define "knot_checks"}}
+<section class="page-section kn-checks" aria-labelledby="kn-checks-title" data-kn-checks hidden>
+  <h2 class="section-title" id="kn-checks-title">Needs attention</h2>
+  <ul class="kn-check-list" data-kn-check-list></ul>
+</section>
+{{end}}
+
+{{define "knot_zone_view"}}
+<section class="page-section kn-zone-view" aria-labelledby="kn-zone-title" data-kn-zone-view hidden>
+  <div class="chart-header-row">
+    <h2 class="section-title" id="kn-zone-title" data-kn-zone-title>Zone</h2>
+    <button type="button" class="btn btn-ghost btn-sm" data-kn-zone-close>All zones</button>
+  </div>
+  <p class="kn-note" data-kn-zone-note></p>
+  <div class="kn-table" role="table" aria-label="Zone on each server">
+    <div class="kn-zone-head" role="row">
+      <span role="columnheader">Server</span><span role="columnheader">Role</span><span role="columnheader">Serial</span>
+      <span role="columnheader">Refresh</span><span role="columnheader">Expires</span><span role="columnheader">DNSSEC re-sign</span>
+    </div>
+    <div data-kn-zone-rows></div>
+  </div>
+</section>
+{{end}}

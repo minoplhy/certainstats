@@ -15,6 +15,7 @@ const AREAS = {
   network_monitors: 'admin',
   collectors: 'admin',
   crowdsec: 'admin',
+  knot: 'admin',
   admin_agents: 'admin',
   public_dashboard: 'public'
 };

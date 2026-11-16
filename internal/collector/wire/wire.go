@@ -48,7 +48,8 @@ type Hello struct {
 }
 
 // Ping is the collector's keepalive. Types lists the types switched on locally
-// (COLLECT_<TYPE>=true), which may differ from the types enabled in the panel.
+// (each by its switch, such as COLLECT_CROWDSEC=true), which may differ from the
+// types enabled in the panel.
 type Ping struct {
 	Version string   `cbor:"version"`
 	Types   []string `cbor:"types"`
