@@ -68,12 +68,10 @@ var nouns = []string{
 	"wolf", "wraith", "zenith",
 }
 
-// requestScheme is the scheme agents should use to reach this panel.
-func requestScheme(r *http.Request) string {
-	if auth.IsRequestSecure(r) {
-		return "https"
-	}
-	return "http"
+// panelOrigin is the scheme and host agents should use to reach this panel:
+// PANEL_URL's when set, else the request's.
+func panelOrigin(r *http.Request) (scheme, host string) {
+	return ctx.PanelOrigin(r, auth.IsRequestSecure(r))
 }
 
 func GenerateNickname() string {
@@ -129,7 +127,8 @@ func ProvisionAgentHandler(agent store.AgentStore, parserRegistry *registry.Regi
 
 		// Generate setup instructions
 		panelPath, _ := r.Context().Value(ctx.PanelPathKey).(string)
-		messages := getSetupInstructions(req.AgentType, token, requestScheme(r), r.Host, panelPath, publicKey)
+		scheme, host := panelOrigin(r)
+		messages := getSetupInstructions(req.AgentType, token, scheme, host, panelPath, publicKey)
 
 		api_response.JSON(w, http.StatusOK, base.ProvisionResponse{
 			AgentID:   agentID,
@@ -172,7 +171,8 @@ func InstallAgentHandler(agent store.AgentStore) http.HandlerFunc {
 
 		// Generate setup instructions using existing token and SSH key
 		panelPath, _ := r.Context().Value(ctx.PanelPathKey).(string)
-		messages := getSetupInstructions(mgtTarget.AgentType, mgtTarget.Token, requestScheme(r), r.Host, panelPath, mgtTarget.BeszelPublicKey)
+		scheme, host := panelOrigin(r)
+		messages := getSetupInstructions(mgtTarget.AgentType, mgtTarget.Token, scheme, host, panelPath, mgtTarget.BeszelPublicKey)
 
 		api_response.JSON(w, http.StatusOK, base.ProvisionResponse{
 			AgentID:   mgtTarget.AgentID,

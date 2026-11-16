@@ -135,8 +135,22 @@ export function createList(ctx) {
 
   function updateTypeRow(rec, t, ct) {
     const c = rec.cur;
-    const st = typeState(c, ct);
     setText(t.link, ct.label);
+    if (ct.missing) {
+      // A registered type this collector does not collect yet.
+      setClass(t.dot, 'status-dot');
+      setText(t.text, 'Not collected');
+      const key = 'missing|' + ct.label;
+      if (t.key === key) return;
+      t.key = key;
+      t.actions.replaceChildren(button('Collect', 'btn btn-ghost btn-sm', () => act(async () => {
+        await api('collectors/' + rec.id + '/' + ct.type, {method: 'PUT'});
+        // The host must switch the type on too; the install steps now include it.
+        ctx.showInstall(rec.cur);
+      }, ct.label + ' added; set ' + (ct.switch || 'its switch') + '=true on the collector host')));
+      return;
+    }
+    const st = typeState(c, ct);
     setClass(t.dot, 'status-dot ' + (!ct.enabled ? 'warn' : st.level === 'ok' ? 'online' : st.level === 'bad' ? 'offline' : 'warn'));
     setText(t.text, st.text);
     // The buttons depend only on these; rebuild them only when one changes.
@@ -216,8 +230,13 @@ export function createList(ctx) {
     setText(rec.version, c.version ? 'v' + c.version.replace(/^v/, '') : 'Unknown');
     setText(rec.lastSeen, c.connected ? 'Connected now' : timeAgo(c.last_seen_at));
 
+    // Every registered type gets a row, so a collector can take up more types later.
     const rows = [];
-    for (const ct of c.types) {
+    const all = c.types.slice();
+    for (const t of state.types) {
+      if (!all.some(ct => ct.type === t.type)) all.push({type: t.type, label: t.label, switch: t.switch, missing: true});
+    }
+    for (const ct of all) {
       let t = rec.types.get(ct.type);
       if (!t) {
         t = typeRow(rec, ct.type);
@@ -227,7 +246,7 @@ export function createList(ctx) {
       rows.push(t.row);
     }
     for (const [type, t] of rec.types) {
-      if (!c.types.some(ct => ct.type === type)) {
+      if (!all.some(ct => ct.type === type)) {
         t.row.remove();
         rec.types.delete(type);
       }

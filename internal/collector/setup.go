@@ -51,18 +51,16 @@ func (s *Service) typeSetup(name string) TypeSetup {
 	return TypeSetup{Env: [][2]string{{SwitchOf(t), "true"}}}
 }
 
-// hubURL is the panel address the collector should dial, as the agent steps build it.
+// hubURL is the panel address the collector should dial, as the agent steps
+// build it: PANEL_URL's scheme and host when set, else the request's.
 func hubURL(r *http.Request) string {
-	scheme := "http"
-	if auth.IsRequestSecure(r) {
-		scheme = "https"
-	}
+	scheme, host := ctxkeys.PanelOrigin(r, auth.IsRequestSecure(r))
 	panel, _ := r.Context().Value(ctxkeys.PanelPathKey).(string)
 	panel = strings.TrimSuffix(panel, "/")
 	if panel != "" && !strings.HasPrefix(panel, "/") {
 		panel = "/" + panel
 	}
-	return scheme + "://" + r.Host + panel
+	return scheme + "://" + host + panel
 }
 
 func command(name, content string) base.ProvisionMessage {

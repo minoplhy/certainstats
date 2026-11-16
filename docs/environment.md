@@ -11,7 +11,7 @@ Choose one way to place the panel and public dashboards; mixing them stops start
 | :--- | :--- | :--- |
 | `PORT` | `8080` | TCP port for the server to listen on. |
 | `HOST` | `0.0.0.0` | Host/IP address to bind the server to. |
-| `PANEL_URL` | *none* | URL mode: Admin Panel URL including its host, e.g. `https://admin.example.com` or `https://example.com/admin`. |
+| `PANEL_URL` | *none* | URL mode: Admin Panel URL including its host, e.g. `https://admin.example.com` or `https://example.com/admin`. Agent and collector install steps use its scheme and host, so they say `https` behind a reverse proxy even when `TRUSTED_PROXY_CIDRS` is not set. |
 | `PUBLIC_URL` | `<PANEL_URL host>/dashboard` | URL mode: Public Dashboards URL including its host. Requires `PANEL_URL`. |
 | `PANEL_PATH` | `/` | Path mode only: subpath to mount the Admin Panel. |
 | `PUBLIC_PATH` | `/dashboard` | Path mode only: subpath to mount the Public Dashboards. |

@@ -208,6 +208,11 @@ func main() {
 	publicHost := cfg.PublicHost
 	panelScheme := cfg.PanelScheme
 	publicScheme := cfg.PublicScheme
+	// With PANEL_URL set, install steps use its scheme and host, whatever the request looks like.
+	panelOrigin := ""
+	if cfg.URLMode && cfg.PanelAddr != "" {
+		panelOrigin = cfg.PanelScheme + "://" + cfg.PanelAddr
+	}
 
 	// 3.5 First-Time Setup initialization check
 	isZero, err := db.IsUserZero(ctx)
@@ -299,6 +304,9 @@ func main() {
 		rt.Use(func(next http.Handler) http.Handler {
 			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				rctx := context.WithValue(r.Context(), b_ctx.PanelPathKey, panelPath)
+				if panelOrigin != "" {
+					rctx = context.WithValue(rctx, b_ctx.PanelOriginKey, panelOrigin)
+				}
 				next.ServeHTTP(w, r.WithContext(rctx))
 			})
 		})

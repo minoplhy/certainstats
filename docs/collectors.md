@@ -57,6 +57,11 @@ The rest of the exchange belongs to the types. Wire types live in
    steps for systemd and Docker Compose. **Install** on the collector's row opens
    it again at any time; resetting the token opens it with the new token.
    `/collectors?add=crowdsec` opens the add form with CrowdSec ticked.
+   One collector can collect several types: tick each one, or add one later with
+   **Collect** on the collector's row, which also shows the updated install steps
+   (the host must switch the new type on). **Disable** switches a type off again.
+   The Hub URL in the steps is `PANEL_URL` when it is set; otherwise it is built
+   from the request.
 2. The panel URL must be reachable from the host. A reverse proxy in front must
    pass WebSocket upgrades and keep idle connections open longer than 30
    seconds, as Beszel agents already need.

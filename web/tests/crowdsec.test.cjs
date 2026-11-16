@@ -287,7 +287,7 @@ test('the Collectors page lists collectors and ?add= opens the add form with tha
   assert.match(item.querySelector('summary').textContent, /Connected/);
   assert.match(item.querySelector('summary').textContent, /CrowdSec/);
   const labels = [...item.querySelectorAll('.cred-row dt')].map(d => d.textContent);
-  assert.deepEqual(labels, ['Name', 'Collector ID', 'Node', 'Version', 'Last seen', 'CrowdSec']);
+  assert.deepEqual(labels, ['Name', 'Collector ID', 'Node', 'Version', 'Last seen', 'CrowdSec', 'Other']);
   const actions = [...item.querySelectorAll('.mgmt-actions button')].map(b => b.textContent);
   assert.deepEqual(actions, ['Install', 'Reset token', 'Remove collector']);
 
@@ -561,4 +561,41 @@ test('the Alerts rule modal offers each source its own subjects, filtered by kin
   assert.equal(enabled(picker), 0);
   assert.equal(servers.hidden, false);
   assert.equal(d.getElementById('create-duration').closest('.form-group').hidden, false);
+});
+
+test('a collector can take up another type later from its row', async () => {
+  const pageHtml = fs.readFileSync('web/templates/collectors.html', 'utf8').replace(/\{\{[^}]*\}\}/g, '');
+  const dom = new JSDOM('<body data-panel-path="/panel">' + pageHtml + partial('collectors/add_modal.html') + '</body>', {url: 'http://x/panel/collectors', runScripts: 'outside-only'});
+  const w = dom.window;
+  open.push(w);
+  const collector = {collector_id: 'col_a', name: 'edge', connected: true, last_seen_at: Date.now(), types: [{type: 'crowdsec', label: 'CrowdSec', switch: 'COLLECT_CROWDSEC', enabled: true, reported_on: true, status: 'ok'}]};
+  const types = [{type: 'crowdsec', label: 'CrowdSec', switch: 'COLLECT_CROWDSEC'}, {type: 'knot', label: 'Knot DNS', switch: 'ENABLE_KNOT_DNS'}];
+  const changes = [];
+  const toasts = [];
+  w.fetch = async (input, init = {}) => {
+    const u = new URL(input, 'http://x');
+    if (init.method) {
+      changes.push(init.method + ' ' + u.pathname);
+      if (init.method === 'PUT' && u.pathname === '/panel/api/collectors/col_a/knot') collector.types.push({type: 'knot', label: 'Knot DNS', switch: 'ENABLE_KNOT_DNS', enabled: true, reported_on: false, status: ''});
+      return {ok: true, status: 204, json: async () => null};
+    }
+    if (u.pathname === '/panel/api/collectors') return {ok: true, status: 200, json: async () => ({items: [JSON.parse(JSON.stringify(collector))], types})};
+    return {ok: false, status: 404, json: async () => ({error: 'not found'})};
+  };
+  w.CertainStatsModal = {open() {}, close() {}, confirm: async () => false};
+  w.CertainStatsTelemetry = {showToast: (text, ok) => toasts.push(text)};
+  w.setInterval = () => 0;
+  w.eval(COLLECTORS);
+  await settle();
+  const item = w.document.querySelector('details.mgmt-item');
+  const rowOf = label => [...item.querySelectorAll('.cred-row')].find(r => r.querySelector('dt')?.textContent === label);
+  assert.match(rowOf('Knot DNS').textContent, /Not collected/);
+  const collect = [...rowOf('Knot DNS').querySelectorAll('button')].find(b => b.textContent === 'Collect');
+  assert.ok(collect, 'a type the collector lacks can be added');
+  collect.click();
+  await settle();
+  assert.deepEqual(changes, ['PUT /panel/api/collectors/col_a/knot']);
+  assert.match(toasts.join(' '), /Knot DNS added; set ENABLE_KNOT_DNS=true on the collector host/);
+  assert.doesNotMatch(rowOf('Knot DNS').textContent, /Not collected/);
+  assert.ok([...rowOf('Knot DNS').querySelectorAll('button')].some(b => b.textContent === 'Disable'), 'and switched off again later');
 });

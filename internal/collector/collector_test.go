@@ -62,7 +62,9 @@ type harness struct {
 	typ *fakeType
 }
 
-func newHarness(t *testing.T) *harness {
+// newHarness registers fakeType and any extra types before mounting the routes,
+// as main does; types registered later have no per-type routes.
+func newHarness(t *testing.T, extra ...Type) *harness {
 	db, err := sqlite.New(filepath.Join(t.TempDir(), "state.db"))
 	if err != nil {
 		t.Fatal(err)
@@ -77,8 +79,10 @@ func newHarness(t *testing.T) *harness {
 	svc := NewService(db, db)
 	svc.Limits = security.NewIPLimiter(1e6, 1e6) // tests dial often from one IP
 	typ := &fakeType{}
-	if err := svc.Register(typ); err != nil {
-		t.Fatal(err)
+	for _, tt := range append([]Type{typ}, extra...) {
+		if err := svc.Register(tt); err != nil {
+			t.Fatal(err)
+		}
 	}
 	r := chi.NewRouter()
 	r.Route("/api/collectors", func(c chi.Router) {
@@ -360,5 +364,62 @@ func TestInstallSteps(t *testing.T) {
 	h.api("u1", "DELETE", "/"+id, nil)
 	if code, _ := install("u1"); code != 404 {
 		t.Fatalf("removed collector got %d", code)
+	}
+}
+
+// PANEL_URL decides the Hub URL in the install steps; a request that looks like
+// plain HTTP (a proxy whose forwarded headers were dropped) does not.
+func TestHubURLFollowsPanelURL(t *testing.T) {
+	r := httptest.NewRequest("GET", "http://10.0.0.5:8080/admin/api/collectors/col_x/install", nil)
+	r = r.WithContext(context.WithValue(r.Context(), ctxkeys.PanelPathKey, "/admin"))
+	if got := hubURL(r); got != "http://10.0.0.5:8080/admin" {
+		t.Fatalf("path mode: %q", got)
+	}
+	r.Header.Set("X-Forwarded-Proto", "https")
+	if got := hubURL(r); got != "https://10.0.0.5:8080/admin" {
+		t.Fatalf("path mode behind TLS: %q", got)
+	}
+	r.Header.Del("X-Forwarded-Proto")
+	r = r.WithContext(context.WithValue(r.Context(), ctxkeys.PanelOriginKey, "https://stats.example.com"))
+	if got := hubURL(r); got != "https://stats.example.com/admin" {
+		t.Fatalf("PANEL_URL: %q", got)
+	}
+}
+
+// A collector made for one type can take up another later, and drop it again;
+// its install steps follow.
+func TestTypesChangeAfterCreation(t *testing.T) {
+	h := newHarness(t, &setupType{})
+	_, created := h.api("u1", "POST", "/", map[string]any{"name": "edge", "types": []string{"fake"}})
+	id := created["collector_id"].(string)
+	enabled := func() map[string]bool {
+		_, got := h.api("u1", "GET", "/"+id, nil)
+		out := map[string]bool{}
+		for _, raw := range got["types"].([]any) {
+			ct := raw.(map[string]any)
+			out[ct["type"].(string)] = ct["enabled"].(bool)
+		}
+		return out
+	}
+	install := func() string {
+		_, out := h.api("u1", "GET", "/"+id+"/install", nil)
+		raw, _ := json.Marshal(out["messages"])
+		return string(raw)
+	}
+	if e := enabled(); !e["fake"] || e["withsetup"] {
+		t.Fatalf("at creation: %v", e)
+	}
+	if resp, _ := h.api("u1", "PUT", "/"+id+"/withsetup", nil); resp.StatusCode != 204 {
+		t.Fatalf("adding a type: %d", resp.StatusCode)
+	}
+	if e := enabled(); !e["fake"] || !e["withsetup"] || !strings.Contains(install(), "COLLECT_WITHSETUP=true") {
+		t.Fatalf("after adding: %v", e)
+	}
+	h.api("u1", "DELETE", "/"+id+"/withsetup", nil)
+	if e := enabled(); e["withsetup"] || strings.Contains(install(), "COLLECT_WITHSETUP=true") {
+		t.Fatalf("after switching off: %v", e)
+	}
+	if resp, _ := h.api("u2", "PUT", "/"+id+"/withsetup", nil); resp.StatusCode != 404 {
+		t.Fatalf("another owner changed the types: %d", resp.StatusCode)
 	}
 }
