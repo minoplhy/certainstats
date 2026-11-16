@@ -1,5 +1,5 @@
 import { state } from './state.js';
-import { el, formatCount, formatRate, formatShare, headline, rangeLabel } from './format.js';
+import { el, formatCount, formatRate, formatShare, headline } from './format.js';
 
 export function renderHero(totals) {
   const ui = state.ui;
@@ -17,7 +17,7 @@ export function renderHero(totals) {
   ui.statTransfers.textContent = ready ? formatCount(t.transfers) : '–';
   let note = '';
   if (totals?.collecting) note = 'Counting starts from the collector\'s first reading; Knot\'s totals from before that are not shown.';
-  else if (totals && totals.from > totals.start) note = 'Counted since ' + new Date(totals.from).toLocaleString() + ', when the first reading in this ' + rangeLabel(state.view.range).replace('last ', '') + ' arrived.';
+  else if (totals && totals.from > totals.start) note = 'Counted since ' + new Date(totals.from).toLocaleString() + ', when the first reading in this range arrived.';
   ui.statNote.textContent = note;
 }
 

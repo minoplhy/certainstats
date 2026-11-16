@@ -6,6 +6,9 @@ export const state = {
   zones: [],
   ui: {},
   charts: {},
+  picker: null,
+  // onZoom applies a range brushed on any chart.
+  onZoom: null,
   requests: {},
   loaded: false
 };

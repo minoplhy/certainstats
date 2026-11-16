@@ -1,4 +1,5 @@
 // Text and DOM helpers for the Knot DNS page.
+import { rangeLabel } from '../../lib/time_ranges.js';
 
 export function el(tag, className, text) {
   const node = document.createElement(tag);
@@ -51,9 +52,14 @@ export function formatShare(part, whole) {
   return (p > 0 && p < 0.1 ? '<0.1' : short(p, p < 10 ? 1 : 0)) + '%';
 }
 
-const RANGE_LABELS = {'1h': 'last hour', '6h': 'last 6 hours', '24h': 'last 24 hours', '7d': 'last 7 days', '30d': 'last 30 days', '90d': 'last 90 days'};
-export function rangeLabel(r) {
-  return RANGE_LABELS[r] || r;
+// rangeText words the view's range for sentences: "in the last 7 days", or
+// "between Nov 3, 10:00 and Nov 4, 12:00" for a custom range.
+export function rangeText(view) {
+  if (view.start && view.end) {
+    const at = ms => new Date(ms).toLocaleString(undefined, {month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'});
+    return 'between ' + at(view.start) + ' and ' + at(view.end);
+  }
+  return 'in the last ' + (view.hours === 1 ? 'hour' : rangeLabel(view.hours));
 }
 
 // span writes a duration such as 3d 4h, 5h 20m or 12m.
@@ -87,7 +93,7 @@ export function headline(overview, totals, view) {
   const bad = checks.filter(c => c.level === 'bad').length;
   if (bad) return bad + (bad === 1 ? ' issue needs' : ' issues need') + ' attention';
   if (totals?.collecting) return 'Collecting, first numbers in about a minute';
-  const queries = formatCount(totals?.requests || 0) + ' queries in the ' + rangeLabel(view.range);
+  const queries = formatCount(totals?.requests || 0) + ' queries ' + rangeText(view);
   if (checks.length) return queries + ', ' + checks.length + (checks.length === 1 ? ' thing' : ' things') + ' to look at';
   return queries + ', all clear';
 }

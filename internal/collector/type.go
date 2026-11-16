@@ -35,17 +35,9 @@ type Type interface {
 	DataRoutes(r chi.Router)
 }
 
-// Switcher is implemented by types switched on at the collector host by a
-// variable other than COLLECT_<NAME>, such as ENABLE_KNOT_DNS.
-type Switcher interface {
-	Switch() string
-}
-
-// SwitchOf returns the environment variable that switches t on at the collector host.
+// SwitchOf returns the environment variable that switches t on at the collector
+// host: COLLECT_<NAME>, for every type.
 func SwitchOf(t Type) string {
-	if s, ok := t.(Switcher); ok {
-		return s.Switch()
-	}
 	return "COLLECT_" + strings.ToUpper(t.Name())
 }
 

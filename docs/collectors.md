@@ -75,7 +75,7 @@ The rest of the exchange belongs to the types. Wire types live in
    | --- | --- |
    | `HUB_URL` | The panel URL, such as `https://stats.example.com` |
    | `TOKEN` | The token from step 1 |
-   | Each type's switch | Switches a type on: `COLLECT_<TYPE>=true` unless the type names its own. CrowdSec uses `COLLECT_CROWDSEC=true`; Knot DNS must be switched on explicitly with `ENABLE_KNOT_DNS=true` (`COLLECT_KNOT` does nothing). With none, the collector exits and names every switch |
+   | Each type's switch | Switches a type on: `COLLECT_<TYPE>=true`, such as `COLLECT_CROWDSEC=true` or `COLLECT_KNOT=true`. With none, the collector exits and names every switch |
 
    Each type adds its own settings, prefixed with its name. Some are switches
    for optional reading that is off by default, such as CrowdSec's
@@ -148,9 +148,7 @@ in `alert_subjects` (source, collector, scope, name), and its incidents are
    the collector TSDB (`internal/collector/tsdb`).
 2. Binary: a package under `internal/collectoragent/type/<name>` implementing
    `module.Module` (`internal/collectoragent/module`), listed in `Available()`
-   in `internal/collectoragent/config.go`. Its switch is `COLLECT_<NAME>`, unless
-   both the module and the server type implement `Switch()` (`module.Switcher`,
-   `collector.Switcher`) to name another, as Knot DNS does with `ENABLE_KNOT_DNS`.
+   in `internal/collectoragent/config.go`. Its switch is `COLLECT_<NAME>`, for every type.
    `cmd/certainstats-collector` is only the entrypoint (flags, then `Run`,
    `Once` or `Check`).
 3. Setup steps: implement `collector.Setup` on the server type

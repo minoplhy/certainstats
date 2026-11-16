@@ -1,6 +1,6 @@
 import { state } from './state.js';
 import { begin, get, isAbort } from './api.js';
-import { parseView, toQuery, counterParams, addFilter, removeFilter, dnstapOnly, FILTERS } from './view.js';
+import { parseView, toQuery, counterParams, addFilter, removeFilter, dnstapOnly, setCustom, FILTERS } from './view.js';
 import { el, button, zoneName } from './format.js';
 import { renderHero, renderChecks } from './hero.js';
 import { loadCharts } from './charts.js';
@@ -10,7 +10,7 @@ import { renderZones, renderZoneView } from './zones.js';
 const ROLES = {
   main: 'main', empty: 'empty', refresh: 'refresh', headline: 'headline', serverCount: 'server-count',
   statRequests: 'stat-requests', statQps: 'stat-qps', statNxdomain: 'stat-nxdomain', statServfail: 'stat-servfail',
-  statTransfers: 'stat-transfers', statNote: 'stat-note', server: 'server', range: 'range', addFilter: 'add-filter',
+  statTransfers: 'stat-transfers', statNote: 'stat-note', server: 'server', timePicker: 'time-picker', addFilter: 'add-filter',
   filterField: 'filter-field', filterValue: 'filter-value', chips: 'chips', sourceNote: 'source-note',
   checks: 'checks', checkList: 'check-list', zoneView: 'zone-view', zoneTitle: 'zone-title', zoneNote: 'zone-note',
   zoneRows: 'zone-rows', zoneClose: 'zone-close', dnstap: 'dnstap', dnstapNote: 'dnstap-note', dnstapTotal: 'dnstap-total',
@@ -26,6 +26,42 @@ function update() {
   const url = window.location.pathname + (query ? '?' + query : '');
   if (url !== window.location.pathname + window.location.search) history.pushState({}, '', url);
   load();
+}
+
+const HOURS_KEY = 'certainstats_knot_hours';
+
+// syncRange keeps the picker's label in step with the view (Back, zoom).
+function syncRange() {
+  const p = state.picker;
+  if (!p) return;
+  const v = state.view;
+  const cur = p.getState();
+  const custom = v.start && v.end ? {start: v.start, end: v.end} : null;
+  const same = cur.hours === v.hours &&
+    (cur.customRange ? custom && cur.customRange.start === custom.start && cur.customRange.end === custom.end : !custom);
+  if (!same) p.setState({hours: v.hours, customRange: custom});
+}
+
+// zoom applies a range brushed on any chart to the whole page.
+function zoom(start, end) {
+  setCustom(state.view, start, end);
+  syncRange();
+  update();
+}
+
+function mountPicker() {
+  const v = state.view;
+  state.picker = window.CertainStatsTelemetry?.initCustomTimePicker(state.ui.timePicker, {
+    storageKey: HOURS_KEY,
+    activeHours: v.hours,
+    compact: true,
+    onApply: ({hours, customRange}) => {
+      state.view.hours = hours;
+      setCustom(state.view, customRange?.start, customRange?.end);
+      update();
+    }
+  }) || null;
+  syncRange();
 }
 
 function filter(field, value) {
@@ -84,7 +120,7 @@ export async function load() {
   const ui = state.ui;
   const signal = begin('load');
   renderChips();
-  ui.range.value = state.view.range;
+  syncRange();
   try {
     state.overview = await get('', signal);
   } catch (e) {
@@ -129,12 +165,15 @@ function openZone(zone) {
 
 export function init(root, config) {
   state.panelPath = (document.body?.getAttribute('data-panel-path') || '').replace(/\/+$/, '');
-  state.view = parseView(window.location.search);
+  let remembered = 24;
+  try { remembered = Number.parseInt(localStorage.getItem(HOURS_KEY) || '24', 10) || 24; } catch (e) { /* storage blocked */ }
+  state.view = parseView(window.location.search, remembered);
+  state.onZoom = zoom;
   for (const [key, role] of Object.entries(ROLES)) state.ui[key] = root.querySelector('[data-kn-' + role + ']');
   const ui = state.ui;
   ui.refresh.addEventListener('click', load);
   ui.server.addEventListener('change', () => { state.view.server = ui.server.value; update(); });
-  ui.range.addEventListener('change', () => { state.view.range = ui.range.value; update(); });
+  mountPicker();
   ui.addFilter.addEventListener('submit', e => {
     e.preventDefault();
     const value = ui.filterValue.value.trim();
@@ -144,7 +183,7 @@ export function init(root, config) {
   });
   ui.zoneClose.addEventListener('click', () => { removeFilter(state.view, 'zone'); update(); });
   ui.zoneSearch.addEventListener('input', () => renderZones(openZone));
-  window.addEventListener('popstate', () => { state.view = parseView(window.location.search); load(); });
+  window.addEventListener('popstate', () => { state.view = parseView(window.location.search, state.view.hours); load(); });
   // Counters arrive every minute; refresh while the page is visible.
   setInterval(() => { if (!document.hidden && state.loaded) load(); }, 60000);
   load();

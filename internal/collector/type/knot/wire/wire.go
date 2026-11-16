@@ -9,8 +9,8 @@ package wire
 const (
 	Prefix   = "kn_"
 	TypeName = "knot"
-	// Switch is the collector-host variable that turns the type on.
-	Switch = "ENABLE_KNOT_DNS"
+	// Switch is the collector-host variable that turns the type on, COLLECT_<NAME> as for every type.
+	Switch = "COLLECT_KNOT"
 
 	MsgConfig = "kn_config"
 	MsgStatus = "kn_status"

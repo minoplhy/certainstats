@@ -82,3 +82,7 @@ func downsamplePoints(pts []TimeseriesPoint, stepMs int64, isDelta bool) []m.Dat
 
 	return out
 }
+
+// StepForRange shares the chart step rule with other time series, such as
+// collector types; 0 means the range needs no downsampling.
+func StepForRange(durationMs int64) int64 { return stepForRange(durationMs) }

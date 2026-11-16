@@ -13,6 +13,7 @@ import (
 	"certainstats/internal/collector/type/knot/wire"
 	ctxkeys "certainstats/internal/context"
 	log "certainstats/internal/logger"
+	"certainstats/internal/metrics"
 	apiresponse "certainstats/internal/response"
 
 	"github.com/go-chi/chi/v5"
@@ -63,45 +64,50 @@ func (t *Type) collectorStatus(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// ranges are the selectable windows.
-var ranges = map[string]time.Duration{
-	"1h": time.Hour, "6h": 6 * time.Hour, "24h": 24 * time.Hour,
-	"7d": 7 * 24 * time.Hour, "30d": 30 * 24 * time.Hour, "90d": 90 * 24 * time.Hour,
-}
-
-var steps = []time.Duration{time.Minute, 2 * time.Minute, 5 * time.Minute, 10 * time.Minute, 15 * time.Minute,
-	30 * time.Minute, time.Hour, 2 * time.Hour, 6 * time.Hour, 12 * time.Hour, 24 * time.Hour}
-
-// window is a resolved range: [Start, End) with a step for series.
+// window is a resolved time range: [Start, End) with a step for series.
 type window struct {
-	Label            string
 	Start, End, Step int64
 }
 
-func stepFor(span time.Duration) time.Duration {
-	for _, s := range steps {
-		if span/s <= 180 {
-			return s
-		}
-	}
-	return steps[len(steps)-1]
-}
-
-func parseWindow(r *http.Request, now time.Time) (window, bool) {
-	label := r.URL.Query().Get("range")
-	if label == "" {
-		label = "24h"
-	}
-	span, ok := ranges[label]
+// parseWindow reads the range the way every chart does (metrics.ParsePrivateTimeRange:
+// hours, or start and end in Unix ms) and takes the step from the shared chart rule,
+// rounded up to whole minutes, Knot's finest grain. minuteFrom is the oldest minute
+// row kept; a range starting before it reads hourly rows, so its step is whole hours.
+func parseWindow(r *http.Request, now time.Time, minuteFrom int64) (window, bool) {
+	tr, ok := metrics.ParsePrivateTimeRange(r)
 	if !ok {
 		return window{}, false
 	}
-	step := stepFor(span).Milliseconds()
-	end := now.UnixMilli()
+	start, end := tr.StartMs, tr.EndMs
+	if !tr.IsCustom {
+		// A relative range ends at this type's clock.
+		span := end - start
+		end = now.UnixMilli()
+		start = end - span
+	}
+	grain := minuteMs
+	if minuteFrom > 0 && start < minuteFrom {
+		grain = hourMs
+	}
+	step := max(metrics.StepForRange(end-start), grain)
+	step = (step + grain - 1) / grain * grain
 	// Align to the step so buckets line up with the clock; the last bucket is partial.
-	end = end - end%step + step
-	return window{Label: label, Start: end - span.Milliseconds(), End: end, Step: step}, true
+	start -= start % step
+	if rem := end % step; rem != 0 {
+		end += step - rem
+	}
+	return window{Start: start, End: end, Step: step}, true
 }
+
+// minuteFrom is the oldest dnstap minute still kept, or 0 when minutes are kept for ever.
+func (t *Type) minuteFrom(now time.Time) int64 {
+	if t.Retention.MinuteMs <= 0 {
+		return 0
+	}
+	return now.UnixMilli() - t.Retention.MinuteMs
+}
+
+const badRange = "Invalid time range"
 
 // scope reads the collector and zone filters, checking the collector is one of the owner's Knot servers.
 func (t *Type) scope(w http.ResponseWriter, r *http.Request) (collectorID, zone string, servers []Server, ok bool) {
@@ -226,7 +232,6 @@ func (t *Type) zoneOne(w http.ResponseWriter, r *http.Request) {
 
 // Totals are the headline numbers for a range.
 type Totals struct {
-	Range      string  `json:"range"`
 	Start      int64   `json:"start"`
 	End        int64   `json:"end"`
 	From       int64   `json:"from"`
@@ -244,9 +249,9 @@ type Totals struct {
 
 func (t *Type) totals(w http.ResponseWriter, r *http.Request) {
 	now := t.now()
-	win, ok := parseWindow(r, now)
+	win, ok := parseWindow(r, now, 0)
 	if !ok {
-		apiresponse.Error(w, http.StatusBadRequest, "range must be one of 1h, 6h, 24h, 7d, 30d, 90d")
+		apiresponse.Error(w, http.StatusBadRequest, badRange)
 		return
 	}
 	collectorID, zone, _, ok := t.scope(w, r)
@@ -260,7 +265,7 @@ func (t *Type) totals(w http.ResponseWriter, r *http.Request) {
 		fail(w, "totals", err)
 		return
 	}
-	out := Totals{Range: win.Label, Start: win.Start, End: win.End, From: inc.From, Collecting: inc.Pairs == 0,
+	out := Totals{Start: win.Start, End: win.End, From: inc.From, Collecting: inc.Pairs == 0,
 		Requests:  inc.sumItem("request-protocol"),
 		Responses: inc.sumItem("response-code"),
 		NXDomain:  inc.total(seriesKey{"response-code", "NXDOMAIN"}),
@@ -300,9 +305,9 @@ type SeriesLine struct {
 
 func (t *Type) series(w http.ResponseWriter, r *http.Request) {
 	now := t.now()
-	win, ok := parseWindow(r, now)
+	win, ok := parseWindow(r, now, 0)
 	if !ok {
-		apiresponse.Error(w, http.StatusBadRequest, "range must be one of 1h, 6h, 24h, 7d, 30d, 90d")
+		apiresponse.Error(w, http.StatusBadRequest, badRange)
 		return
 	}
 	group := r.URL.Query().Get("group")
@@ -362,16 +367,16 @@ func (t *Type) series(w http.ResponseWriter, r *http.Request) {
 		sort.SliceStable(lines, func(i, j int) bool { return lines[i].Total > lines[j].Total })
 	}
 	apiresponse.JSON(w, http.StatusOK, map[string]any{
-		"group": group, "range": win.Label, "start": win.Start, "end": win.End, "step": win.Step,
+		"group": group, "start": win.Start, "end": win.End, "step": win.Step,
 		"collecting": inc.Pairs == 0, "series": lines,
 	})
 }
 
 func (t *Type) queries(w http.ResponseWriter, r *http.Request) {
 	now := t.now()
-	win, ok := parseWindow(r, now)
+	win, ok := parseWindow(r, now, t.minuteFrom(now))
 	if !ok {
-		apiresponse.Error(w, http.StatusBadRequest, "range must be one of 1h, 6h, 24h, 7d, 30d, 90d")
+		apiresponse.Error(w, http.StatusBadRequest, badRange)
 		return
 	}
 	collectorID, zone, _, ok := t.scope(w, r)
@@ -395,9 +400,7 @@ func (t *Type) queries(w http.ResponseWriter, r *http.Request) {
 	q := Query{UserID: userID(r), CollectorID: collectorID, Zone: zone,
 		QName: normalizeQName(qv.Get("qname")), QType: strings.ToUpper(strings.TrimSpace(qv.Get("qtype"))),
 		RCode: strings.ToUpper(strings.TrimSpace(qv.Get("rcode"))), Start: win.Start, End: win.End, Step: win.Step}
-	if t.Retention.MinuteMs > 0 {
-		q.MinuteFrom = now.UnixMilli() - t.Retention.MinuteMs
-	}
+	q.MinuteFrom = t.minuteFrom(now)
 	b, err := t.Store.Dnstap(r.Context(), q, dim, limit)
 	if err != nil {
 		if strings.HasPrefix(err.Error(), "unknown dimension") {
@@ -407,7 +410,7 @@ func (t *Type) queries(w http.ResponseWriter, r *http.Request) {
 		fail(w, "queries", err)
 		return
 	}
-	apiresponse.JSON(w, http.StatusOK, map[string]any{"range": win.Label, "start": win.Start, "end": win.End, "step": win.Step, "breakdown": b})
+	apiresponse.JSON(w, http.StatusOK, map[string]any{"start": win.Start, "end": win.End, "step": win.Step, "breakdown": b})
 }
 
 func normalizeQName(n string) string {

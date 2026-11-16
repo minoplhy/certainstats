@@ -1,6 +1,7 @@
 import { state } from './state.js';
 import { get, isAbort } from './api.js';
 import { apiParams } from './view.js';
+import { drawChart } from './charts.js';
 import { el, formatCount, zoneName } from './format.js';
 
 // Each card is one dimension; clicking a row filters by it where a filter exists.
@@ -89,16 +90,7 @@ function drawSeries(data) {
   const ui = state.ui;
   const b = data.breakdown;
   const series = [{label: 'Queries', color: '--s1', fill: true, data: b.series.map(p => ({timestamp: p[0], value: p[1]}))}];
-  const customRange = {start: data.start, end: data.end};
-  const hours = Math.max(1, Math.round((data.end - data.start) / 3600000));
-  if (state.charts.dnstap) {
-    state.charts.dnstap.updateSeries(series, hours, null, data.end, customRange, undefined, data.step);
-  } else {
-    state.charts.dnstap = window.CertainStatsChart?.renderMultiChart('kn-chart-dnstap', {
-      seriesList: series, hours, customRange, queryEndTime: data.end, minMax: 1, stepMs: data.step,
-      formatter: v => formatCount(Math.round(v))
-    });
-  }
+  drawChart('dnstap', 'kn-chart-dnstap', series, data, v => formatCount(Math.round(v)));
   ui.dnstapTotal.textContent = formatCount(b.total);
   ui.dnstapMessage.textContent = b.total ? '' : 'No dnstap traffic matches in this range.';
   const notes = [b.exact ? 'Totals are exact' : 'Filtered by name, so totals are lower bounds'];

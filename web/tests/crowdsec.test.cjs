@@ -569,14 +569,14 @@ test('a collector can take up another type later from its row', async () => {
   const w = dom.window;
   open.push(w);
   const collector = {collector_id: 'col_a', name: 'edge', connected: true, last_seen_at: Date.now(), types: [{type: 'crowdsec', label: 'CrowdSec', switch: 'COLLECT_CROWDSEC', enabled: true, reported_on: true, status: 'ok'}]};
-  const types = [{type: 'crowdsec', label: 'CrowdSec', switch: 'COLLECT_CROWDSEC'}, {type: 'knot', label: 'Knot DNS', switch: 'ENABLE_KNOT_DNS'}];
+  const types = [{type: 'crowdsec', label: 'CrowdSec', switch: 'COLLECT_CROWDSEC'}, {type: 'knot', label: 'Knot DNS', switch: 'COLLECT_KNOT'}];
   const changes = [];
   const toasts = [];
   w.fetch = async (input, init = {}) => {
     const u = new URL(input, 'http://x');
     if (init.method) {
       changes.push(init.method + ' ' + u.pathname);
-      if (init.method === 'PUT' && u.pathname === '/panel/api/collectors/col_a/knot') collector.types.push({type: 'knot', label: 'Knot DNS', switch: 'ENABLE_KNOT_DNS', enabled: true, reported_on: false, status: ''});
+      if (init.method === 'PUT' && u.pathname === '/panel/api/collectors/col_a/knot') collector.types.push({type: 'knot', label: 'Knot DNS', switch: 'COLLECT_KNOT', enabled: true, reported_on: false, status: ''});
       return {ok: true, status: 204, json: async () => null};
     }
     if (u.pathname === '/panel/api/collectors') return {ok: true, status: 200, json: async () => ({items: [JSON.parse(JSON.stringify(collector))], types})};
@@ -595,7 +595,7 @@ test('a collector can take up another type later from its row', async () => {
   collect.click();
   await settle();
   assert.deepEqual(changes, ['PUT /panel/api/collectors/col_a/knot']);
-  assert.match(toasts.join(' '), /Knot DNS added; set ENABLE_KNOT_DNS=true on the collector host/);
+  assert.match(toasts.join(' '), /Knot DNS added; set COLLECT_KNOT=true on the collector host/);
   assert.doesNotMatch(rowOf('Knot DNS').textContent, /Not collected/);
   assert.ok([...rowOf('Knot DNS').querySelectorAll('button')].some(b => b.textContent === 'Disable'), 'and switched off again later');
 });

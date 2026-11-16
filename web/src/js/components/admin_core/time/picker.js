@@ -1,14 +1,6 @@
-import { TIME_RANGES } from '../../../lib/time_ranges.js';
+import { TIME_RANGES, rangeLabel as longLabel } from '../../../lib/time_ranges.js';
 
 let timePickerInstance = 0;
-
-// longLabel names a quick range for the compact trigger: 168 → "7 days".
-function longLabel(hours) {
-  const plural = (n, unit) => n + ' ' + unit + (n === 1 ? '' : 's');
-  if (hours % 8760 === 0) return plural(hours / 8760, 'year');
-  if (hours >= 48 && hours % 24 === 0) return plural(hours / 24, 'day');
-  return plural(hours, 'hour');
-}
 
 function shortTime(ms) {
   return new Date(ms).toLocaleString(undefined, {month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'});

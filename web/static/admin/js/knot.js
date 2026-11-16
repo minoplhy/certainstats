@@ -16,6 +16,9 @@
     zones: [],
     ui: {},
     charts: {},
+    picker: null,
+    // onZoom applies a range brushed on any chart.
+    onZoom: null,
     requests: {},
     loaded: false
   };
@@ -45,33 +48,83 @@
     return error && error.name === "AbortError";
   }
 
+  // web/src/js/lib/time_ranges.js
+  var TIME_RANGES = [
+    { label: "1h", value: 1 },
+    { label: "6h", value: 6 },
+    { label: "12h", value: 12 },
+    { label: "24h", value: 24 },
+    { label: "2d", value: 48 },
+    { label: "7d", value: 168 },
+    { label: "30d", value: 720 },
+    { label: "90d", value: 2160 },
+    { label: "180d", value: 4320 },
+    { label: "1y", value: 8760 },
+    { label: "2y", value: 17520 }
+  ];
+  function rangeLabel(hours) {
+    const plural = (n, unit) => n + " " + unit + (n === 1 ? "" : "s");
+    if (hours % 8760 === 0) return plural(hours / 8760, "year");
+    if (hours >= 48 && hours % 24 === 0) return plural(hours / 24, "day");
+    return plural(hours, "hour");
+  }
+
   // web/src/js/pages/knot/view.js
-  var RANGES = ["1h", "6h", "24h", "7d", "30d", "90d"];
   var FILTERS = ["zone", "qname", "qtype", "rcode"];
-  function parseView(search) {
+  var LEGACY_RANGES = { "1h": 1, "6h": 6, "24h": 24, "7d": 168, "30d": 720, "90d": 2160 };
+  function quick(hours) {
+    return TIME_RANGES.some((r) => r.value === hours);
+  }
+  function int(value) {
+    const n = Number.parseInt(value || "", 10);
+    return Number.isFinite(n) ? n : 0;
+  }
+  function parseView(search, fallbackHours = 24) {
     const q = new URLSearchParams(search || "");
-    const v = { server: q.get("server") || "", range: q.get("range") || "24h", zone: "", qname: "", qtype: "", rcode: "" };
-    if (!RANGES.includes(v.range)) v.range = "24h";
+    const v = { server: q.get("server") || "", hours: quick(fallbackHours) ? fallbackHours : 24, start: null, end: null, zone: "", qname: "", qtype: "", rcode: "" };
+    const hours = int(q.get("hours")) || LEGACY_RANGES[q.get("range")] || 0;
+    if (quick(hours)) v.hours = hours;
+    const start = int(q.get("start")), end = int(q.get("end"));
+    if (start > 0 && end > start) {
+      v.start = start;
+      v.end = end;
+    }
     for (const f of FILTERS) v[f] = normalize(f, q.get(f) || "");
     return v;
+  }
+  function setRange(q, v) {
+    if (v.start && v.end) {
+      q.set("start", String(v.start));
+      q.set("end", String(v.end));
+    } else q.set("hours", String(v.hours));
   }
   function toQuery(v) {
     const q = new URLSearchParams();
     if (v.server) q.set("server", v.server);
-    q.set("range", v.range);
+    setRange(q, v);
     for (const f of FILTERS) if (v[f]) q.set(f, v[f]);
     return q;
   }
   function apiParams(v, extra) {
     const q = new URLSearchParams();
-    q.set("range", v.range);
+    setRange(q, v);
     if (v.server) q.set("collector", v.server);
     for (const f of FILTERS) if (v[f]) q.set(f, v[f]);
     for (const [k, val] of Object.entries(extra || {})) q.set(k, val);
     return q.toString();
   }
+  function setCustom(v, start, end) {
+    if (start && end && end > start) {
+      v.start = Math.floor(start);
+      v.end = Math.floor(end);
+    } else {
+      v.start = null;
+      v.end = null;
+    }
+    return v;
+  }
   function counterParams(v, extra) {
-    return apiParams({ server: v.server, range: v.range, zone: v.zone }, extra);
+    return apiParams({ server: v.server, hours: v.hours, start: v.start, end: v.end, zone: v.zone }, extra);
   }
   function normalize(field, value) {
     let s = String(value || "").trim();
@@ -142,9 +195,12 @@
     const p = 100 * part / whole;
     return (p > 0 && p < 0.1 ? "<0.1" : short(p, p < 10 ? 1 : 0)) + "%";
   }
-  var RANGE_LABELS = { "1h": "last hour", "6h": "last 6 hours", "24h": "last 24 hours", "7d": "last 7 days", "30d": "last 30 days", "90d": "last 90 days" };
-  function rangeLabel(r) {
-    return RANGE_LABELS[r] || r;
+  function rangeText(view) {
+    if (view.start && view.end) {
+      const at = (ms) => new Date(ms).toLocaleString(void 0, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+      return "between " + at(view.start) + " and " + at(view.end);
+    }
+    return "in the last " + (view.hours === 1 ? "hour" : rangeLabel(view.hours));
   }
   function span(ms) {
     const m = Math.round(Math.abs(ms) / 6e4);
@@ -171,7 +227,7 @@
     const bad = checks.filter((c) => c.level === "bad").length;
     if (bad) return bad + (bad === 1 ? " issue needs" : " issues need") + " attention";
     if (totals?.collecting) return "Collecting, first numbers in about a minute";
-    const queries = formatCount(totals?.requests || 0) + " queries in the " + rangeLabel(view.range);
+    const queries = formatCount(totals?.requests || 0) + " queries " + rangeText(view);
     if (checks.length) return queries + ", " + checks.length + (checks.length === 1 ? " thing" : " things") + " to look at";
     return queries + ", all clear";
   }
@@ -193,7 +249,7 @@
     ui.statTransfers.textContent = ready ? formatCount(t.transfers) : "–";
     let note = "";
     if (totals?.collecting) note = "Counting starts from the collector's first reading; Knot's totals from before that are not shown.";
-    else if (totals && totals.from > totals.start) note = "Counted since " + new Date(totals.from).toLocaleString() + ", when the first reading in this " + rangeLabel(state.view.range).replace("last ", "") + " arrived.";
+    else if (totals && totals.from > totals.start) note = "Counted since " + new Date(totals.from).toLocaleString() + ", when the first reading in this range arrived.";
     ui.statNote.textContent = note;
   }
   function renderChecks() {
@@ -240,25 +296,29 @@
     const node = document.querySelector('[data-kn-chart-message="' + group + '"]');
     if (node) node.textContent = text;
   }
+  function drawChart(key, canvasId, series, data, formatter) {
+    const customRange = { start: data.start, end: data.end };
+    const chart = state.charts[key];
+    if (chart) {
+      chart.updateSeries(series, state.view.hours, null, data.end, customRange, void 0, data.step);
+      return chart;
+    }
+    state.charts[key] = window.CertainStatsChart?.renderMultiChart(canvasId, {
+      seriesList: series,
+      hours: state.view.hours,
+      customRange,
+      queryEndTime: data.end,
+      minMax: 1,
+      stepMs: data.step,
+      formatter,
+      onZoom: (start, end) => state.onZoom?.(start, end)
+    });
+    return state.charts[key];
+  }
   function draw(group, data) {
     const series = seriesFor(data.series);
-    const customRange = { start: data.start, end: data.end };
-    const hours = Math.max(1, Math.round((data.end - data.start) / 36e5));
     const formatter = group === "bytes" ? (v) => formatBytes(v) + "/s" : (v) => formatRate(v) + "/s";
-    const chart = state.charts[group];
-    if (chart) {
-      chart.updateSeries(series, hours, null, data.end, customRange, void 0, data.step);
-    } else {
-      state.charts[group] = window.CertainStatsChart?.renderMultiChart("kn-chart-" + group, {
-        seriesList: series,
-        hours,
-        customRange,
-        queryEndTime: data.end,
-        minMax: 1,
-        stepMs: data.step,
-        formatter
-      });
-    }
+    drawChart(group, "kn-chart-" + group, series, data, formatter);
     legend(group, data.series, series);
   }
   async function loadCharts(signal, note) {
@@ -360,21 +420,7 @@
     const ui = state.ui;
     const b = data.breakdown;
     const series = [{ label: "Queries", color: "--s1", fill: true, data: b.series.map((p) => ({ timestamp: p[0], value: p[1] })) }];
-    const customRange = { start: data.start, end: data.end };
-    const hours = Math.max(1, Math.round((data.end - data.start) / 36e5));
-    if (state.charts.dnstap) {
-      state.charts.dnstap.updateSeries(series, hours, null, data.end, customRange, void 0, data.step);
-    } else {
-      state.charts.dnstap = window.CertainStatsChart?.renderMultiChart("kn-chart-dnstap", {
-        seriesList: series,
-        hours,
-        customRange,
-        queryEndTime: data.end,
-        minMax: 1,
-        stepMs: data.step,
-        formatter: (v) => formatCount(Math.round(v))
-      });
-    }
+    drawChart("dnstap", "kn-chart-dnstap", series, data, (v) => formatCount(Math.round(v)));
     ui.dnstapTotal.textContent = formatCount(b.total);
     ui.dnstapMessage.textContent = b.total ? "" : "No dnstap traffic matches in this range.";
     const notes = [b.exact ? "Totals are exact" : "Filtered by name, so totals are lower bounds"];
@@ -484,7 +530,7 @@
     statTransfers: "stat-transfers",
     statNote: "stat-note",
     server: "server",
-    range: "range",
+    timePicker: "time-picker",
     addFilter: "add-filter",
     filterField: "filter-field",
     filterValue: "filter-value",
@@ -513,6 +559,35 @@
     const url = window.location.pathname + (query ? "?" + query : "");
     if (url !== window.location.pathname + window.location.search) history.pushState({}, "", url);
     load();
+  }
+  var HOURS_KEY = "certainstats_knot_hours";
+  function syncRange() {
+    const p = state.picker;
+    if (!p) return;
+    const v = state.view;
+    const cur = p.getState();
+    const custom = v.start && v.end ? { start: v.start, end: v.end } : null;
+    const same = cur.hours === v.hours && (cur.customRange ? custom && cur.customRange.start === custom.start && cur.customRange.end === custom.end : !custom);
+    if (!same) p.setState({ hours: v.hours, customRange: custom });
+  }
+  function zoom(start, end) {
+    setCustom(state.view, start, end);
+    syncRange();
+    update();
+  }
+  function mountPicker() {
+    const v = state.view;
+    state.picker = window.CertainStatsTelemetry?.initCustomTimePicker(state.ui.timePicker, {
+      storageKey: HOURS_KEY,
+      activeHours: v.hours,
+      compact: true,
+      onApply: ({ hours, customRange }) => {
+        state.view.hours = hours;
+        setCustom(state.view, customRange?.start, customRange?.end);
+        update();
+      }
+    }) || null;
+    syncRange();
   }
   function filter(field, value) {
     addFilter(state.view, field, value);
@@ -570,7 +645,7 @@
     const ui = state.ui;
     const signal = begin("load");
     renderChips();
-    ui.range.value = state.view.range;
+    syncRange();
     try {
       state.overview = await get("", signal);
     } catch (e) {
@@ -620,7 +695,13 @@
   }
   function init(root2, config2) {
     state.panelPath = (document.body?.getAttribute("data-panel-path") || "").replace(/\/+$/, "");
-    state.view = parseView(window.location.search);
+    let remembered = 24;
+    try {
+      remembered = Number.parseInt(localStorage.getItem(HOURS_KEY) || "24", 10) || 24;
+    } catch (e) {
+    }
+    state.view = parseView(window.location.search, remembered);
+    state.onZoom = zoom;
     for (const [key, role] of Object.entries(ROLES)) state.ui[key] = root2.querySelector("[data-kn-" + role + "]");
     const ui = state.ui;
     ui.refresh.addEventListener("click", load);
@@ -628,10 +709,7 @@
       state.view.server = ui.server.value;
       update();
     });
-    ui.range.addEventListener("change", () => {
-      state.view.range = ui.range.value;
-      update();
-    });
+    mountPicker();
     ui.addFilter.addEventListener("submit", (e) => {
       e.preventDefault();
       const value = ui.filterValue.value.trim();
@@ -645,7 +723,7 @@
     });
     ui.zoneSearch.addEventListener("input", () => renderZones(openZone));
     window.addEventListener("popstate", () => {
-      state.view = parseView(window.location.search);
+      state.view = parseView(window.location.search, state.view.hours);
       load();
     });
     setInterval(() => {
@@ -666,6 +744,7 @@
     removeFilter,
     normalize,
     dnstapOnly,
+    setCustom,
     headline,
     formatCount,
     formatRate,

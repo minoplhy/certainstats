@@ -37,19 +37,27 @@ function message(group, text) {
   if (node) node.textContent = text;
 }
 
+// drawChart hands one response to the shared chart engine: the axis is the
+// window the server answered for, the step its bucket width, and brushing
+// zooms the whole page (state.onZoom).
+export function drawChart(key, canvasId, series, data, formatter) {
+  const customRange = {start: data.start, end: data.end};
+  const chart = state.charts[key];
+  if (chart) {
+    chart.updateSeries(series, state.view.hours, null, data.end, customRange, undefined, data.step);
+    return chart;
+  }
+  state.charts[key] = window.CertainStatsChart?.renderMultiChart(canvasId, {
+    seriesList: series, hours: state.view.hours, customRange, queryEndTime: data.end, minMax: 1, stepMs: data.step, formatter,
+    onZoom: (start, end) => state.onZoom?.(start, end)
+  });
+  return state.charts[key];
+}
+
 function draw(group, data) {
   const series = seriesFor(data.series);
-  const customRange = {start: data.start, end: data.end};
-  const hours = Math.max(1, Math.round((data.end - data.start) / 3600000));
   const formatter = group === 'bytes' ? v => formatBytes(v) + '/s' : v => formatRate(v) + '/s';
-  const chart = state.charts[group];
-  if (chart) {
-    chart.updateSeries(series, hours, null, data.end, customRange, undefined, data.step);
-  } else {
-    state.charts[group] = window.CertainStatsChart?.renderMultiChart('kn-chart-' + group, {
-      seriesList: series, hours, customRange, queryEndTime: data.end, minMax: 1, stepMs: data.step, formatter
-    });
-  }
+  drawChart(group, 'kn-chart-' + group, series, data, formatter);
   legend(group, data.series, series);
 }
 

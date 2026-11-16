@@ -6,8 +6,10 @@ control socket, the one `knotc` uses, and can optionally receive Knot's dnstap
 stream. The page is `/collectors/knot`, reached from the Collectors page;
 `/knot` redirects there.
 
-It is off unless the collector host sets `ENABLE_KNOT_DNS=true`. The generic
-`COLLECT_KNOT` switch does nothing.
+It is off unless the collector host sets `COLLECT_KNOT=true`, the same
+`COLLECT_<TYPE>` switch as every type. The older `ENABLE_KNOT_DNS` no longer
+switches it on; a host that still sets it alone gets a message naming the new
+switch.
 
 ## What the collector reads
 
@@ -100,7 +102,7 @@ show from the first reading.
 
    | Variable | Default | Meaning |
    | --- | --- | --- |
-   | `ENABLE_KNOT_DNS` | off | `true` switches the type on |
+   | `COLLECT_KNOT` | off | `true` switches the type on |
    | `KNOT_SOCKET` | `/run/knot/knot.sock` | Knot's control socket |
    | `KNOT_ZONE_STATS` | off | `true` also reads per-zone counters |
    | `KNOT_ZONE_STATS_MAX` | `200` | Most zones with per-zone counters, the busiest by requests (at most 1000) |
@@ -123,7 +125,7 @@ show from the first reading.
      certainstats-collector:
        image: ghcr.io/minoplhy/certainstats-collector:latest
        environment:
-         ENABLE_KNOT_DNS: "true"
+         COLLECT_KNOT: "true"
          KNOT_SOCKET: "/run/knot/knot.sock"
          KNOT_DNSTAP: "true"
        volumes:
@@ -197,7 +199,7 @@ limits of their own; see [Alert rules](#alert-rules).
 | Check | Level |
 | --- | --- |
 | Collector offline, or waiting for its first connection | bad, warn |
-| Knot DNS not switched on at the collector (`ENABLE_KNOT_DNS=true`) | warn |
+| Knot DNS not switched on at the collector (`COLLECT_KNOT=true`) | warn |
 | Knot unreachable, with Knot's or the socket's error | bad |
 | No mod-stats counters | warn |
 | Per-zone cap leaves zones out (`KNOT_ZONE_STATS_MAX`) | warn |
@@ -243,20 +245,29 @@ each filter takes one value.
 | GET | `/collectors/knot` | Servers with status, version, options and zone count; checks |
 | GET | `/collectors/knot/zones` | Zones across servers, with each server's serial and a drift flag |
 | GET | `/collectors/knot/zones/{zone}` | One zone on every server |
-| GET | `/collectors/knot/totals?range=&collector=&zone=` | Total requests, queries per second (over the time counted), responses, NXDOMAIN, SERVFAIL, REFUSED, transfers, bytes; `collecting` until the second reading |
-| GET | `/collectors/knot/series?group=&range=&collector=&zone=` | Per-second rates for `protocol`, `rcode`, `operation`, `qtype` or `bytes`; the top four lines plus "other" |
-| GET | `/collectors/knot/queries?dim=&range=&collector=&zone=&qname=&qtype=&rcode=&limit=` | dnstap breakdown by `qname`, `zone`, `qtype`, `rcode`, `client` or `size`, with the matching total and its series |
+| GET | `/collectors/knot/totals?hours=&collector=&zone=` | Total requests, queries per second (over the time counted), responses, NXDOMAIN, SERVFAIL, REFUSED, transfers, bytes; `collecting` until the second reading |
+| GET | `/collectors/knot/series?group=&hours=&collector=&zone=` | Per-second rates for `protocol`, `rcode`, `operation`, `qtype` or `bytes`; the top four lines plus "other" |
+| GET | `/collectors/knot/queries?dim=&hours=&collector=&zone=&qname=&qtype=&rcode=&limit=` | dnstap breakdown by `qname`, `zone`, `qtype`, `rcode`, `client` or `size`, with the matching total and its series |
 | GET | `/collectors/{id}/knot` | That collector's Knot state |
 
-`range` is `1h`, `6h`, `24h` (default), `7d`, `30d` or `90d`. An empty
-`collector` means every server of the owner.
+The time range is read as on every chart (`/api/metrics`, monitor history):
+`hours`, or `start` and `end` in Unix ms in place of `hours` for a custom range,
+at most two years and ending no later than now. A bad range gets 400 `Invalid
+time range`. Responses carry the `start`, `end` and `step` they answered. The
+step is the shared chart step (about 1000 points per range) rounded up to whole
+minutes, or to whole hours when a dnstap range starts before minute retention
+and so reads hourly rows; the window is aligned to it. An empty `collector`
+means every server of the owner.
 
 ## The page
 
 - A plain-language headline, then total requests, queries per second, NXDOMAIN
   and SERVFAIL shares, and zone transfers for the range.
-- A server picker, a range picker and filters (zone, name, query type, response
-  code), kept in the URL.
+- A server picker, the shared time picker (quick ranges and a custom range,
+  remembered in `certainstats_knot_hours`) and filters (zone, name, query type,
+  response code), kept in the URL as `hours` or `start`/`end`. Older links with
+  `range=7d` open the same window. Brushing any chart zooms the whole page to
+  that range.
 - Checks, then charts from counters: queries per second by protocol, response
   codes, query types, operations and traffic.
 - With dnstap: the matching queries over time, and top names, query types,

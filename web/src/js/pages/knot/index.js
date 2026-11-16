@@ -4,7 +4,7 @@
 
 import { readPageConfig } from '../../lib/page_config.js';
 import { init, load } from './init.js';
-import { parseView, toQuery, apiParams, counterParams, addFilter, removeFilter, normalize, dnstapOnly } from './view.js';
+import { parseView, toQuery, apiParams, counterParams, addFilter, removeFilter, normalize, dnstapOnly, setCustom } from './view.js';
 import { headline, formatCount, formatRate, formatShare, formatBytes, until, span, zoneName } from './format.js';
 import { seriesFor } from './charts.js';
 import { zoneStatus, roles } from './zones.js';
@@ -13,7 +13,7 @@ import { sizeLabel } from './dnstap.js';
 window.CertainStatsKnot = {
   load,
   // Pure helpers, exposed for the browser tests.
-  parseView, toQuery, apiParams, counterParams, addFilter, removeFilter, normalize, dnstapOnly,
+  parseView, toQuery, apiParams, counterParams, addFilter, removeFilter, normalize, dnstapOnly, setCustom,
   headline, formatCount, formatRate, formatShare, formatBytes, until, span, zoneName, seriesFor, zoneStatus, roles, sizeLabel
 };
 

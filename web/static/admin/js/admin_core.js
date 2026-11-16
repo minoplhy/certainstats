@@ -137,15 +137,15 @@
     { label: "1y", value: 8760 },
     { label: "2y", value: 17520 }
   ];
-
-  // web/src/js/components/admin_core/time/picker.js
-  var timePickerInstance = 0;
-  function longLabel(hours) {
+  function rangeLabel(hours) {
     const plural = (n, unit) => n + " " + unit + (n === 1 ? "" : "s");
     if (hours % 8760 === 0) return plural(hours / 8760, "year");
     if (hours >= 48 && hours % 24 === 0) return plural(hours / 24, "day");
     return plural(hours, "hour");
   }
+
+  // web/src/js/components/admin_core/time/picker.js
+  var timePickerInstance = 0;
   function shortTime(ms) {
     return new Date(ms).toLocaleString(void 0, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
   }
@@ -202,7 +202,7 @@
       if (!compact) return customRange ? "Custom range" : "Custom";
       if (allActive) return "All time";
       if (customRange) return shortTime(customRange.start) + " – " + shortTime(customRange.end);
-      return "Last " + longLabel(activeHours);
+      return "Last " + rangeLabel(activeHours);
     }
     function render() {
       const quickActive = (r) => !allActive && !customRange && activeHours === r.value;

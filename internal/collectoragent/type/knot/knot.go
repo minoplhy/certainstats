@@ -67,10 +67,7 @@ type pendingPart struct {
 	sentAt time.Time
 }
 
-var (
-	_ module.Module   = (*Module)(nil)
-	_ module.Switcher = (*Module)(nil)
-)
+var _ module.Module = (*Module)(nil)
 
 func envOn(getenv func(string) string, key string) bool {
 	return strings.EqualFold(strings.TrimSpace(getenv(key)), "true")
@@ -120,7 +117,6 @@ func New(getenv func(string) string, version string) *Module {
 
 func (m *Module) Name() string   { return wire.TypeName }
 func (m *Module) Prefix() string { return wire.Prefix }
-func (m *Module) Switch() string { return wire.Switch }
 
 // Check reads Knot's version and counters and tests the dnstap socket path.
 func (m *Module) Check(ctx context.Context) error {

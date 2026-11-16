@@ -32,15 +32,13 @@ type Type struct {
 }
 
 var (
-	_ collector.Type     = (*Type)(nil)
-	_ collector.Setup    = (*Type)(nil)
-	_ collector.Switcher = (*Type)(nil)
+	_ collector.Type  = (*Type)(nil)
+	_ collector.Setup = (*Type)(nil)
 )
 
 func (t *Type) Name() string   { return wire.TypeName }
 func (t *Type) Label() string  { return "Knot DNS" }
 func (t *Type) Prefix() string { return wire.Prefix }
-func (t *Type) Switch() string { return wire.Switch }
 
 func (t *Type) now() time.Time {
 	if t.Now != nil {

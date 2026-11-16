@@ -12,3 +12,11 @@ export const TIME_RANGES = [
   { label: '1y', value: 8760 },
   { label: '2y', value: 17520 }
 ];
+
+// rangeLabel names a quick range in words: 1 → "1 hour", 168 → "7 days", 8760 → "1 year".
+export function rangeLabel(hours) {
+  const plural = (n, unit) => n + ' ' + unit + (n === 1 ? '' : 's');
+  if (hours % 8760 === 0) return plural(hours / 8760, 'year');
+  if (hours >= 48 && hours % 24 === 0) return plural(hours / 24, 'day');
+  return plural(hours, 'hour');
+}

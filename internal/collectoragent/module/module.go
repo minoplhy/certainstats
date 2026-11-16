@@ -25,15 +25,7 @@ type Module interface {
 	Run(ctx context.Context, send Send, inbox <-chan wire.Envelope, once bool) error
 }
 
-// Switcher is implemented by modules switched on by a variable other than COLLECT_<NAME>.
-type Switcher interface {
-	Switch() string
-}
-
-// SwitchOf returns the environment variable that switches m on.
+// SwitchOf returns the environment variable that switches m on: COLLECT_<NAME>.
 func SwitchOf(m Module) string {
-	if s, ok := m.(Switcher); ok {
-		return s.Switch()
-	}
 	return "COLLECT_" + strings.ToUpper(m.Name())
 }

@@ -16,16 +16,28 @@ function helpers() {
   return context.window.CertainStatsKnot;
 }
 
-test('view round-trips through the URL with one value per filter', () => {
+test('view round-trips through the URL with the shared range keys and one value per filter', () => {
   const kn = helpers();
-  const v = kn.parseView('?server=col_a&range=7d&zone=Example.COM&qname=www.example.com.&qtype=aaaa&rcode=nxdomain');
-  assert.deepEqual({...v}, {server: 'col_a', range: '7d', zone: 'example.com.', qname: 'www.example.com.', qtype: 'AAAA', rcode: 'NXDOMAIN'});
+  const v = kn.parseView('?server=col_a&hours=168&zone=Example.COM&qname=www.example.com.&qtype=aaaa&rcode=nxdomain');
+  assert.deepEqual({...v}, {server: 'col_a', hours: 168, start: null, end: null, zone: 'example.com.', qname: 'www.example.com.', qtype: 'AAAA', rcode: 'NXDOMAIN'});
   assert.deepEqual({...kn.parseView('?' + kn.toQuery(v))}, {...v});
-  assert.equal(kn.parseView('?range=5y').range, '24h');
-  assert.equal(kn.toQuery(kn.parseView('')).toString(), 'range=24h');
+  // Hours outside the picker's quick ranges fall back; old range= links still open the same window.
+  assert.equal(kn.parseView('?hours=5').hours, 24);
+  assert.equal(kn.parseView('', 720).hours, 720);
+  assert.equal(kn.parseView('?range=7d').hours, 168);
+  assert.equal(kn.toQuery(kn.parseView('')).toString(), 'hours=24');
   // The API calls the server filter "collector"; counters drop what they cannot filter.
-  assert.equal(kn.apiParams(v, {dim: 'qname'}), 'range=7d&collector=col_a&zone=example.com.&qname=www.example.com.&qtype=AAAA&rcode=NXDOMAIN&dim=qname');
-  assert.equal(kn.counterParams(v, {group: 'rcode'}), 'range=7d&collector=col_a&zone=example.com.&group=rcode');
+  assert.equal(kn.apiParams(v, {dim: 'qname'}), 'hours=168&collector=col_a&zone=example.com.&qname=www.example.com.&qtype=AAAA&rcode=NXDOMAIN&dim=qname');
+  assert.equal(kn.counterParams(v, {group: 'rcode'}), 'hours=168&collector=col_a&zone=example.com.&group=rcode');
+  // A custom or zoomed range is sent as start and end instead of hours.
+  kn.setCustom(v, 1000.7, 5000.2);
+  assert.equal(kn.toQuery(v).get('start'), '1000');
+  assert.equal(kn.toQuery(v).get('hours'), null);
+  assert.equal(kn.counterParams(v, {group: 'rcode'}), 'start=1000&end=5000&collector=col_a&zone=example.com.&group=rcode');
+  // A custom URL carries no hours; the page keeps the quick range it had.
+  assert.deepEqual({...kn.parseView('?' + kn.toQuery(v), 168)}, {...v});
+  kn.setCustom(v, null, null);
+  assert.equal(kn.toQuery(v).get('hours'), '168');
   assert.equal(kn.dnstapOnly(v), true);
   assert.equal(kn.dnstapOnly(kn.parseView('?zone=a')), false);
   assert.equal(kn.normalize('zone', '(none)'), '(none)');
@@ -47,12 +59,15 @@ test('numbers, times and headlines read plainly', () => {
   assert.equal(kn.until(1000, 1000 + 5 * 60000), 'overdue 5m');
   assert.equal(kn.zoneName('example.com.'), 'example.com');
   assert.equal(kn.zoneName('.'), '.');
-  const view = {range: '24h'};
+  const view = {hours: 24};
   assert.equal(kn.headline({servers: []}, null, view), 'No Knot DNS servers yet');
   assert.equal(kn.headline({servers: [{}], checks: []}, {collecting: true}, view), 'Collecting, first numbers in about a minute');
   assert.equal(kn.headline({servers: [{}], checks: []}, {requests: 482000}, view), '482k queries in the last 24 hours, all clear');
   assert.equal(kn.headline({servers: [{}], checks: [{level: 'bad'}, {level: 'warn'}]}, {requests: 1}, view), '1 issue needs attention');
   assert.equal(kn.headline({servers: [{}], checks: [{level: 'warn'}]}, {requests: 10}, view), '10 queries in the last 24 hours, 1 thing to look at');
+  assert.equal(kn.headline({servers: [{}], checks: []}, {requests: 10}, {hours: 1}), '10 queries in the last hour, all clear');
+  assert.equal(kn.headline({servers: [{}], checks: []}, {requests: 10}, {hours: 168}), '10 queries in the last 7 days, all clear');
+  assert.match(kn.headline({servers: [{}], checks: []}, {requests: 10}, {hours: 24, start: 1, end: 2}), /^10 queries between .+ and .+, all clear$/);
 });
 
 test('zone status and chart colours', () => {
@@ -93,7 +108,7 @@ function page(url, fixtures = {}) {
     requests.push(u);
     let body;
     if (path === '') body = {servers, checks: fixtures.checks || [], zone_count: 1, now};
-    else if (path === 'totals') body = fixtures.totals || {range: '24h', start: now - 86400000, end: now, from: now - 86400000, collecting: false, requests: 482000, qps: 5.6, responses: 482000, nxdomain: 12300, servfail: 0, refused: 0, transfers: 41};
+    else if (path === 'totals') body = fixtures.totals || {start: now - 86400000, end: now, from: now - 86400000, collecting: false, requests: 482000, qps: 5.6, responses: 482000, nxdomain: 12300, servfail: 0, refused: 0, transfers: 41};
     else if (path === 'series') body = {group: u.searchParams.get('group'), start: now - 86400000, end: now, step: 600000, collecting: false,
       series: [{name: 'udp4', total: 400000, points: [[now - 600000, 5]]}, {name: 'other', total: 1, points: [[now - 600000, 0]]}]};
     else if (path === 'queries') body = {start: now - 86400000, end: now, step: 600000, breakdown: {dim: u.searchParams.get('dim'), total: 90, exact: true,
@@ -107,16 +122,23 @@ function page(url, fixtures = {}) {
   };
   const charts = [];
   w.CertainStatsChart = {renderMultiChart: (id, opts) => { const c = {id, opts, updates: 0, updateSeries() { this.updates++; }}; charts.push(c); return c; }};
+  const pickers = [];
+  w.CertainStatsTelemetry = {initCustomTimePicker: (el, opts) => {
+    let st = {hours: opts.activeHours, customRange: null};
+    const p = {el, opts, sets: [], getState: () => ({...st}), setState(next) { st = {...next}; this.sets.push(next); }};
+    pickers.push(p);
+    return p;
+  }};
   w.scrollTo = () => {};
   open.push(w);
   w.eval(BUNDLE);
-  return {w, requests, charts, q: sel => w.document.querySelector(sel), qa: sel => [...w.document.querySelectorAll(sel)]};
+  return {w, requests, charts, pickers, q: sel => w.document.querySelector(sel), qa: sel => [...w.document.querySelectorAll(sel)]};
 }
 
 const settle = () => new Promise(r => setTimeout(r, 30));
 
 test('the page loads counters, dnstap and zones, one resource per request', async () => {
-  const p = page('http://x/panel/knot?range=24h');
+  const p = page('http://x/panel/knot?hours=24');
   await settle();
   assert.equal(p.q('[data-kn-main]').hidden, false);
   assert.equal(p.q('[data-kn-empty]').hidden, true);
@@ -179,4 +201,42 @@ test('an empty install shows the add prompt; a fresh one says it is collecting',
   assert.equal(fresh.q('[data-kn-headline]').textContent, 'Collecting, first numbers in about a minute');
   assert.equal(fresh.q('[data-kn-stat-requests]').textContent, '–');
   assert.match(fresh.q('[data-kn-stat-note]').textContent, /first reading/);
+});
+
+test('the shared picker sets the range, and brushing a chart zooms the whole page', async () => {
+  const p = page('http://x/panel/knot?range=7d');
+  await settle();
+  assert.equal(p.pickers.length, 1);
+  const picker = p.pickers[0];
+  assert.ok(picker.el.matches('[data-kn-time-picker]'));
+  assert.equal(picker.opts.storageKey, 'certainstats_knot_hours');
+  assert.equal(picker.opts.compact, true);
+  assert.equal(picker.opts.activeHours, 168, 'an old range=7d link opens seven days');
+  assert.ok(p.requests.filter(u => u.pathname.endsWith('/series')).every(u => u.searchParams.get('hours') === '168' && !u.searchParams.has('range')));
+
+  picker.opts.onApply({hours: 6, customRange: null});
+  await settle();
+  assert.match(p.w.location.search, /hours=6/);
+  assert.equal(p.requests.filter(u => u.pathname.endsWith('/totals')).pop().searchParams.get('hours'), '6');
+
+  // Every chart gets the zoom handler; brushing one moves all requests to start/end.
+  const chart = p.charts.find(c => c.id === 'kn-chart-rcode');
+  assert.equal(typeof chart.opts.onZoom, 'function');
+  assert.equal(typeof p.charts.find(c => c.id === 'kn-chart-dnstap').opts.onZoom, 'function');
+  const now = Date.now();
+  chart.opts.onZoom(now - 7200000.5, now - 3600000.5);
+  await settle();
+  const search = new URLSearchParams(p.w.location.search);
+  assert.equal(search.get('start'), String(Math.floor(now - 7200000.5)));
+  assert.equal(search.get('hours'), null);
+  assert.equal(JSON.stringify(picker.sets.pop().customRange), JSON.stringify({start: Math.floor(now - 7200000.5), end: Math.floor(now - 3600000.5)}));
+  const last = p.requests.filter(u => u.pathname.endsWith('/queries')).pop();
+  assert.equal(last.searchParams.get('start'), String(Math.floor(now - 7200000.5)));
+  assert.match(p.q('[data-kn-headline]').textContent, /queries between /);
+
+  // Reset in the picker returns to the quick range.
+  picker.opts.onApply({hours: 6, customRange: null});
+  await settle();
+  assert.equal(new URLSearchParams(p.w.location.search).get('hours'), '6');
+  assert.equal(new URLSearchParams(p.w.location.search).get('start'), null);
 });
