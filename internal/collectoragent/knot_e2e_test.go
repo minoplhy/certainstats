@@ -180,11 +180,10 @@ func TestKnotEndToEnd(t *testing.T) {
 		}
 	}()
 
-	env := map[string]string{"HUB_URL": srv.URL, "TOKEN": created["token"].(string), "ENABLE_KNOT_DNS": "true", "KNOT_SOCKET": fake.path}
+	env := map[string]string{"HUB_URL": srv.URL, "TOKEN": created["token"].(string), "KNOT_SOCKET": fake.path}
 	getenv := func(k string) string { return env[k] }
-	if _, _, err := LoadConfig(getenv, "test"); err == nil || !strings.Contains(err.Error(), "COLLECT_KNOT=true") ||
-		!strings.Contains(err.Error(), "COLLECT_CROWDSEC=true") || !strings.Contains(err.Error(), "ENABLE_KNOT_DNS was renamed to COLLECT_KNOT") {
-		t.Fatalf("the old ENABLE_KNOT_DNS must not switch Knot on, and the error must name each switch and the rename: %v", err)
+	if _, _, err := LoadConfig(getenv, "test"); err == nil || !strings.Contains(err.Error(), "COLLECT_KNOT=true") || !strings.Contains(err.Error(), "COLLECT_CROWDSEC=true") {
+		t.Fatalf("with no switch the error must name each one: %v", err)
 	}
 	env["COLLECT_KNOT"] = "true"
 	cfg, mods, err := LoadConfig(getenv, "test")

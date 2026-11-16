@@ -36,20 +36,6 @@ func enabledModules(getenv func(string) string, version string) []module.Module 
 	return on
 }
 
-// renamedSwitches maps switches that were renamed to their current names.
-var renamedSwitches = map[string]string{"ENABLE_KNOT_DNS": "COLLECT_KNOT"}
-
-// renamedHint names old switches the host still sets without the new one.
-func renamedHint(getenv func(string) string) string {
-	var hints []string
-	for old, cur := range renamedSwitches {
-		if strings.TrimSpace(getenv(old)) != "" && strings.TrimSpace(getenv(cur)) == "" {
-			hints = append(hints, old+" was renamed to "+cur)
-		}
-	}
-	return strings.Join(hints, "; ")
-}
-
 // LoadConfig reads HUB_URL, TOKEN and each type's switch, COLLECT_<TYPE>.
 func LoadConfig(getenv func(string) string, version string) (Config, []module.Module, error) {
 	cfg := Config{HubURL: strings.TrimSpace(getenv("HUB_URL")), Token: strings.TrimSpace(getenv("TOKEN")), Version: version}
@@ -68,14 +54,7 @@ func LoadConfig(getenv func(string) string, version string) (Config, []module.Mo
 		for _, m := range Available(getenv, version) {
 			names = append(names, module.SwitchOf(m)+"=true")
 		}
-		msg := "no type is switched on; set " + strings.Join(names, " or ")
-		if hint := renamedHint(getenv); hint != "" {
-			msg += " (" + hint + ")"
-		}
-		return cfg, nil, errors.New(msg)
-	}
-	if hint := renamedHint(getenv); hint != "" {
-		log.Printf("%s; that type stays off until the new switch is set", hint)
+		return cfg, nil, fmt.Errorf("no type is switched on; set %s", strings.Join(names, " or "))
 	}
 	return cfg, mods, nil
 }

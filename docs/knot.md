@@ -7,9 +7,7 @@ stream. The page is `/collectors/knot`, reached from the Collectors page;
 `/knot` redirects there.
 
 It is off unless the collector host sets `COLLECT_KNOT=true`, the same
-`COLLECT_<TYPE>` switch as every type. The older `ENABLE_KNOT_DNS` no longer
-switches it on; a host that still sets it alone gets a message naming the new
-switch.
+`COLLECT_<TYPE>` switch as every type.
 
 ## What the collector reads
 
