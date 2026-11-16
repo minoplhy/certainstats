@@ -21,7 +21,7 @@ It is off unless the collector host sets `ENABLE_KNOT_DNS=true`. The generic
 Knot's control socket has no read-only mode: anything that can open it can stop
 Knot or purge zones. The collector therefore refuses to send any command but
 `status`, `stats`, `zone-stats` and `zone-status`, which knotd itself runs under
-its read lock; the check is in `internal/collectoragent/knot/ctl.go` and is
+its read lock; the check is in `internal/collectoragent/type/knot/ctl.go` and is
 covered by a test. Only the `mod-stats` section is kept from `stats` and
 `zone-stats`: other sections, such as `zone.size`, are current values rather
 than counters. When a command over every zone fails for some zones, Knot sends
@@ -148,7 +148,7 @@ disturbing a collector already listening on it.
 | collector → server | `kn_dnstap` | One dnstap minute, or one part of a busy minute; parts have disjoint rows |
 | server → collector | `kn_ack` | A stored dnstap part, or an error asking for a resend |
 
-Wire types live in `internal/knot/wire`.
+Wire types live in `internal/collector/type/knot/wire`.
 
 ## Storage
 
@@ -246,7 +246,7 @@ and then only as /24 or /48 networks.
 
 ## Verification
 
-- `go test ./internal/collectoragent/knot/...` covers:
+- `go test ./internal/collectoragent/type/knot/...` covers:
   - the control protocol against a fake Knot whose replies follow knotd's
     `knot/ctl/commands.c`: Unix and relative event times, `pending(…)`,
     `thawing`, non-counter sections, and a trailing error after good zones
@@ -256,7 +256,7 @@ and then only as /24 or /48 networks.
   - the dnstap Frame Streams handshake, decoding and aggregation, including the name cap and "other" rows adding up
   - splitting busy minutes
   - acknowledgements
-- `go test ./internal/knot/...` covers:
+- `go test ./internal/collector/type/knot/...` covers:
   - the baseline, restarts and spreading over gaps
   - per-zone and per-owner isolation
   - zones, dnstap queries, rollup and prune

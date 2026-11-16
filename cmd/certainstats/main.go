@@ -25,11 +25,11 @@ import (
 	"certainstats/internal/auth"
 	"certainstats/internal/collector"
 	ctsdb "certainstats/internal/collector/tsdb"
+	"certainstats/internal/collector/type/crowdsec"
+	"certainstats/internal/collector/type/knot"
 	"certainstats/internal/compress"
 	b_ctx "certainstats/internal/context"
-	"certainstats/internal/crowdsec"
 	"certainstats/internal/dashboard"
-	"certainstats/internal/knot"
 	"certainstats/internal/lifecycle"
 	"certainstats/internal/metrics"
 	"certainstats/internal/networkservice"
@@ -334,8 +334,10 @@ func main() {
 		rt.Delete("/dashboards/{id}", webHandler.RequireAuthWeb(webHandler.DashboardDeleteHandler))
 
 		rt.Get("/network-monitors", webHandler.RequireAuthWeb(webHandler.NetworkMonitorsHandler))
-		rt.Get("/crowdsec", webHandler.RequireAuthWeb(webHandler.CrowdSecHandler))
-		rt.Get("/knot", webHandler.RequireAuthWeb(webHandler.KnotHandler))
+		// Each collector type has its own page at /<name>, rendered from <name>.html.
+		for _, t := range collectors.Types() {
+			rt.Get("/"+t.Name(), webHandler.RequireAuthWeb(webHandler.CollectorTypePage(t.Name(), t.Label())))
+		}
 		rt.Get("/collectors", webHandler.RequireAuthWeb(webHandler.CollectorsHandler))
 
 		rt.Get("/alerts", webHandler.RequireAuthWeb(webHandler.AlertsListHandler))

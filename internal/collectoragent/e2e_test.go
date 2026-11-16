@@ -17,9 +17,9 @@ import (
 	"time"
 
 	"certainstats/internal/collector"
+	csserver "certainstats/internal/collector/type/crowdsec"
+	cswire "certainstats/internal/collector/type/crowdsec/wire"
 	ctxkeys "certainstats/internal/context"
-	csserver "certainstats/internal/crowdsec"
-	cswire "certainstats/internal/crowdsec/wire"
 	"certainstats/internal/security"
 	"certainstats/internal/store/sqlite"
 

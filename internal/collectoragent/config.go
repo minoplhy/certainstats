@@ -8,9 +8,9 @@ import (
 	"strings"
 	"time"
 
-	"certainstats/internal/collectoragent/crowdsec"
-	"certainstats/internal/collectoragent/knot"
 	"certainstats/internal/collectoragent/module"
+	"certainstats/internal/collectoragent/type/crowdsec"
+	"certainstats/internal/collectoragent/type/knot"
 	log "certainstats/internal/logger"
 )
 

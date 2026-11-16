@@ -127,11 +127,11 @@ note) by implementing `collector.Setup`.
 
 ## Adding a type
 
-1. Server: a package implementing `collector.Type` (`internal/collector/type.go`):
+1. Server: a package under `internal/collector/type/<name>` implementing `collector.Type` (`internal/collector/type.go`):
    a name, label and prefix, connect, message and disconnect handlers, and its
    two route trees. Register it in `cmd/certainstats/main.go`. Time series go to
    the collector TSDB (`internal/collector/tsdb`).
-2. Binary: a package under `internal/collectoragent/` implementing
+2. Binary: a package under `internal/collectoragent/type/<name>` implementing
    `module.Module` (`internal/collectoragent/module`), listed in `Available()`
    in `internal/collectoragent/config.go`. Its switch is `COLLECT_<NAME>`, unless
    both the module and the server type implement `Switch()` (`module.Switcher`,

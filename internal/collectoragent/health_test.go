@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	csserver "certainstats/internal/crowdsec"
+	csserver "certainstats/internal/collector/type/crowdsec"
 
 	_ "modernc.org/sqlite"
 )

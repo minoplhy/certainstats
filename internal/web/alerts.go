@@ -4,7 +4,7 @@ import (
 	agentdata "certainstats/internal/agent_data"
 	alertrules "certainstats/internal/alert"
 	c "certainstats/internal/base/alert"
-	"certainstats/internal/crowdsec"
+	"certainstats/internal/collector/type/crowdsec"
 	"certainstats/internal/networkmonitor"
 	"certainstats/internal/store"
 	"fmt"

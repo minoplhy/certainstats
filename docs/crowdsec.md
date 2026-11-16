@@ -194,7 +194,7 @@ longer covers the component, or when the component is muted, deleted from
 CrowdSec, or its collector removed. A collector that cannot be judged leaves its
 incidents as they are.
 
-A check is one entry in a registry in `internal/crowdsec/checks.go`: its name,
+A check is one entry in a registry in `internal/collector/type/crowdsec/checks.go`: its name,
 the kind it applies to, its parameters with limits and defaults, the parameter
 a rule's threshold sets, the parts it needs and a function from signals to a
 verdict. Registering it also registers its rule condition, so it appears on the
@@ -330,7 +330,7 @@ view can be linked and Back works.
 
 ## Verification
 
-`go test ./internal/crowdsec/...` covers decoding, de-duplication, the rollup,
+`go test ./internal/collector/type/crowdsec/...` covers decoding, de-duplication, the rollup,
 late alerts, filters, raw and rollup agreement, owner isolation and pruning;
 for health, each check including siblings on a shared key, what is not judged,
 Alerts page rules firing and recovering once with their webhook, incidents

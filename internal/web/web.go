@@ -2,8 +2,8 @@ package web
 
 import (
 	"certainstats/internal/auth"
+	"certainstats/internal/collector/type/crowdsec"
 	ctx "certainstats/internal/context"
-	"certainstats/internal/crowdsec"
 	"certainstats/internal/metrics"
 	"certainstats/internal/security"
 	"certainstats/internal/store"

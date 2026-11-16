@@ -1,0 +1,213 @@
+package crowdsec
+
+import (
+	"context"
+	"database/sql"
+	"errors"
+	"fmt"
+	"time"
+
+	"certainstats/internal/base/alert"
+	"certainstats/internal/collector"
+	"certainstats/internal/collector/type/crowdsec/wire"
+	log "certainstats/internal/logger"
+	"certainstats/internal/store"
+)
+
+// reportFresh is how old a collector's last health report may be and still be
+// judged. Past it nothing is concluded, so a collector that died or had health
+// switched off never sets off a round of notifications.
+const reportFresh = 5 * time.Minute
+
+// Rules is the part of the main database that holds CrowdSec alert rules and
+// their incidents, which are ordinary alert rules and incident history.
+type Rules interface {
+	CrowdSecRules(ctx context.Context) ([]store.Alert, error)
+	CrowdSecOpenIncidents(ctx context.Context, userID string) ([]store.CrowdSecIncident, error)
+	CrowdSecFire(ctx context.Context, rule store.Alert, collectorID, subjectID string, snap alert.CrowdSecSnapshot, value float64) (string, error)
+	CrowdSecResolve(ctx context.Context, historyID string) (string, error)
+	CrowdSecClose(ctx context.Context, historyID string) error
+}
+
+// health stores a cs_health report. Only a host that set CROWDSEC_HEALTH=true sends one.
+func (t *Type) health(ctx context.Context, c *collector.Conn, m wire.Health) error {
+	if len(m.Components) > wire.MaxComponents {
+		return fmt.Errorf("health report of %d components exceeds %d", len(m.Components), wire.MaxComponents)
+	}
+	if len(m.Error) > 500 {
+		m.Error = m.Error[:500]
+	}
+	return t.Store.SaveReport(ctx, c.Collector.UserID, c.Collector.CollectorID, m, time.Now().UnixMilli())
+}
+
+// judged reports whether a collector's components can be judged now: it is
+// connected with CrowdSec enabled, and its last report is recent and error-free.
+func (t *Type) judged(h *CollectorHealth, now int64) bool {
+	_, connected := t.connected(h.CollectorID)
+	return connected && h.Error == "" && h.ReportedMs > 0 && now-h.ReportedMs <= reportFresh.Milliseconds()
+}
+
+// connected reports whether a collector is connected with CrowdSec enabled, and since when.
+func (t *Type) connected(collectorID string) (time.Time, bool) {
+	if t.live != nil {
+		return t.live(collectorID)
+	}
+	conn := t.Collectors.Conn(collectorID)
+	if conn == nil || !conn.Enabled(wire.TypeName) {
+		return time.Time{}, false
+	}
+	return conn.Since, true
+}
+
+// Tick evaluates every check and every CrowdSec alert rule. It runs on the central timer.
+func (t *Type) Tick(ctx context.Context) {
+	if err := t.Evaluate(ctx, time.Now().UnixMilli()); err != nil {
+		log.Printf("[CrowdSec] health: %v", err)
+	}
+}
+
+func (t *Type) deliver(eventID string) {
+	if eventID != "" && t.Deliver != nil {
+		t.Deliver(eventID)
+	}
+}
+
+// openKey identifies an incident: one rule on one machine or bouncer.
+type openKey struct{ alertID, subjectID string }
+
+// Evaluate refreshes every judged collector's findings, then opens and resolves
+// rule incidents. An open incident is closed quietly when nothing keeps it:
+// its rule is gone, disabled or no longer covers the component, the component
+// was muted or removed, or its collector was removed. Incidents of a collector
+// that cannot be judged right now are left as they are.
+func (t *Type) Evaluate(ctx context.Context, now int64) error {
+	list, err := t.Store.reportedHealth(ctx)
+	if err != nil {
+		return err
+	}
+	var rules []store.Alert
+	open := map[openKey]store.CrowdSecIncident{}
+	if t.Rules != nil {
+		if rules, err = t.Rules.CrowdSecRules(ctx); err != nil {
+			return err
+		}
+		incidents, err := t.Rules.CrowdSecOpenIncidents(ctx, "")
+		if err != nil {
+			return err
+		}
+		for _, i := range incidents {
+			open[openKey{i.AlertID, i.SubjectID}] = i
+		}
+	}
+	ruleByID := map[string]bool{}
+	for _, r := range rules {
+		ruleByID[r.AlertID] = true
+	}
+	kept := map[openKey]bool{}
+	for _, h := range list {
+		col, err := t.Collectors.Store.CollectorGet(ctx, h.CollectorID, h.UserID)
+		if errors.Is(err, sql.ErrNoRows) {
+			// The collector was removed: nothing about it is kept, and its incidents close below.
+			if err := t.Store.dropCollectorHealth(ctx, h.CollectorID); err != nil {
+				return err
+			}
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		if !t.judged(h, now) {
+			for k, i := range open {
+				if i.CollectorID == h.CollectorID && ruleByID[i.AlertID] {
+					kept[k] = true
+				}
+			}
+			continue
+		}
+		if err := t.evaluateCollector(ctx, h, col, rules, open, kept, now); err != nil {
+			return err
+		}
+	}
+	for k, i := range open {
+		if kept[k] {
+			continue
+		}
+		if err := t.Rules.CrowdSecClose(ctx, i.HistoryID); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (t *Type) evaluateCollector(ctx context.Context, h *CollectorHealth, col *store.Collector, rules []store.Alert,
+	open map[openKey]store.CrowdSecIncident, kept map[openKey]bool, now int64) error {
+	comps, err := t.Store.collectorComponents(ctx, h.CollectorID)
+	if err != nil {
+		return err
+	}
+	ec := evalContext{Active: h.Active, Parts: h.partSet(), Self: readState(col).Machine, Groups: groupBouncers(comps), Now: now}
+	for _, c := range comps {
+		before := jsonText(c.Findings) + jsonText(c.Progress)
+		c.evaluate(ec)
+		for _, rule := range rules {
+			if rule.UserID != h.UserID {
+				continue
+			}
+			if err := t.evaluateRule(ctx, rule, c, col.Name, ec, open, kept); err != nil {
+				return err
+			}
+		}
+		if jsonText(c.Findings)+jsonText(c.Progress) != before {
+			if err := t.Store.saveEvaluation(ctx, c); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func (t *Type) evaluateRule(ctx context.Context, rule store.Alert, c *Component, collectorName string, ec evalContext,
+	open map[openKey]store.CrowdSecIncident, kept map[openKey]bool) error {
+	check := checkForTrigger(rule.Trigger.Type)
+	if check == nil || check.Kind != c.Kind {
+		return nil
+	}
+	covered := false
+	for _, s := range rule.CrowdSec {
+		covered = covered || c.matches(s)
+	}
+	if !covered {
+		return nil
+	}
+	k := openKey{rule.AlertID, c.key()}
+	incident, isOpen := open[k]
+	r := c.run(check, check.ruleValues(rule.Trigger.Threshold), ec, "rule:"+rule.AlertID)
+	switch {
+	case !r.Judged:
+		// Nothing to go on (never seen, metrics missing): an open incident stays,
+		// unless the component was muted, which ends it.
+		if isOpen && !c.skipped(ec) {
+			kept[k] = true
+		}
+	case r.Bad && isOpen:
+		kept[k] = true
+	case r.Bad:
+		snap := alert.CrowdSecSnapshot{Collector: collectorName, Kind: c.Kind, Name: c.Name, Label: check.Label, Detail: r.Detail, Unit: check.Unit}
+		eventID, err := t.Rules.CrowdSecFire(ctx, rule, c.CollectorID, c.key(), snap, r.Value)
+		if err != nil {
+			return err
+		}
+		kept[k] = true
+		t.deliver(eventID)
+	case isOpen:
+		eventID, err := t.Rules.CrowdSecResolve(ctx, incident.HistoryID)
+		if err != nil {
+			return err
+		}
+		kept[k] = true // resolved, not to be closed as well
+		t.deliver(eventID)
+	default:
+		// Healthy with nothing open; also not "still bad but waiting for more reports".
+	}
+	return nil
+}

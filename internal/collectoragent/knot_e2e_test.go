@@ -19,8 +19,8 @@ import (
 
 	"certainstats/internal/collector"
 	ctsdb "certainstats/internal/collector/tsdb"
+	knotserver "certainstats/internal/collector/type/knot"
 	ctxkeys "certainstats/internal/context"
-	knotserver "certainstats/internal/knot"
 	"certainstats/internal/security"
 	"certainstats/internal/store/sqlite"
 
