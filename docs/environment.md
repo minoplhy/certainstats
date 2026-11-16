@@ -33,12 +33,12 @@ Choose one way to place the panel and public dashboards; mixing them stops start
 | `PUBLIC_BUILD_BURST` | `20` | Per-IP uncached build burst; identical followers share a build. |
 | `LOGIN_ATTEMPTS_PER_MINUTE` | `10` | Per-IP refill rate for sign-in and first-time setup attempts. |
 | `LOGIN_ATTEMPT_BURST` | `10` | Per-IP sign-in and setup attempt burst; further attempts get 429. |
-| `RETENTION_DURATION` | `0` (unlimited) | TSDB retention in Go duration syntax, e.g. `2160h`. |
-| `STORAGE_MAX_BYTES` | `0` (unlimited) | TSDB block retention size in bytes; not a whole-volume quota. |
+| `RETENTION_DURATION` | `0` (unlimited) | TSDB retention in Go duration syntax, e.g. `2160h`. Blocks merge up to a tenth of retention (31 days when unlimited), so data can stay up to about 10% past the limit before its block is deleted. |
+| `STORAGE_MAX_BYTES` | `0` (unlimited) | TSDB block retention size in bytes; not a whole-volume quota. When set, blocks merge up to 7 days at most, so reaching the limit deletes about a week of the oldest history at a time. |
 | `CROWDSEC_RAW_RETENTION` | `0` (unlimited) | How long CrowdSec alerts and decisions are kept in `crowdsec.db`, e.g. `4320h`. At least `1h`. See [CrowdSec](crowdsec.md). |
 | `CROWDSEC_ROLLUP_RETENTION` | `0` (unlimited) | How long CrowdSec hourly counts are kept. At least `1h`. |
-| `COLLECTOR_RETENTION_DURATION` | `2160h` (90 days) | Retention of the collectors' own TSDB, `collector_tsdb`, separate from the agent TSDB. `0` keeps data forever. Knot DNS counters live here. |
-| `COLLECTOR_STORAGE_MAX_BYTES` | `0` (unlimited) | Block retention size of `collector_tsdb`, in bytes. Independent of `STORAGE_MAX_BYTES`. |
+| `COLLECTOR_RETENTION_DURATION` | `2160h` (90 days) | Retention of the collectors' own TSDB, `collector_tsdb`, separate from the agent TSDB. `0` keeps data forever. Knot DNS counters live here. Blocks merge up to a tenth of retention (31 days when unlimited). |
+| `COLLECTOR_STORAGE_MAX_BYTES` | `0` (unlimited) | Block retention size of `collector_tsdb`, in bytes. Independent of `STORAGE_MAX_BYTES`. When set, blocks merge up to 7 days at most. |
 | `KNOT_DNSTAP_RAW_RETENTION` | `168h` (7 days) | How long Knot DNS dnstap minute buckets are kept in `knot.db`. `0` keeps them forever. At least `1h`. See [Knot DNS](knot.md). |
 | `KNOT_DNSTAP_ROLLUP_RETENTION` | `2160h` (90 days) | How long Knot DNS dnstap hourly buckets are kept. `0` keeps them forever. At least `1h`. |
 | `INGESTION_JOURNAL_RETENTION` | `24h` | How long completed agent ingestion batches stay in the main database so resent batches are recognised and skipped. Pending batches are always kept. `0` keeps them forever. At least `1h`. Freed space is returned to the filesystem by incremental vacuum on the hourly cleanup. |

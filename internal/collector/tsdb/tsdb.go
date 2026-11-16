@@ -5,6 +5,7 @@
 package tsdb
 
 import (
+	"certainstats/internal/tsdbopts"
 	"context"
 	"errors"
 	"os"
@@ -45,10 +46,7 @@ func Open(dir string, o Options) (*DB, error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, err
 	}
-	opts := ptsdb.DefaultOptions()
-	opts.RetentionDuration = o.RetentionMs
-	opts.MaxBytes = o.MaxBytes
-	db, err := ptsdb.Open(dir, nil, nil, opts, nil)
+	db, err := ptsdb.Open(dir, nil, nil, tsdbopts.Options(o.RetentionMs, o.MaxBytes), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -56,6 +54,9 @@ func Open(dir string, o Options) (*DB, error) {
 }
 
 func (d *DB) Close() error { return d.db.Close() }
+
+// BlockCount reports how many persisted blocks are open.
+func (d *DB) BlockCount() int { return len(d.db.Blocks()) }
 
 // Appender starts a write; commit or roll it back.
 func (d *DB) Appender(ctx context.Context) storage.Appender { return d.db.Appender(ctx) }

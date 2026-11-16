@@ -179,16 +179,29 @@ func spread(buckets []float64, start, step, end, t0, t1 int64, d float64) {
 	if hi <= lo {
 		return
 	}
-	rate := d / float64(t1-t0)
+	// The in-window share, exact when the whole interval is inside. The last
+	// bucket takes the remainder, so the buckets sum to it exactly and integer
+	// counter increases stay integers (d/x*x is not always d in floating point).
+	in := d
+	if lo != t0 || hi != t1 {
+		in = d * float64(hi-lo) / float64(t1-t0)
+	}
+	added := 0.0
 	for b := (lo - start) / step; b < int64(len(buckets)); b++ {
 		bs := start + b*step
 		be := bs + step
 		if bs >= hi {
 			break
 		}
+		if be >= hi || b == int64(len(buckets))-1 {
+			buckets[b] += in - added
+			break
+		}
 		ov := min(be, hi) - max(bs, lo)
 		if ov > 0 {
-			buckets[b] += rate * float64(ov)
+			part := in * float64(ov) / float64(hi-lo)
+			buckets[b] += part
+			added += part
 		}
 	}
 }

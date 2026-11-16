@@ -35,6 +35,7 @@ import (
 	"certainstats/internal/networkservice"
 	"certainstats/internal/routine"
 	"certainstats/internal/store/sqlite"
+	"certainstats/internal/tsdbopts"
 	"certainstats/internal/ws"
 
 	"github.com/go-chi/chi/v5"
@@ -79,23 +80,22 @@ func main() {
 	// 2. TSDB
 	tsdbPath := filepath.Join(dataDir, "tsdb")
 	os.MkdirAll(tsdbPath, 0o755)
-	opts := tsdb.DefaultOptions()
-	opts.RetentionDuration = 0
+	var retentionMs, maxBytes int64
 	if raw := os.Getenv("RETENTION_DURATION"); raw != "" {
 		d, e := time.ParseDuration(raw)
 		if e != nil || d < 0 {
 			log.Fatalf("invalid RETENTION_DURATION")
 		}
-		opts.RetentionDuration = d.Milliseconds()
+		retentionMs = d.Milliseconds()
 	}
 	if raw := os.Getenv("STORAGE_MAX_BYTES"); raw != "" {
 		n, e := strconv.ParseInt(raw, 10, 64)
 		if e != nil || n < 0 {
 			log.Fatalf("invalid STORAGE_MAX_BYTES")
 		}
-		opts.MaxBytes = n
+		maxBytes = n
 	}
-	tdb, err := tsdb.Open(tsdbPath, nil, nil, opts, nil)
+	tdb, err := tsdb.Open(tsdbPath, nil, nil, tsdbopts.Options(retentionMs, maxBytes), nil)
 	if err != nil {
 		log.Fatalf("tsdb: %v", err)
 	}
@@ -189,15 +189,17 @@ func main() {
 	routine := &routine.Routine{
 		JournalRetention: journalKeep,
 		MemoryLog:        os.Getenv("MEMORY_LOG") == "true",
-		MemoryStats:      func() map[string]int { return map[string]int{"io_states": agent.IOStateCount()} },
-		Maintenance:      []func(context.Context){crowdsecType.Maintain, knotType.Maintain},
-		Tick:             []func(context.Context){crowdsecType.Tick, knotType.Tick},
-		Store:            db,
-		Network:          networkService,
-		TSDB:             tdb,
-		WS:               wsManager,
-		Cache:            metricsCache,
-		Broadcaster:      uiBroadcaster,
+		MemoryStats: func() map[string]int {
+			return map[string]int{"io_states": agent.IOStateCount(), "tsdb_blocks": len(tdb.Blocks()), "collector_tsdb_blocks": collectorTSDB.BlockCount()}
+		},
+		Maintenance: []func(context.Context){crowdsecType.Maintain, knotType.Maintain},
+		Tick:        []func(context.Context){crowdsecType.Tick, knotType.Tick},
+		Store:       db,
+		Network:     networkService,
+		TSDB:        tdb,
+		WS:          wsManager,
+		Cache:       metricsCache,
+		Broadcaster: uiBroadcaster,
 	}
 	routineDone := make(chan struct{})
 	go func() { defer close(routineDone); routine.Start(ctx) }()

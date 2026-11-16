@@ -85,3 +85,14 @@ func TestLimiterRefusesWhenFull(t *testing.T) {
 		t.Fatalf("free slot: %v", err)
 	}
 }
+
+func TestBlockCountFreshDB(t *testing.T) {
+	db, err := Open(t.TempDir(), Options{RetentionMs: DefaultRetention.Milliseconds()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if n := db.BlockCount(); n != 0 {
+		t.Fatalf("fresh collector TSDB has %d blocks", n)
+	}
+}
