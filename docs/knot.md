@@ -262,8 +262,8 @@ means every server of the owner.
 - A plain-language headline, then total requests, queries per second, NXDOMAIN
   and SERVFAIL shares, and zone transfers for the range.
 - A server picker, the shared time picker (quick ranges and a custom range,
-  remembered in `certainstats_knot_hours`) and filters (zone, name, query type,
-  response code), kept in the URL as `hours` or `start`/`end`. Older links with
+  remembered in `certainstats_knot_hours`) and the shared **+ Filter** menu
+  (zone, name, query type, response code; "is" only), kept in the URL as `hours` or `start`/`end`. Older links with
   `range=7d` open the same window. Brushing any chart zooms the whole page to
   that range.
 - Checks, then charts from counters: queries per second by protocol, response

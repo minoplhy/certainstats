@@ -10,23 +10,8 @@
     <span class="kn-field-label">Range</span>
     <div class="cs-range" data-kn-time-picker></div>
   </div>
-  <form class="kn-add-filter" data-kn-add-filter>
-    <label class="kn-field">
-      <span class="kn-field-label">Filter</span>
-      <select class="form-select form-input-sm" data-kn-filter-field>
-        <option value="zone">Zone</option>
-        <option value="qname">Name</option>
-        <option value="qtype">Query type</option>
-        <option value="rcode">Response code</option>
-      </select>
-    </label>
-    <label class="kn-field kn-field-grow">
-      <span class="sr-only">Filter value</span>
-      <input type="text" class="form-input form-input-sm" placeholder="e.g. example.com" maxlength="255" required autocomplete="off" data-kn-filter-value>
-    </label>
-    <button type="submit" class="btn btn-secondary btn-sm">Add</button>
-  </form>
+  {{template "filter_menu" .}}
 </div>
-<div class="cs-chips" aria-label="Active filters" data-kn-chips></div>
+{{template "filter_chips" .}}
 <p class="banner is-warn" role="status" data-kn-source-note hidden></p>
 {{end}}

@@ -306,7 +306,7 @@ error, never zeros.
 active bans now and collectors reporting. **Collectors** links to the
 Collectors page. Below is a one-row filter bar:
 - search;
-- **+ Filter**, a popover with field, is / is not and value;
+- **+ Filter**, the shared filter menu (field, is / is not and value), as on the Knot DNS page;
 - one range dropdown holding the quick ranges, a custom range and **All**, a
   range starting at the oldest data.
 

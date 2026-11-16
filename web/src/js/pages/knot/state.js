@@ -7,6 +7,7 @@ export const state = {
   ui: {},
   charts: {},
   picker: null,
+  filterMenu: null,
   // onZoom applies a range brushed on any chart.
   onZoom: null,
   requests: {},

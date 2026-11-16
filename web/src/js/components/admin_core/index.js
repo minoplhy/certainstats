@@ -4,6 +4,7 @@
 import { Modal } from './ui/modal.js';
 import { openReinstallModal, openUninstallModal, initModalBackdropHandlers } from './ui/action_modals.js';
 import { initCustomTimePicker } from './time/picker.js';
+import { createFilterMenu, renderFilterChips } from './filters/menu.js';
 import { parseUserAgent } from './format/user_agent.js';
 import { getPanelPath } from './page/panel_path.js';
 import { trackNetworkFeed, subscribeNetwork, getNetworkFeedState } from './feed/network.js';
@@ -16,6 +17,8 @@ window.CertainStatsModal = Modal;
 Object.assign(telemetry, {
   parseUserAgent,
   initCustomTimePicker,
+  createFilterMenu,
+  renderFilterChips,
   getPanelPath,
   subscribeNetwork,
   getNetworkFeedState,

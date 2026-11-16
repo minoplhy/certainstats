@@ -1,0 +1,31 @@
+{{define "filter_menu"}}
+<div class="filter-menu" data-filter-menu>
+  <button type="button" class="btn btn-secondary btn-sm" aria-haspopup="dialog" aria-expanded="false" aria-controls="filter-popover" data-filter-toggle>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+    Filter
+  </button>
+  <form class="filter-popover" id="filter-popover" role="dialog" aria-label="Add a filter" hidden data-filter-popover>
+    <label class="filter-row"><span class="filter-label">Field</span>
+      <select class="form-select form-input-sm" data-filter-field></select>
+    </label>
+    <fieldset class="filter-row" data-filter-match>
+      <legend class="filter-label">Match</legend>
+      <div class="filter-seg" role="radiogroup">
+        <label><input type="radio" name="filter-op" value="is" checked data-filter-op><span>is</span></label>
+        <label><input type="radio" name="filter-op" value="not"><span>is not</span></label>
+      </div>
+    </fieldset>
+    <label class="filter-row"><span class="filter-label">Value</span>
+      <input type="text" class="form-input form-input-sm" placeholder="Value" maxlength="255" required autocomplete="off" data-filter-value>
+    </label>
+    <div class="filter-actions">
+      <button type="button" class="btn btn-ghost btn-sm" data-filter-cancel>Cancel</button>
+      <button type="submit" class="btn btn-primary btn-sm">Add filter</button>
+    </div>
+  </form>
+</div>
+{{end}}
+
+{{define "filter_chips"}}
+<div class="filter-chips" aria-label="Active filters" hidden data-filter-chips></div>
+{{end}}

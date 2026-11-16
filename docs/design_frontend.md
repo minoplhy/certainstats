@@ -213,6 +213,7 @@ Shared by the panel and public pages; it contains only what both use.
 
 Admin-only members are added to the same global by `admin_core` ([`web/src/js/components/admin_core/`](../web/src/js/components/admin_core/)), which only signed-in panel pages load:
 - **Time range picker (`initCustomTimePicker`)**: quick ranges plus a custom start and end dropdown with `aria-expanded`.
+- **Filter menu (`createFilterMenu`, `renderFilterChips`)**: the "+ Filter" popover (field, optional is / is not, value) and the removable chips of active filters, from `partials/filters/menu.html` (`filter_menu`, `filter_chips`). Each page passes its own fields and keeps the filters in its own view; `exclude: false` hides is / is not. CrowdSec and Knot DNS use it.
 - **`CertainStatsModal`**: open/close, `data-confirm` forms, and the delegated `data-open-modal`/`data-close-modal` handlers. Also the reinstall and uninstall dialogs.
 - **Network pulses** (`subscribeNetwork`, `getNetworkFeedState`) and `drawSparkline` on `CertainStatsChart`.
 

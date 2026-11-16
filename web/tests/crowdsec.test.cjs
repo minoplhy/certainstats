@@ -8,8 +8,28 @@ const BUNDLE = fs.readFileSync('web/static/admin/js/crowdsec.js', 'utf8');
 const COLLECTORS = fs.readFileSync('web/static/admin/js/collectors.js', 'utf8');
 
 // Go template actions are dropped, leaving the partials' markup.
+// Shared defines (the filter menu) are expanded where a partial uses them.
+const SHARED = {};
+for (const [, name, body] of fs.readFileSync('web/templates/partials/filters/menu.html', 'utf8').matchAll(/\{\{define "([^"]+)"\}\}([\s\S]*?)\{\{end\}\}/g)) SHARED[name] = body;
+
+// filterMenu is the real shared filter menu, loaded once from admin_core in a window of its own;
+// it builds nodes in the document of the element it is given.
+let realMenu = null;
+function filterMenu() {
+  if (!realMenu) {
+    const dom = new JSDOM('<body></body>', {url: 'http://x/', runScripts: 'outside-only'});
+    dom.window.CertainStatsChart = {};
+    for (const file of ['shared/js/telemetry', 'admin/js/admin_core']) dom.window.eval(fs.readFileSync('web/static/' + file + '.js', 'utf8'));
+    const t = dom.window.CertainStatsTelemetry;
+    realMenu = {createFilterMenu: t.createFilterMenu, renderFilterChips: t.renderFilterChips};
+  }
+  return realMenu;
+}
+
 function partial(name) {
-  return fs.readFileSync('web/templates/partials/' + name, 'utf8').replace(/\{\{[^}]*\}\}/g, '');
+  return fs.readFileSync('web/templates/partials/' + name, 'utf8')
+    .replace(/\{\{template "([^"]+)" \.\}\}/g, (m, n) => SHARED[n] ?? m)
+    .replace(/\{\{[^}]*\}\}/g, '');
 }
 
 function helpers() {
@@ -116,6 +136,7 @@ function page(url, health = {collectors: [], items: []}) {
     else return {ok: false, status: 404, json: async () => ({error: 'not found'})};
     return {ok: true, status: 200, json: async () => body};
   };
+  const menu = filterMenu();
   const charts = [];
   w.CertainStatsChart = {renderMultiChart: (id, opts) => { const c = {id, opts, updates: 0, updateSeries() { this.updates++; }}; charts.push(c); return c; }};
   const pickers = [];
@@ -124,7 +145,7 @@ function page(url, health = {collectors: [], items: []}) {
       getState() { return this.cur; }, setState(s) { this.states.push(s); this.cur = {...this.cur, ...s}; }};
     pickers.push(p);
     return p;
-  }, showToast() {}};
+  }, showToast() {}, ...menu};
   const collectors = [{collector_id: 'col_a', name: 'edge', connected: true, types: [{type: 'crowdsec', label: 'CrowdSec', enabled: true, reported_on: true, status: 'ok'}]}];
   const opened = [];
   w.CertainStatsCollectors = {subscribe: fn => fn(collectors, []), refresh: async () => collectors, open: o => opened.push(o || {})};
@@ -158,10 +179,10 @@ test('page loads every panel, and clicking a value filters in place', async () =
   nl.click();
   await settle();
   assert.equal(new URL(h.w.location.href).searchParams.get('country'), 'NL');
-  assert.match(h.q('[data-cs-chips]').textContent, /Country\s*is\s*NL/);
+  assert.match(h.q('[data-filter-chips]').textContent, /Country\s*is\s*NL/);
   assert.ok(h.requests.at(-1).searchParams.get('country') === 'NL');
 
-  h.q('.cs-chip-remove').click();
+  h.q('.filter-chip-remove').click();
   await settle();
   assert.equal(new URL(h.w.location.href).searchParams.get('country'), null);
 });
@@ -228,26 +249,26 @@ test('the timeline draws alerts and decisions', async () => {
 test('the + Filter popover adds include and exclude filters', async () => {
   const h = page('http://x/panel/crowdsec');
   await settle();
-  const toggle = h.q('[data-cs-filter-toggle]'), pop = h.q('[data-cs-filter-popover]');
+  const toggle = h.q('[data-filter-toggle]'), pop = h.q('[data-filter-popover]');
   assert.equal(pop.hidden, true);
   toggle.click();
   assert.equal(pop.hidden, false);
   assert.equal(toggle.getAttribute('aria-expanded'), 'true');
-  h.q('[data-cs-filter-field]').value = 'scenario';
-  h.q('[data-cs-filter-value]').value = 'crowdsecurity/ssh-bf';
+  h.q('[data-filter-field]').value = 'scenario';
+  h.q('[data-filter-value]').value = 'crowdsecurity/ssh-bf';
   pop.dispatchEvent(new h.w.Event('submit', {cancelable: true}));
   await settle();
   assert.equal(pop.hidden, true);
   assert.equal(new URL(h.w.location.href).searchParams.get('scenario'), 'crowdsecurity/ssh-bf');
 
   toggle.click();
-  h.q('[data-cs-filter-field]').value = 'country';
-  pop.querySelector('input[name="cs-filter-op"][value="not"]').checked = true;
-  h.q('[data-cs-filter-value]').value = 'CN';
+  h.q('[data-filter-field]').value = 'country';
+  pop.querySelector('input[name="filter-op"][value="not"]').checked = true;
+  h.q('[data-filter-value]').value = 'CN';
   pop.dispatchEvent(new h.w.Event('submit', {cancelable: true}));
   await settle();
   assert.equal(new URL(h.w.location.href).searchParams.get('not_country'), 'CN');
-  assert.match(h.q('[data-cs-chips]').textContent, /Country\s*is not\s*CN/);
+  assert.match(h.q('[data-filter-chips]').textContent, /Country\s*is not\s*CN/);
 
   toggle.click();
   pop.dispatchEvent(new h.w.KeyboardEvent('keydown', {key: 'Escape', bubbles: true}));

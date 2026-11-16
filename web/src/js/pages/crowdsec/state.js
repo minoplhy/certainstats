@@ -10,6 +10,7 @@ export const state = {
   components: {collectors: [], items: []},  // machine and bouncer health
   ui: {},
   picker: null,
+  filterMenu: null,     // the shared "+ Filter" menu
   charts: {timeline: null, ip: null},
   requests: {},         // AbortControllers by area
   panelPath: ''

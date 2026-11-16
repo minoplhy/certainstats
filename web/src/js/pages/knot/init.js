@@ -1,7 +1,7 @@
 import { state } from './state.js';
 import { begin, get, isAbort } from './api.js';
 import { parseView, toQuery, counterParams, addFilter, removeFilter, dnstapOnly, setCustom, FILTERS } from './view.js';
-import { el, button, zoneName } from './format.js';
+import { zoneName } from './format.js';
 import { renderHero, renderChecks } from './hero.js';
 import { loadCharts } from './charts.js';
 import { loadDnstap } from './dnstap.js';
@@ -10,8 +10,7 @@ import { renderZones, renderZoneView } from './zones.js';
 const ROLES = {
   main: 'main', empty: 'empty', refresh: 'refresh', headline: 'headline', serverCount: 'server-count',
   statRequests: 'stat-requests', statQps: 'stat-qps', statNxdomain: 'stat-nxdomain', statServfail: 'stat-servfail',
-  statTransfers: 'stat-transfers', statNote: 'stat-note', server: 'server', timePicker: 'time-picker', addFilter: 'add-filter',
-  filterField: 'filter-field', filterValue: 'filter-value', chips: 'chips', sourceNote: 'source-note',
+  statTransfers: 'stat-transfers', statNote: 'stat-note', server: 'server', timePicker: 'time-picker', sourceNote: 'source-note',
   checks: 'checks', checkList: 'check-list', zoneView: 'zone-view', zoneTitle: 'zone-title', zoneNote: 'zone-note',
   zoneRows: 'zone-rows', zoneClose: 'zone-close', dnstap: 'dnstap', dnstapNote: 'dnstap-note', dnstapTotal: 'dnstap-total',
   dnstapMessage: 'dnstap-message', breakdowns: 'breakdowns', zoneCount: 'zone-count', zoneSearch: 'zone-search',
@@ -66,21 +65,19 @@ function mountPicker() {
 
 function filter(field, value) {
   addFilter(state.view, field, value);
+  state.filterMenu?.setField(field);
   update();
 }
 
+const PLACEHOLDERS = {zone: 'e.g. example.com', qname: 'e.g. www.example.com', qtype: 'e.g. AAAA', rcode: 'e.g. NXDOMAIN'};
+
 function renderChips() {
-  const ui = state.ui;
-  ui.chips.replaceChildren(...FILTERS.filter(f => state.view[f]).map(f => {
-    const chip = el('span', 'cs-chip');
-    chip.append(el('span', 'cs-chip-field', FIELD_LABELS[f]), el('span', 'cs-chip-op', 'is'),
-      el('span', 'cs-chip-value', f === 'zone' || f === 'qname' ? zoneName(state.view[f]) : state.view[f]));
-    const x = button('', 'cs-icon-btn', () => { removeFilter(state.view, f); update(); });
-    x.setAttribute('aria-label', 'Remove ' + FIELD_LABELS[f] + ' filter');
-    x.textContent = '×';
-    chip.append(x);
-    return chip;
+  const v = state.view;
+  const chips = FILTERS.filter(f => v[f]).map(f => ({
+    label: FIELD_LABELS[f], value: f === 'zone' || f === 'qname' ? zoneName(v[f]) : v[f], mono: true,
+    onRemove: () => { removeFilter(v, f); update(); }
   }));
+  window.CertainStatsTelemetry?.renderFilterChips(state.ui.chips, chips, {onClear: () => { for (const f of FILTERS) removeFilter(v, f); update(); }});
 }
 
 function renderServers() {
@@ -174,12 +171,12 @@ export function init(root, config) {
   ui.refresh.addEventListener('click', load);
   ui.server.addEventListener('change', () => { state.view.server = ui.server.value; update(); });
   mountPicker();
-  ui.addFilter.addEventListener('submit', e => {
-    e.preventDefault();
-    const value = ui.filterValue.value.trim();
-    if (!value) return;
-    ui.filterValue.value = '';
-    filter(ui.filterField.value, value);
+  ui.filterMenu = root.querySelector('[data-filter-menu]');
+  ui.chips = root.querySelector('[data-filter-chips]');
+  state.filterMenu = window.CertainStatsTelemetry?.createFilterMenu(ui.filterMenu, {
+    fields: FILTERS.map(f => ({value: f, label: FIELD_LABELS[f], placeholder: PLACEHOLDERS[f]})),
+    exclude: false,
+    onAdd: (field, value) => filter(field, value)
   });
   ui.zoneClose.addEventListener('click', () => { removeFilter(state.view, 'zone'); update(); });
   ui.zoneSearch.addEventListener('input', () => renderZones(openZone));

@@ -1,34 +1,18 @@
 import { state } from '../state.js';
-import { el, iconButton } from '../format.js';
 import { FIELD_LABELS, FIELDS, addFilter, removeFilter } from '../url/state.js';
 
 // renderChips shows each active filter as a removable chip.
 export function renderChips(onChange) {
-  const ui = state.ui;
   const v = state.view;
-  ui.chips.replaceChildren();
-  const chip = (field, value, exclude) => {
-    const node = el('span', 'cs-chip' + (exclude ? ' is-exclude' : ''));
-    node.append(el('span', 'cs-chip-field', FIELD_LABELS[field]), el('span', 'cs-chip-op', exclude ? 'is not' : 'is'), el('span', 'cs-chip-value mono', value));
-    const remove = iconButton('exclude', 'Remove filter ' + FIELD_LABELS[field] + (exclude ? ' is not ' : ' is ') + value, () => {
-      removeFilter(v, field, value, exclude);
-      onChange();
-    });
-    remove.classList.add('cs-chip-remove');
-    node.append(remove);
-    return node;
-  };
+  const chips = [];
   for (const f of FIELDS) {
-    for (const value of v.include[f] || []) ui.chips.append(chip(f, value, false));
-    for (const value of v.exclude[f] || []) ui.chips.append(chip(f, value, true));
+    for (const exclude of [false, true]) {
+      for (const value of (exclude ? v.exclude : v.include)[f] || []) {
+        chips.push({label: FIELD_LABELS[f], value, exclude, mono: true, onRemove: () => { removeFilter(v, f, value, exclude); onChange(); }});
+      }
+    }
   }
-  if (ui.chips.children.length > 1) {
-    const clear = el('button', 'btn btn-ghost btn-sm', 'Clear filters');
-    clear.type = 'button';
-    clear.addEventListener('click', () => { v.include = {}; v.exclude = {}; v.page = 1; onChange(); });
-    ui.chips.append(clear);
-  }
-  ui.chips.hidden = ui.chips.children.length === 0;
+  window.CertainStatsTelemetry.renderFilterChips(state.ui.chips, chips, {onClear: () => { v.include = {}; v.exclude = {}; v.page = 1; onChange(); }});
 }
 
 const PLACEHOLDERS = {
@@ -36,33 +20,7 @@ const PLACEHOLDERS = {
   machine: 'Machine name', asn: 'e.g. 64500', action: 'ban, captcha or none', collector: 'Collector name'
 };
 
-// bindPopover opens and closes the "+ Filter" form: outside clicks and Escape close it.
-function bindPopover() {
-  const ui = state.ui;
-  const pop = ui.filterPopover;
-  const setOpen = open => {
-    pop.hidden = !open;
-    ui.filterToggle.setAttribute('aria-expanded', String(open));
-    if (open) ui.filterValue.focus();
-  };
-  ui.filterToggle.addEventListener('click', () => setOpen(pop.hidden));
-  pop.querySelector('[data-cs-filter-cancel]')?.addEventListener('click', () => { setOpen(false); ui.filterToggle.focus(); });
-  pop.addEventListener('keydown', e => {
-    if (e.key !== 'Escape') return;
-    e.preventDefault();
-    setOpen(false);
-    ui.filterToggle.focus();
-  });
-  document.addEventListener('click', e => {
-    if (!pop.hidden && !pop.contains(e.target) && !ui.filterToggle.contains(e.target)) setOpen(false);
-  });
-  const placeholder = () => { ui.filterValue.placeholder = PLACEHOLDERS[ui.filterField.value] || 'Value'; };
-  ui.filterField.addEventListener('change', placeholder);
-  placeholder();
-  return setOpen;
-}
-
-// bindFilters wires search, the add-filter popover and the time picker (with "All").
+// bindFilters wires search, the shared filter menu and the time picker (with "All").
 export function bindFilters(onChange) {
   const ui = state.ui;
   const v = () => state.view;
@@ -77,16 +35,14 @@ export function bindFilters(onChange) {
       onChange();
     }, 350);
   });
-  const setOpen = bindPopover();
-  ui.filterPopover.addEventListener('submit', event => {
-    event.preventDefault();
-    const value = ui.filterValue.value.trim();
-    if (!value) return;
-    const exclude = ui.filterPopover.querySelector('input[name="cs-filter-op"]:checked')?.value === 'not';
-    addFilter(v(), ui.filterField.value, value, exclude);
-    ui.filterValue.value = '';
-    setOpen(false);
-    onChange();
+  state.filterMenu = window.CertainStatsTelemetry.createFilterMenu(ui.filterMenu, {
+    fields: FIELDS.map(f => ({value: f, label: FIELD_LABELS[f], placeholder: PLACEHOLDERS[f]})),
+    exclude: true,
+    maxLength: 200,
+    onAdd: (field, value, exclude) => {
+      addFilter(v(), field, value, exclude);
+      onChange();
+    }
   });
 
   state.picker = window.CertainStatsTelemetry.initCustomTimePicker(ui.timePicker, {

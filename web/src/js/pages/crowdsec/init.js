@@ -15,8 +15,7 @@ const ROLES = {
   statCollectors: 'stat-collectors', refresh: 'refresh', empty: 'empty', components: 'components', componentsCount: 'components-count',
   componentsMessage: 'components-message', componentsNotes: 'components-notes', componentsStat: 'components-stat', componentsOpen: 'components-open',
   machines: 'machines', machinesCount: 'machines-count', machinesEmpty: 'machines-empty', bouncers: 'bouncers', bouncersCount: 'bouncers-count', bouncersEmpty: 'bouncers-empty',
-  main: 'main', search: 'search', addFilter: 'add-filter', filterField: 'filter-field', filterOp: 'filter-op', filterValue: 'filter-value',
-  filterToggle: 'filter-toggle', filterPopover: 'filter-popover', timePicker: 'time-picker', chips: 'chips', expired: 'expired',
+  main: 'main', search: 'search', timePicker: 'time-picker', expired: 'expired',
   timelineNote: 'timeline-note', timelineAlerts: 'timeline-alerts', timelineDecisions: 'timeline-decisions',
   timelineMessage: 'timeline-message', breakdowns: 'breakdowns', count: 'count', tableMessage: 'table-message', tableHead: 'table-head',
   rows: 'rows', page: 'page', prev: 'prev', next: 'next', limit: 'limit', ip: 'ip', ipBack: 'ip-back', ipTitle: 'ip-title',
@@ -38,8 +37,8 @@ function update() {
 const actions = {
   filter(field, value, exclude = false) {
     addFilter(state.view, field, value, exclude);
-    // The "+ Filter" form opens on the last field used.
-    if ([...state.ui.filterField.options].some(o => o.value === field)) state.ui.filterField.value = field;
+    // The "+ Filter" menu opens on the last field used.
+    state.filterMenu?.setField(field);
     update();
   },
   openIP(ip) { state.view.ip = ip; update(); window.scrollTo({top: 0}); },
@@ -150,6 +149,8 @@ function bindCollectors() {
 export function init(root, config) {
   state.panelPath = (document.body?.getAttribute('data-panel-path') || '').replace(/\/+$/, '');
   for (const [key, role] of Object.entries(ROLES)) state.ui[key] = root.querySelector('[data-cs-' + role + ']');
+  state.ui.filterMenu = root.querySelector('[data-filter-menu]');
+  state.ui.chips = root.querySelector('[data-filter-chips]');
   let remembered = 24;
   try { remembered = Number.parseInt(localStorage.getItem('certainstats_crowdsec_hours') || '24', 10) || 24; } catch (e) { /* storage blocked */ }
   state.view = parseView(window.location.search, remembered);

@@ -6,8 +6,28 @@ const {JSDOM} = require('jsdom');
 
 const BUNDLE = fs.readFileSync('web/static/admin/js/knot.js', 'utf8');
 
+// Shared defines (the filter menu) are expanded where a partial uses them.
+const SHARED = {};
+for (const [, name, body] of fs.readFileSync('web/templates/partials/filters/menu.html', 'utf8').matchAll(/\{\{define "([^"]+)"\}\}([\s\S]*?)\{\{end\}\}/g)) SHARED[name] = body;
+
+// filterMenu is the real shared filter menu, loaded once from admin_core in a window of its own;
+// it builds nodes in the document of the element it is given.
+let realMenu = null;
+function filterMenu() {
+  if (!realMenu) {
+    const dom = new JSDOM('<body></body>', {url: 'http://x/', runScripts: 'outside-only'});
+    dom.window.CertainStatsChart = {};
+    for (const file of ['shared/js/telemetry', 'admin/js/admin_core']) dom.window.eval(fs.readFileSync('web/static/' + file + '.js', 'utf8'));
+    const t = dom.window.CertainStatsTelemetry;
+    realMenu = {createFilterMenu: t.createFilterMenu, renderFilterChips: t.renderFilterChips};
+  }
+  return realMenu;
+}
+
 function partial(name) {
-  return fs.readFileSync('web/templates/partials/' + name, 'utf8').replace(/\{\{[^}]*\}\}/g, '');
+  return fs.readFileSync('web/templates/partials/' + name, 'utf8')
+    .replace(/\{\{template "([^"]+)" \.\}\}/g, (m, n) => SHARED[n] ?? m)
+    .replace(/\{\{[^}]*\}\}/g, '');
 }
 
 function helpers() {
@@ -120,6 +140,7 @@ function page(url, fixtures = {}) {
     else return {ok: false, status: 404, json: async () => ({error: 'not found'})};
     return {ok: true, status: 200, json: async () => body};
   };
+  const menu = filterMenu();
   const charts = [];
   w.CertainStatsChart = {renderMultiChart: (id, opts) => { const c = {id, opts, updates: 0, updateSeries() { this.updates++; }}; charts.push(c); return c; }};
   const pickers = [];
@@ -128,7 +149,7 @@ function page(url, fixtures = {}) {
     const p = {el, opts, sets: [], getState: () => ({...st}), setState(next) { st = {...next}; this.sets.push(next); }};
     pickers.push(p);
     return p;
-  }};
+  }, ...menu};
   w.scrollTo = () => {};
   open.push(w);
   w.eval(BUNDLE);
@@ -172,8 +193,8 @@ test('clicking a name filters by it, and counters say what they cannot split', a
   assert.match(p.q('[data-kn-source-note]').textContent, /cannot filter by name/);
   const last = p.requests.filter(u => u.pathname.endsWith('/series')).pop();
   assert.equal(last.searchParams.get('qname'), null, 'counters never receive a name filter');
-  assert.match(p.q('[data-kn-chips]').textContent, /Name/);
-  p.q('[data-kn-chips] .cs-icon-btn').click();
+  assert.match(p.q('[data-filter-chips]').textContent, /Name/);
+  p.q('[data-filter-chips] .filter-chip-remove').click();
   await settle();
   assert.doesNotMatch(p.w.location.search, /qname/);
 });
@@ -239,4 +260,27 @@ test('the shared picker sets the range, and brushing a chart zooms the whole pag
   await settle();
   assert.equal(new URLSearchParams(p.w.location.search).get('hours'), '6');
   assert.equal(new URLSearchParams(p.w.location.search).get('start'), null);
+});
+
+test('the shared filter menu adds a Knot filter, with "is" only', async () => {
+  const p = page('http://x/panel/knot');
+  await settle();
+  const toggle = p.q('[data-filter-toggle]'), pop = p.q('[data-filter-popover]');
+  assert.deepEqual(p.qa('[data-filter-field] option').map(o => o.value), ['zone', 'qname', 'qtype', 'rcode']);
+  assert.equal(p.q('[data-filter-match]').hidden, true, 'Knot filters cannot exclude');
+  toggle.click();
+  assert.equal(pop.hidden, false);
+  p.q('[data-filter-field]').value = 'qtype';
+  p.q('[data-filter-field]').dispatchEvent(new p.w.Event('change'));
+  assert.equal(p.q('[data-filter-value]').placeholder, 'e.g. AAAA');
+  p.q('[data-filter-value]').value = 'aaaa';
+  pop.dispatchEvent(new p.w.Event('submit', {cancelable: true}));
+  await settle();
+  assert.equal(pop.hidden, true);
+  assert.match(p.w.location.search, /qtype=AAAA/);
+  assert.match(p.q('[data-filter-chips]').textContent, /Query type\s*is\s*AAAA/);
+  p.q('[data-filter-chips] .filter-chip-remove').click();
+  await settle();
+  assert.doesNotMatch(p.w.location.search, /qtype/);
+  assert.equal(p.q('[data-filter-chips]').hidden, true);
 });
