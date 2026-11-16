@@ -1,10 +1,12 @@
-/* Collectors: the /collectors page lists, adds, renames, resets and removes
-   collectors and turns their types on or off. Other panel pages (CrowdSec) load
-   this script only for the data: they follow changes through
-   CertainStatsCollectors.subscribe and link to /collectors to manage them. */
+/* Collectors: the /collectors page shows each collector type (leading to its page
+   at /collectors/<type>) and lists, adds, renames, resets and removes collectors
+   and turns their types on or off. Type pages load this script only for the
+   data: they follow changes through CertainStatsCollectors.subscribe and link to
+   /collectors to manage them. */
 
 import { api, el, panelPath, typeState, timeAgo } from './shared.js';
 import { createList } from './list.js';
+import { createTypes } from './types.js';
 
 const listeners = new Set();
 const state = { items: [], types: [], loaded: false };
@@ -23,6 +25,7 @@ async function refresh() {
   state.loaded = true;
   if (ctx) {
     ctx.list.render();
+    ctx.types.render();
     const n = state.items.length;
     const online = state.items.filter(c => c.connected).length;
     ctx.ui.count.textContent = (n === 1 ? '1 collector' : n + ' collectors') + (n ? ' · ' + online + ' connected' : '');
@@ -72,13 +75,14 @@ async function openAdd(type) {
 function mount(root) {
   const q = name => document.querySelector('[data-collectors-' + name + ']');
   ctx = {
-    root, state, refresh, showInstall,
+    root, state, refresh, showInstall, openAdd,
     ui: {
-      count: q('count'), message: q('message'), list: q('list'), add: q('add'), search: q('search'), dialog: q('add-modal'),
+      count: q('count'), message: q('message'), list: q('list'), typeList: q('type-list'), add: q('add'), search: q('search'), dialog: q('add-modal'),
       form: q('form'), name: q('name'), node: q('node'), types: q('types'), formMessage: q('form-message'), create: q('create')
     }
   };
   ctx.list = createList(ctx);
+  ctx.types = createTypes(ctx);
   const ui = ctx.ui;
 
   ui.add.addEventListener('click', () => openAdd());

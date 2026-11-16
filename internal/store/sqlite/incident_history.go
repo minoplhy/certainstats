@@ -18,9 +18,9 @@ func triggerSnapshot(t a.Trigger) string { b, _ := json.Marshal(t); return strin
 const incidentSelect = `SELECT h.history_id,h.alert_id,h.agent_id,h.user_id,h.agent_nickname,h.alert_nickname,
  h.triggered_at,h.resolved_at,h.closed_at,h.close_reason,h.trigger_value,h.notified_status,h.trigger_snapshot,
  h.target_id,h.target_name,h.error_message,h.legacy,h.subject_kind,h.monitor_id,h.monitor_snapshot, h.subject_id,h.subject_snapshot,
- CASE WHEN h.subject_kind='crowdsec' THEN (h.closed_at IS NULL AND EXISTS(SELECT 1 FROM alerts r WHERE r.alert_id=h.alert_id AND r.user_id=h.user_id AND r.enabled=1))
+ CASE WHEN h.subject_kind NOT IN ('agent','network_monitor') THEN (h.closed_at IS NULL AND EXISTS(SELECT 1 FROM alerts r WHERE r.alert_id=h.alert_id AND r.user_id=h.user_id AND r.enabled=1))
  ELSE (EXISTS(SELECT 1 FROM alerts a JOIN agents n ON n.agent_id=h.agent_id WHERE a.alert_id=h.alert_id AND a.user_id=h.user_id AND n.user_id=h.user_id) AND h.closed_at IS NULL AND (h.monitor_id='' OR EXISTS(SELECT 1 FROM network_monitors m JOIN alert_monitors am ON am.monitor_id=m.monitor_id AND am.alert_id=h.alert_id WHERE m.monitor_id=h.monitor_id AND m.enabled=1 AND m.archived_at IS NULL AND EXISTS(SELECT 1 FROM alerts r WHERE r.alert_id=h.alert_id AND r.enabled=1)))) END,
- CASE WHEN h.subject_kind='crowdsec' THEN (h.closed_at IS NULL AND EXISTS(SELECT 1 FROM alerts a WHERE a.alert_id=h.alert_id AND a.user_id=h.user_id AND a.enabled=1
+ CASE WHEN h.subject_kind NOT IN ('agent','network_monitor') THEN (h.closed_at IS NULL AND EXISTS(SELECT 1 FROM alerts a WHERE a.alert_id=h.alert_id AND a.user_id=h.user_id AND a.enabled=1
  AND ((h.target_id!='' AND EXISTS(SELECT 1 FROM alert_targets t WHERE t.target_id=h.target_id AND t.user_id=h.user_id))
  OR (h.target_id='' AND json_extract(a.action_config,'$.type')!='preset' AND COALESCE(json_extract(a.action_config,'$.destination'),'')!=''))))
  ELSE (EXISTS(SELECT 1 FROM alerts a JOIN agents n ON n.agent_id=h.agent_id WHERE a.alert_id=h.alert_id AND a.user_id=h.user_id AND n.user_id=h.user_id

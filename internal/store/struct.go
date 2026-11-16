@@ -127,8 +127,8 @@ type DiskDelta struct {
 	WriteBytes uint64
 }
 
-// CrowdSecIncident is one open CrowdSec incident.
-type CrowdSecIncident struct {
+// SubjectIncident is one open incident of a collector rule.
+type SubjectIncident struct {
 	HistoryID     string
 	AlertID       string
 	AlertNickname string

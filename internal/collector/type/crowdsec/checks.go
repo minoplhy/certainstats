@@ -6,6 +6,7 @@ import (
 	"net"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"certainstats/internal/base/alert"
@@ -123,14 +124,28 @@ func checkForTrigger(t alert.TriggerType) *Check {
 	return checks[name]
 }
 
+// Scopes a CrowdSec rule subject can have besides alert.ScopeAll.
+const (
+	ScopeMachine = "machine" // one machine
+	ScopeBouncer = "bouncer" // one bouncer entry
+	ScopeGroup   = "group"   // every entry of one shared bouncer key (name@ip), new IPs included
+)
+
+var registerSource sync.Once
+
 // RegisterCheck adds a check and its rule condition. It panics on a duplicate, at start-up.
 func RegisterCheck(c *Check) {
+	registerSource.Do(func() {
+		alert.RegisterSubjectSource(alert.SubjectSource{Name: wire.TypeName, Label: "CrowdSec",
+			Scopes: []string{ScopeMachine, ScopeBouncer, ScopeGroup},
+			Empty:  "No collector reports CrowdSec machines and bouncers yet. Switch on CROWDSEC_HEALTH=true on a collector's host first."})
+	})
 	if _, dup := checks[c.Name]; dup {
 		panic("crowdsec: check " + c.Name + " registered twice")
 	}
 	checks[c.Name] = c
 	if p, ok := c.param(c.RuleParam); ok {
-		alert.RegisterSubjectTrigger(alert.SubjectTrigger{Type: c.TriggerType(), Group: "CrowdSec", Label: c.RuleLabel, Kind: c.Kind,
+		alert.RegisterSubjectTrigger(alert.SubjectTrigger{Type: c.TriggerType(), Source: wire.TypeName, Label: c.RuleLabel, Kind: c.Kind,
 			Unit: p.Unit, Min: float64(p.Min), Max: float64(p.Max), Default: float64(p.Default), Hint: c.Proves})
 	}
 }
@@ -503,18 +518,18 @@ func (c *Component) state(judged bool, self string, firing bool) string {
 }
 
 // matches reports whether a rule subject covers this component.
-func (c *Component) matches(s alert.CrowdSecSubject) bool {
-	if s.CollectorID != c.CollectorID {
+func (c *Component) matches(s alert.Subject) bool {
+	if s.Source != wire.TypeName || s.CollectorID != c.CollectorID {
 		return false
 	}
 	switch s.Scope {
 	case alert.ScopeAll:
 		return true
-	case alert.ScopeMachine:
+	case ScopeMachine:
 		return c.Kind == wire.KindMachine && c.Name == s.Name
-	case alert.ScopeBouncer:
+	case ScopeBouncer:
 		return c.Kind == wire.KindBouncer && c.Name == s.Name
-	case alert.ScopeGroup:
+	case ScopeGroup:
 		return c.Kind == wire.KindBouncer && BaseName(c.Name) == s.Name
 	}
 	return false

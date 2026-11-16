@@ -80,9 +80,9 @@ func (r *healthRig) tick(now int64) {
 	}
 }
 
-func (r *healthRig) rule(id, user string, trigger alert.TriggerType, threshold float64, target string, subjects ...alert.CrowdSecSubject) store.Alert {
+func (r *healthRig) rule(id, user string, trigger alert.TriggerType, threshold float64, target string, subjects ...alert.Subject) store.Alert {
 	r.t.Helper()
-	a := store.Alert{AlertID: id, UserID: user, Nickname: "rule " + id, Enabled: true, CrowdSec: subjects,
+	a := store.Alert{AlertID: id, UserID: user, Nickname: "rule " + id, Enabled: true, Subjects: subjects,
 		Trigger: alert.Trigger{Type: trigger, Operator: alert.OpGreaterThan, Threshold: threshold, Duration: "0s"},
 		Action:  alert.AlertAction{Type: alert.DestPreset, TargetID: target}}
 	if err := r.db.AlertCreate(context.Background(), a); err != nil {
@@ -91,9 +91,9 @@ func (r *healthRig) rule(id, user string, trigger alert.TriggerType, threshold f
 	return a
 }
 
-func (r *healthRig) open() []store.CrowdSecIncident {
+func (r *healthRig) open() []store.SubjectIncident {
 	r.t.Helper()
-	list, err := r.db.CrowdSecOpenIncidents(context.Background(), "")
+	list, err := r.db.SubjectOpenIncidents(context.Background(), "crowdsec", "")
 	if err != nil {
 		r.t.Fatal(err)
 	}
@@ -137,7 +137,7 @@ func TestRuleOnASharedKeyFiresAndRecovers(t *testing.T) {
 	if err := rig.db.TargetCreate(ctx, alert.AlertTarget{TargetID: "tgt_1", UserID: "u1", Name: "Ops", Type: alert.DestWebhook, Destination: hook.URL}); err != nil {
 		t.Fatal(err)
 	}
-	rig.rule("alert_1", "u1", "crowdsec_siblings", 10, "tgt_1", alert.CrowdSecSubject{CollectorID: "col_a", Scope: alert.ScopeGroup, Name: "fw"})
+	rig.rule("alert_1", "u1", "crowdsec_siblings", 10, "tgt_1", alert.Subject{Source: "crowdsec", CollectorID: "col_a", Scope: ScopeGroup, Name: "fw"})
 	now := time.Now().UnixMilli()
 
 	rig.report("col_a", "u1", now, shared(now, now-2*minute, false))
@@ -248,7 +248,7 @@ func TestHoldsDecisionsIsRemembered(t *testing.T) {
 func TestHeldRuleFiresOnALoneFirewallWithNoCounts(t *testing.T) {
 	rig := newHealthRig(t)
 	rig.collector("col_a", "u1", "deltarune")
-	rig.rule("alert_1", "u1", "crowdsec_held", 50, "", alert.CrowdSecSubject{CollectorID: "col_a", Scope: alert.ScopeAll})
+	rig.rule("alert_1", "u1", "crowdsec_held", 50, "", alert.Subject{Source: "crowdsec", CollectorID: "col_a", Scope: alert.ScopeAll})
 	now := time.Now().UnixMilli()
 	for i := int64(0); i < 2; i++ {
 		at := now + i*15*minute
@@ -272,7 +272,7 @@ func TestIncidentsCloseQuietly(t *testing.T) {
 		{Kind: wire.KindMachine, Name: "web-01", LastSeenMs: now - time.Hour.Milliseconds(), Validated: true},
 		{Kind: wire.KindMachine, Name: "web-02", LastSeenMs: now - time.Hour.Milliseconds(), Validated: true},
 	}}
-	rule := rig.rule("alert_1", "u1", "crowdsec_heartbeat", 10, "", alert.CrowdSecSubject{CollectorID: "col_a", Scope: alert.ScopeAll})
+	rule := rig.rule("alert_1", "u1", "crowdsec_heartbeat", 10, "", alert.Subject{Source: "crowdsec", CollectorID: "col_a", Scope: alert.ScopeAll})
 	rig.report("col_a", "u1", now, stale)
 	rig.tick(now)
 	if len(rig.open()) != 2 {
@@ -345,26 +345,29 @@ func TestRulesValidateSubjects(t *testing.T) {
 	bad := []store.Alert{
 		{AlertID: "a1", UserID: "u1", Nickname: "x", Trigger: alert.Trigger{Type: "crowdsec_pull", Threshold: 60}, Action: alert.AlertAction{Type: alert.DestPreset}},
 		{AlertID: "a2", UserID: "u1", Nickname: "x", Trigger: alert.Trigger{Type: "crowdsec_pull", Threshold: 60}, Action: alert.AlertAction{Type: alert.DestPreset},
-			CrowdSec: []alert.CrowdSecSubject{{CollectorID: "col_b", Scope: alert.ScopeAll}}},
+			Subjects: []alert.Subject{{Source: "crowdsec", CollectorID: "col_b", Scope: alert.ScopeAll}}},
 		{AlertID: "a3", UserID: "u1", Nickname: "x", Trigger: alert.Trigger{Type: alert.TriggerTypeCPU, Threshold: 60}, Action: alert.AlertAction{Type: alert.DestPreset},
-			CrowdSec: []alert.CrowdSecSubject{{CollectorID: "col_a", Scope: alert.ScopeAll}}},
+			Subjects: []alert.Subject{{Source: "crowdsec", CollectorID: "col_a", Scope: alert.ScopeAll}}},
+		// A subject of another source on a CrowdSec rule.
+		{AlertID: "a5", UserID: "u1", Nickname: "x", Trigger: alert.Trigger{Type: "crowdsec_pull", Threshold: 60}, Action: alert.AlertAction{Type: alert.DestPreset},
+			Subjects: []alert.Subject{{Source: "knot", CollectorID: "col_a", Scope: alert.ScopeAll}}},
 	}
 	for _, a := range bad {
 		if err := rig.db.AlertCreate(ctx, a); err == nil {
 			t.Errorf("%s must be refused", a.AlertID)
 		}
 	}
-	rig.rule("a4", "u1", "crowdsec_pull", 60, "", alert.CrowdSecSubject{CollectorID: "col_a", Scope: alert.ScopeGroup, Name: "fw"},
-		alert.CrowdSecSubject{CollectorID: "col_a", Scope: alert.ScopeMachine, Name: "web/01"})
+	rig.rule("a4", "u1", "crowdsec_pull", 60, "", alert.Subject{Source: "crowdsec", CollectorID: "col_a", Scope: ScopeGroup, Name: "fw"},
+		alert.Subject{Source: "crowdsec", CollectorID: "col_a", Scope: ScopeMachine, Name: "web/01"})
 	got, err := rig.db.AlertGetInfo(ctx, "a4", "u1")
-	if err != nil || len(got.CrowdSec) != 2 || got.CrowdSec[0].Key() != "col_a/group/fw" || got.CrowdSec[1].Key() != "col_a/machine/web/01" {
-		t.Fatalf("subjects saved: %+v %v", got.CrowdSec, err)
+	if err != nil || len(got.Subjects) != 2 || got.Subjects[0].Key() != "crowdsec/col_a/group/fw" || got.Subjects[1].Key() != "crowdsec/col_a/machine/web/01" {
+		t.Fatalf("subjects saved: %+v %v", got.Subjects, err)
 	}
-	if s, ok := alert.ParseCrowdSecSubject("col_a/machine/web/01"); !ok || s.Name != "web/01" {
+	if s, ok := alert.ParseSubject("crowdsec/col_a/machine/web/01"); !ok || s.Name != "web/01" {
 		t.Fatalf("a name may contain a slash: %+v", s)
 	}
-	for _, v := range []string{"col_a", "col_a/all/x", "col_a/group/", "/all", "col_a/nope/x"} {
-		if _, ok := alert.ParseCrowdSecSubject(v); ok {
+	for _, v := range []string{"crowdsec/col_a", "crowdsec/col_a/all/x", "crowdsec/col_a/group/", "crowdsec//all", "crowdsec/col_a/nope/x", "nosuch/col_a/all", "knot/col_a/machine/x"} {
+		if _, ok := alert.ParseSubject(v); ok {
 			t.Errorf("%q must not parse", v)
 		}
 	}

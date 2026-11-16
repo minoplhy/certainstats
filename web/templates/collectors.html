@@ -2,13 +2,18 @@
 <div class="collectors-page" data-collectors-page>
   <section class="hero">
     <div class="hero-eyebrow">
-      <a href="{{.PanelPath}}/crowdsec">&larr; CrowdSec</a>
-      <span aria-hidden="true">·</span>
       <span data-collectors-count>Loading…</span>
     </div>
     <h1 class="hero-title">Collectors</h1>
-    <p class="page-subtitle">A collector runs on a host and sends data from software there, such as CrowdSec. Treat its token like a password.</p>
+    <p class="page-subtitle">A collector runs on a host and sends data from software there, such as CrowdSec or Knot DNS. Treat its token like a password.</p>
   </section>
+
+  <section class="page-section collector-types" aria-labelledby="collector-types-title">
+    <h2 class="section-title" id="collector-types-title">Types</h2>
+    <ul class="collector-type-list" data-collectors-type-list></ul>
+  </section>
+
+  <h2 class="section-title">Collectors</h2>
 
   <div class="toolbar-bar">
     <label class="toolbar-search">

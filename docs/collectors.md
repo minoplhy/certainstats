@@ -8,8 +8,10 @@ other software on it sees. A collector can be linked to the node it runs on, but
 it never appears in the Agent Hub, on public dashboards or in node counts.
 
 Collectors are private and owner scoped. They are managed on the Collectors
-page (`/collectors`, in the main navigation), which the CrowdSec and Knot DNS
-pages link to.
+page (`/collectors`, in the main navigation). Its **Types** section lists every
+registered type with how many collectors report it and leads to the type's own
+page at `/collectors/<type>`, such as `/collectors/crowdsec`; the older
+addresses `/<type>` redirect there. Type pages are not in the main navigation.
 
 ## How it connects
 
@@ -125,6 +127,14 @@ show a placeholder and a note to reset the token.
 A type adds its own install steps (settings, host commands, Docker mounts, a
 note) by implementing `collector.Setup`.
 
+Alert rules of every type share the main database: a rule keeps what it watches
+in `alert_subjects` (source, collector, scope, name), and its incidents are
+`alert_history` rows with the source in `subject_kind`, the collector in
+`agent_id`, the subject in `subject_id` and what fired, in words, in
+`subject_snapshot`. One open incident per rule and subject is enforced by the
+`collector_incident_open` index. Older CrowdSec-only rules
+(`alert_crowdsec_subjects`) are moved on upgrade.
+
 ## Adding a type
 
 1. Server: a package under `internal/collector/type/<name>` implementing `collector.Type` (`internal/collector/type.go`):
@@ -140,7 +150,21 @@ note) by implementing `collector.Setup`.
    `Once` or `Check`).
 3. Setup steps: implement `collector.Setup` on the server type
    (`internal/collector/setup.go`); without it the steps only set the switch.
-4. Its own page and docs.
+4. Its own page: `web/templates/collector_types/<name>.html`. The renderer finds
+   it there and the panel serves it at `/collectors/<name>` for every registered
+   type, so nothing else lists it.
+5. Alert rules, if the type has any:
+   - register a source with `alert.RegisterSubjectSource` (name = type name,
+     label, the scopes its subjects may have besides `all`, and an empty-state
+     hint) and its conditions with `alert.RegisterSubjectTrigger`;
+   - implement `collector.AlertSource` so the Alerts page can offer, per
+     collector, what to watch;
+   - evaluate on the central timer with a `collector.Round`
+     (`internal/collector/alerts.go`): it loads the type's rules and open
+     incidents, takes one `collector.Verdict` per rule and subject, opens and
+     resolves incidents, and closes the ones nothing kept. Wire the type's
+     `Rules`, `Deliver` and `Tick` in `cmd/certainstats/main.go`.
+6. Its docs.
 
 ## Verification
 

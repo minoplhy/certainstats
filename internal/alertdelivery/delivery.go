@@ -55,11 +55,12 @@ func Dispatch(ctx context.Context, db store.AlertsStore, eventID string) error {
 			AgentID: h.AgentID, Nickname: h.AgentNickname, TriggerType: string(h.Trigger.Type), Status: phase, Value: value,
 			Operator: string(h.Trigger.Operator), Threshold: h.Trigger.Threshold, WentOfflineAt: &h.TriggeredAt, ResolvedAt: h.ResolvedAt,
 		}
-		if h.SubjectKind == "crowdsec" {
-			// A CrowdSec machine or bouncer: its own name, its collector and what fired.
+		if isCollectorSubject(h.SubjectKind) {
+			// A collector subject (a CrowdSec bouncer, a Knot DNS zone): its own
+			// name, its collector and what fired.
 			nctx.Nickname, nctx.Collector, nctx.SubjectKind, nctx.Detail = h.Subject.Name, h.Subject.Collector, h.Subject.Kind, h.Subject.Detail
-			nctx.TriggerLabel = "CrowdSec: " + h.Subject.Label
-			nctx.ValueText = fmt.Sprintf("%.0f %s", value, h.Subject.Unit)
+			nctx.TriggerLabel = sourceLabel(h.SubjectKind, h.Subject) + ": " + h.Subject.Label
+			nctx.ValueText = strings.TrimSpace(formatValue(value) + " " + h.Subject.Unit)
 			if e.Phase == "recovery" {
 				nctx.ValueText = "Recovered"
 			}
@@ -121,4 +122,30 @@ func LatestAttempt(ctx context.Context, db store.AlertsStore, user, id, phase st
 			return latest, nil
 		}
 	}
+}
+
+// isCollectorSubject reports whether an incident's subject kind is a collector
+// source rather than a server ("agent") or a network monitor.
+func isCollectorSubject(kind string) bool {
+	return kind != "" && kind != "agent" && kind != "network_monitor"
+}
+
+// sourceLabel names the source of a collector incident: from its snapshot, else
+// the registered source, else the kind itself (incidents from older versions).
+func sourceLabel(kind string, snap a.SubjectSnapshot) string {
+	if snap.SourceLabel != "" {
+		return snap.SourceLabel
+	}
+	if src, ok := a.SubjectSourceFor(kind); ok {
+		return src.Label
+	}
+	return kind
+}
+
+// formatValue writes a whole number plainly and anything else with one decimal.
+func formatValue(v float64) string {
+	if v == float64(int64(v)) {
+		return fmt.Sprintf("%d", int64(v))
+	}
+	return fmt.Sprintf("%.1f", v)
 }

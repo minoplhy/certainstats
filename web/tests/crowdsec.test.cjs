@@ -463,8 +463,13 @@ test('the Collectors list keeps rows, open state and open forms across refreshes
   w.setInterval = () => 0;
   w.eval(COLLECTORS);
   await settle();
+  const types = [...w.document.querySelectorAll('[data-collectors-type-list] > li')];
+  assert.equal(types.length, 1, 'one row per registered type');
+  assert.match(types[0].textContent, /CrowdSec.*1 reporting/);
+  assert.equal(types[0].querySelector('a.collector-type-name').getAttribute('href'), '/panel/collectors/crowdsec');
   const item = w.document.querySelector('details.mgmt-item');
   item.open = true;
+  assert.equal(item.querySelector('a.collector-type-link').getAttribute('href'), '/panel/collectors/crowdsec', 'the type in a row leads to its page');
   assert.equal([...item.querySelectorAll('button')].some(b => b.textContent === 'Health alerts…'), false, 'health alerts live on the Alerts page now');
   [...item.querySelectorAll('button')].find(b => b.textContent === 'Read again…').click();
   assert.ok(item.querySelector('form.collector-backfill'));
@@ -477,45 +482,83 @@ test('the Collectors list keeps rows, open state and open forms across refreshes
   assert.equal(item.open, true, 'an open row stays open');
   assert.ok(item.querySelector('form.collector-backfill'), 'an open form survives');
   assert.equal(item.querySelector('.mgmt-name').textContent, 'edge-2');
+  assert.equal(w.document.querySelector('[data-collectors-type-list] > li'), types[0], 'the type row is updated in place');
+  assert.match(types[0].textContent, /1 offline or failing/);
   assert.match(item.querySelector('summary').textContent, /Offline/);
   assert.equal([...item.querySelectorAll('button')].some(b => b.textContent === 'Read again…'), false, 'Read again needs a connection');
 });
 
-test('the Alerts rule modal offers CrowdSec conditions with a machines and bouncers picker', () => {
+test('the Alerts rule modal offers each source its own subjects, filtered by kind', () => {
   const raw = name => fs.readFileSync('web/templates/partials/' + name, 'utf8');
   const block = (text, name) => text.split('{{define "' + name + '"}}')[1].split('{{end}}\n\n')[0];
-  const cs = raw('alerts/crowdsec_subjects.html');
+  const subjectsTpl = raw('alerts/subjects.html');
   const modal = raw('alerts/new_alert_modal.html')
-    .replace('{{template "alerts_crowdsec_triggers" .}}', block(cs, 'alerts_crowdsec_triggers'))
-    .replace('{{template "alerts_crowdsec_subjects" .}}', block(cs, 'alerts_crowdsec_subjects'))
+    .replace('{{template "alerts_subject_triggers" .}}', block(subjectsTpl, 'alerts_subject_triggers'))
+    .replace('{{template "alerts_subjects" .}}', subjectsTpl.split('{{define "alerts_subjects"}}')[1])
     .replace(/\{\{[^}]*\}\}/g, '');
   const dom = new JSDOM('<body>' + modal + '</body>', {runScripts: 'outside-only'});
   const w = dom.window;
+  const d = w.document;
   open.push(w);
-  w.eval(fs.readFileSync('web/static/admin/js/admin_alerts.js', 'utf8'));
-  const select = w.document.getElementById('create-trigger-type');
-  const picker = w.document.querySelector('[data-crowdsec-rule="create"]');
-  const subjects = () => [...picker.querySelectorAll('input[name=crowdsec_subjects]')];
-  const servers = w.document.querySelector('[data-click-action="toggleAllNodes"]').closest('.form-fieldset');
-  assert.equal(picker.hidden, true);
-  assert.ok(subjects().length > 0 && subjects().every(i => i.disabled), 'not posted unless a CrowdSec condition is chosen');
-
-  const option = [...select.options].find(o => o.hasAttribute('data-crowdsec'));
-  assert.ok(option, 'CrowdSec conditions are offered');
+  // Stripping template actions leaves one of each element; make two sources out of them,
+  // the first with two sections of different kinds.
+  const option = d.querySelector('[data-subject-source]');
+  option.setAttribute('data-subject-source', 'crowdsec');
+  option.setAttribute('data-kind', 'bouncer');
   option.setAttribute('data-unit', 'minutes');
-  select.value = option.value;
+  option.value = 'crowdsec_pull';
+  const knotOption = option.cloneNode(true);
+  knotOption.setAttribute('data-subject-source', 'knot');
+  knotOption.setAttribute('data-kind', 'zone');
+  knotOption.setAttribute('data-unit', 'hours');
+  knotOption.setAttribute('data-min', '0.1');
+  knotOption.value = 'knot_expiry';
+  option.parentNode.append(knotOption);
+  const cs = d.querySelector('.subjects-collector');
+  cs.setAttribute('data-source', 'crowdsec');
+  const bouncers = cs.querySelector('.subjects-section');
+  bouncers.setAttribute('data-kind', 'bouncer');
+  const machines = bouncers.cloneNode(true);
+  machines.setAttribute('data-kind', 'machine');
+  cs.append(machines);
+  const kn = cs.cloneNode(true);
+  kn.setAttribute('data-source', 'knot');
+  kn.querySelectorAll('.subjects-section')[0].setAttribute('data-kind', 'zone');
+  kn.querySelectorAll('.subjects-section')[1].setAttribute('data-kind', 'server-only');
+  cs.parentNode.append(kn);
+  w.eval(fs.readFileSync('web/static/admin/js/admin_alerts.js', 'utf8'));
+  const select = d.getElementById('create-trigger-type');
+  const picker = d.querySelector('[data-subject-rule="create"]');
+  const enabled = root => [...root.querySelectorAll('input[name=subjects]')].filter(i => !i.disabled).length;
+  const servers = d.querySelector('[data-click-action="toggleAllNodes"]').closest('.form-fieldset');
+  assert.equal(picker.hidden, true);
+  assert.equal(enabled(picker), 0, 'nothing is posted unless a collector condition is chosen');
+
+  select.value = 'crowdsec_pull';
   w.handleTriggerTypeChange(select, 'create');
   assert.equal(picker.hidden, false);
-  assert.ok(subjects().every(i => !i.disabled));
-  assert.equal(servers.hidden, true, 'no servers for a CrowdSec rule');
-  assert.equal(w.document.getElementById('create-operator').closest('.form-group').hidden, true);
-  assert.equal(w.document.getElementById('create-duration').closest('.form-group').hidden, true);
-  assert.equal(w.document.getElementById('create-threshold-unit').textContent, '(minutes)');
+  assert.equal(kn.hidden, true, 'another source stays hidden');
+  assert.equal(enabled(kn), 0);
+  assert.equal(bouncers.hidden, false);
+  assert.equal(machines.hidden, true, 'a section of another kind is hidden');
+  assert.equal(enabled(cs), 1 + bouncers.querySelectorAll('input').length, '"all" plus the bouncers');
+  assert.equal(servers.hidden, true, 'no servers for a collector rule');
+  assert.equal(d.getElementById('create-operator').closest('.form-group').hidden, true);
+  assert.equal(d.getElementById('create-threshold-unit').textContent, '(minutes)');
+  assert.equal(d.getElementById('create-threshold').step, '1');
+
+  select.value = 'knot_expiry';
+  w.handleTriggerTypeChange(select, 'create');
+  assert.equal(cs.hidden, true);
+  assert.equal(enabled(cs), 0);
+  assert.equal(kn.hidden, false);
+  assert.equal(d.getElementById('create-threshold-unit').textContent, '(hours)');
+  assert.equal(d.getElementById('create-threshold').step, 'any', 'a fractional minimum allows decimals');
 
   select.value = 'cpu_usage';
   w.handleTriggerTypeChange(select, 'create');
   assert.equal(picker.hidden, true);
-  assert.ok(subjects().every(i => i.disabled));
+  assert.equal(enabled(picker), 0);
   assert.equal(servers.hidden, false);
-  assert.equal(w.document.getElementById('create-duration').closest('.form-group').hidden, false);
+  assert.equal(d.getElementById('create-duration').closest('.form-group').hidden, false);
 });

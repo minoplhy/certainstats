@@ -44,7 +44,7 @@
             <option value="net_tx">Upload rate (KiB/s)</option>
             <option value="disk_read">Disk read rate (KiB/s)</option>
             <option value="disk_write">Disk write rate (KiB/s)</option>
-            {{template "alerts_crowdsec_triggers" .}}
+            {{template "alerts_subject_triggers" .}}
           </select>
         </div>
 
@@ -106,9 +106,9 @@
         </div>
       </div>
 
-      <!-- CrowdSec machines and bouncers (CrowdSec rules only) -->
-      <div class="form-fieldset" data-crowdsec-rule="edit" hidden>
-        {{template "alerts_crowdsec_subjects" .}}
+      <!-- What a collector rule watches (collector rules only) -->
+      <div class="form-fieldset" data-subject-rule="edit" hidden>
+        {{template "alerts_subjects" .}}
       </div>
 
       <!-- Network monitors (network loss rules only) -->

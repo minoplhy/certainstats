@@ -175,7 +175,7 @@ func main() {
 	if err := collectors.Register(crowdsecType); err != nil {
 		log.Fatalf("collectors: %v", err)
 	}
-	knotType := &knot.Type{Store: knotStore, TSDB: collectorTSDB, Collectors: collectors,
+	knotType := &knot.Type{Store: knotStore, TSDB: collectorTSDB, Collectors: collectors, Rules: db, Deliver: func(eventID string) { alertdelivery.Go(db, eventID) },
 		Retention: knot.Retention{MinuteMs: knotMinuteKeep.Milliseconds(), HourlyMs: knotHourlyKeep.Milliseconds()}}
 	if err := collectors.Register(knotType); err != nil {
 		log.Fatalf("collectors: %v", err)
@@ -183,7 +183,7 @@ func main() {
 
 	routine := &routine.Routine{
 		Maintenance: []func(context.Context){crowdsecType.Maintain, knotType.Maintain},
-		Tick:        []func(context.Context){crowdsecType.Tick},
+		Tick:        []func(context.Context){crowdsecType.Tick, knotType.Tick},
 		Store:       db,
 		Network:     networkService,
 		TSDB:        tdb,
@@ -262,14 +262,14 @@ func main() {
 	}
 
 	webHandler := &web.WebHandler{
-		Renderer:   renderer,
-		Store:      db,
-		Cache:      metricsCache,
-		PanelPath:  strings.TrimSuffix(panelPath, "/"),
-		PublicPath: strings.TrimSuffix(publicPath, "/"),
-		StaticPath: staticPath,
-		Agents:     wsManager,
-		CrowdSec:   crowdsecType,
+		Renderer:      renderer,
+		Store:         db,
+		Cache:         metricsCache,
+		PanelPath:     strings.TrimSuffix(panelPath, "/"),
+		PublicPath:    strings.TrimSuffix(publicPath, "/"),
+		StaticPath:    staticPath,
+		Agents:        wsManager,
+		AlertSubjects: collectors,
 	}
 
 	// 4. Router setups
@@ -334,9 +334,11 @@ func main() {
 		rt.Delete("/dashboards/{id}", webHandler.RequireAuthWeb(webHandler.DashboardDeleteHandler))
 
 		rt.Get("/network-monitors", webHandler.RequireAuthWeb(webHandler.NetworkMonitorsHandler))
-		// Each collector type has its own page at /<name>, rendered from <name>.html.
+		// Each collector type has its own page at /collectors/<name>, rendered from
+		// collector_types/<name>.html; its old address /<name> redirects there.
 		for _, t := range collectors.Types() {
-			rt.Get("/"+t.Name(), webHandler.RequireAuthWeb(webHandler.CollectorTypePage(t.Name(), t.Label())))
+			rt.Get("/collectors/"+t.Name(), webHandler.RequireAuthWeb(webHandler.CollectorTypePage(t.Name(), t.Label())))
+			rt.Get("/"+t.Name(), webHandler.CollectorTypeRedirect(t.Name()))
 		}
 		rt.Get("/collectors", webHandler.RequireAuthWeb(webHandler.CollectorsHandler))
 

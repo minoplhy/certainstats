@@ -1,9 +1,12 @@
 package crowdsec
 
 import (
+	"certainstats/internal/base/alert"
+	"certainstats/internal/collector"
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"net/http"
 	"sort"
 	"strconv"
@@ -131,7 +134,7 @@ func (t *Type) components(w http.ResponseWriter, r *http.Request) {
 	}
 	firing := map[string][]firingView{}
 	if t.Rules != nil {
-		open, err := t.Rules.CrowdSecOpenIncidents(ctx, user)
+		open, err := t.Rules.SubjectOpenIncidents(ctx, wire.TypeName, user)
 		if err != nil {
 			fail(w, "components", err)
 			return
@@ -293,6 +296,45 @@ func (t *Type) Subjects(ctx context.Context, user string) ([]CollectorSubjects, 
 		sort.Strings(s.Bouncers)
 		sort.Slice(s.Groups, func(i, j int) bool { return s.Groups[i].Name < s.Groups[j].Name })
 		out = append(out, s)
+	}
+	return out, nil
+}
+
+var _ collector.AlertSource = (*Type)(nil)
+
+// AlertSubjects is what the Alerts page offers CrowdSec rules, per collector:
+// machines, then bouncers (shared keys with their addresses, then single ones).
+func (t *Type) AlertSubjects(ctx context.Context, user string) ([]alert.SubjectOptions, error) {
+	list, err := t.Subjects(ctx, user)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]alert.SubjectOptions, 0, len(list))
+	for _, s := range list {
+		o := alert.SubjectOptions{Source: wire.TypeName, CollectorID: s.CollectorID, CollectorName: s.Name,
+			AllLabel: "Every machine and bouncer of " + s.Name}
+		if len(s.Machines) > 0 {
+			sec := alert.SubjectSection{Label: "Machines", Kind: wire.KindMachine}
+			for _, m := range s.Machines {
+				sec.Entries = append(sec.Entries, alert.SubjectEntry{Scope: ScopeMachine, Name: m})
+			}
+			o.Sections = append(o.Sections, sec)
+		}
+		if len(s.Groups)+len(s.Bouncers) > 0 {
+			sec := alert.SubjectSection{Label: "Bouncers", Kind: wire.KindBouncer}
+			for _, g := range s.Groups {
+				sec.Entries = append(sec.Entries, alert.SubjectEntry{Scope: ScopeGroup, Name: g.Name,
+					Note: fmt.Sprintf("every address using this key (%d now, new ones included)", len(g.Entries))})
+				for _, e := range g.Entries {
+					sec.Entries = append(sec.Entries, alert.SubjectEntry{Scope: ScopeBouncer, Name: e, Child: true})
+				}
+			}
+			for _, b := range s.Bouncers {
+				sec.Entries = append(sec.Entries, alert.SubjectEntry{Scope: ScopeBouncer, Name: b})
+			}
+			o.Sections = append(o.Sections, sec)
+		}
+		out = append(out, o)
 	}
 	return out, nil
 }

@@ -206,7 +206,7 @@ func (s *Store) migrate() error {
 	if err := s.migrateNetworkMonitors(); err != nil {
 		return err
 	}
-	if err := s.migrateCrowdSecAlerts(); err != nil {
+	if err := s.migrateCollectorAlerts(); err != nil {
 		return err
 	}
 	return s.migrateCollectors()

@@ -46,6 +46,7 @@ type Server struct {
 	ZonesDropped   int               `json:"zones_dropped"`
 	ZonesCut       int               `json:"zones_truncated"`
 	LastStatsMs    int64             `json:"last_stats_ms"`
+	ErrorSinceMs   int64             `json:"error_since_ms"`
 	Dnstap         *wire.DnstapState `json:"dnstap,omitempty"`
 	LastDnstapMs   int64             `json:"last_dnstap_ms"`
 	ZoneCount      int               `json:"zone_count"`
@@ -67,14 +68,25 @@ func (t *Type) servers(ctx context.Context, userID string) ([]Server, error) {
 		st := readState(c)
 		s := Server{CollectorID: c.CollectorID, Name: c.Name, Enabled: row.Enabled, FirstSeen: c.FirstConnectedAt, LastSeen: c.LastSeenAt,
 			ReportedOn: row.ReportedOn, Status: row.Status, Error: row.Error, Version: st.Version, ZoneStats: st.ZoneStats,
-			ModStats: st.ModStats, ZonesDropped: st.ZonesDropped, ZonesCut: st.ZonesCut, LastStatsMs: st.LastStatsMs, Dnstap: st.Dnstap}
-		if conn := t.Collectors.Conn(c.CollectorID); conn != nil {
-			s.Connected, s.ConnectedSince = true, conn.Since.UnixMilli()
+			ModStats: st.ModStats, ZonesDropped: st.ZonesDropped, ZonesCut: st.ZonesCut, LastStatsMs: st.LastStatsMs, ErrorSinceMs: st.ErrorSinceMs, Dnstap: st.Dnstap}
+		if since, ok := t.connected(c.CollectorID); ok {
+			s.Connected, s.ConnectedSince = true, since.UnixMilli()
 		}
 		out = append(out, s)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out, nil
+}
+
+// connected reports whether a collector is connected, and since when.
+func (t *Type) connected(collectorID string) (time.Time, bool) {
+	if t.live != nil {
+		return t.live(collectorID)
+	}
+	if conn := t.Collectors.Conn(collectorID); conn != nil {
+		return conn.Since, true
+	}
+	return time.Time{}, false
 }
 
 // serialLess compares SOA serials with RFC 1982 arithmetic.
@@ -87,15 +99,19 @@ type ZoneView struct {
 	Zone          string     `json:"zone"`
 	Rows          []ZoneSide `json:"servers"`
 	PrimarySerial *uint32    `json:"primary_serial"`
-	Drift         bool       `json:"drift"`
-	ExpireAt      int64      `json:"expire_at"`
+	// PrimaryChangedAt is when the reference serial last changed.
+	PrimaryChangedAt int64 `json:"primary_changed_at"`
+	Drift            bool  `json:"drift"`
+	ExpireAt         int64 `json:"expire_at"`
 }
 
-// ZoneSide is one server's view of a zone.
+// ZoneSide is one server's view of a zone. Lagging is a serial below the
+// reference; Behind is lagging for longer than driftAfter.
 type ZoneSide struct {
 	ZoneRow
-	Server string `json:"server"`
-	Behind bool   `json:"behind"`
+	Server  string `json:"server"`
+	Lagging bool   `json:"lagging"`
+	Behind  bool   `json:"behind"`
 }
 
 // zoneViews groups zone rows by zone and marks secondaries behind the primary
@@ -135,11 +151,14 @@ func zoneViews(rows []ZoneRow, names map[string]string, now int64) []ZoneView {
 		}
 		if ref != nil {
 			s := ref.Serial
-			v.PrimarySerial = &s
+			v.PrimarySerial, v.PrimaryChangedAt = &s, ref.SerialChangedAt
 			for i := range v.Rows {
 				r := &v.Rows[i]
-				if r.HasSerial && serialLess(r.Serial, ref.Serial) && now-ref.SerialChangedAt > driftAfter.Milliseconds() {
-					r.Behind, v.Drift = true, true
+				if r.HasSerial && serialLess(r.Serial, ref.Serial) {
+					r.Lagging = true
+					if now-ref.SerialChangedAt > driftAfter.Milliseconds() {
+						r.Behind, v.Drift = true, true
+					}
 				}
 			}
 		}
@@ -193,15 +212,9 @@ func (t *Type) checks(ctx context.Context, userID string, servers []Server, zone
 				out = append(out, Check{Level: "warn", Kind: "dnstap_quiet", CollectorID: s.CollectorID, Server: s.Name, Message: "No dnstap traffic for 5 minutes; check mod-dnstap's sink points at " + d.Socket + " and Knot was reloaded"})
 			}
 		}
-		inc, err := readIncreases(ctx, t.TSDB, counterQuery{UserID: userID, CollectorID: s.CollectorID, Items: []string{"response-code"},
-			Start: nowMs - servfailSpan.Milliseconds(), End: nowMs, Step: servfailSpan.Milliseconds()})
-		if err == nil {
-			total := inc.sumItem("response-code")
-			fail := inc.total(seriesKey{"response-code", "SERVFAIL"})
-			if total >= servfailMin && fail/total > servfailShare {
-				out = append(out, Check{Level: "warn", Kind: "servfail", CollectorID: s.CollectorID, Server: s.Name,
-					Message: fmt.Sprintf("SERVFAIL is %.1f%% of responses over the last 15 minutes", 100*fail/total)})
-			}
+		if total, share, err := t.servfail(ctx, userID, s.CollectorID, nowMs); err == nil && total >= servfailMin && share > 100*servfailShare {
+			out = append(out, Check{Level: "warn", Kind: "servfail", CollectorID: s.CollectorID, Server: s.Name,
+				Message: fmt.Sprintf("SERVFAIL is %.1f%% of responses over the last 15 minutes", share)})
 		}
 	}
 	for _, z := range zones {
@@ -226,6 +239,21 @@ func (t *Type) checks(ctx context.Context, userID string, servers []Server, zone
 	}
 	sort.SliceStable(out, func(i, j int) bool { return out[i].Level == "bad" && out[j].Level != "bad" })
 	return out
+}
+
+// servfail returns the responses of one server over the last servfailSpan and
+// the share of them that were SERVFAIL, in percent.
+func (t *Type) servfail(ctx context.Context, userID, collectorID string, nowMs int64) (total, share float64, err error) {
+	inc, err := readIncreases(ctx, t.TSDB, counterQuery{UserID: userID, CollectorID: collectorID, Items: []string{"response-code"},
+		Start: nowMs - servfailSpan.Milliseconds(), End: nowMs, Step: servfailSpan.Milliseconds()})
+	if err != nil {
+		return 0, 0, err
+	}
+	total = inc.sumItem("response-code")
+	if total > 0 {
+		share = 100 * inc.total(seriesKey{"response-code", "SERVFAIL"}) / total
+	}
+	return total, share, nil
 }
 
 // serverNames maps the collector IDs of servers to their names.

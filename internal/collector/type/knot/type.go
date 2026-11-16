@@ -21,8 +21,14 @@ type Type struct {
 	TSDB       *ctsdb.DB
 	Collectors *collector.Service
 	Retention  Retention
+	// Rules holds collector alert rules and their incidents (the main database); nil alerts nothing.
+	Rules collector.Rules
+	// Deliver sends a queued notification in the background (alertdelivery.Go).
+	Deliver func(eventID string)
 	// Now is replaceable in tests.
 	Now func() time.Time
+	// live overrides how a collector's live connection is found; tests set it.
+	live func(collectorID string) (since time.Time, ok bool)
 }
 
 var (
@@ -59,14 +65,16 @@ func (t *Type) Setup() collector.TypeSetup {
 
 // state is the type's small per-collector state, kept in collector_types.state_json.
 type state struct {
-	Version      string            `json:"version,omitempty"`
-	Socket       string            `json:"socket,omitempty"`
-	ZoneStats    bool              `json:"zone_stats,omitempty"`
-	ModStats     bool              `json:"mod_stats,omitempty"`
-	ZonesDropped int               `json:"zones_dropped,omitempty"`
-	ZonesCut     int               `json:"zones_truncated,omitempty"`
-	LastStatsMs  int64             `json:"last_stats_ms,omitempty"`
-	LastZonesMs  int64             `json:"last_zones_ms,omitempty"`
+	Version      string `json:"version,omitempty"`
+	Socket       string `json:"socket,omitempty"`
+	ZoneStats    bool   `json:"zone_stats,omitempty"`
+	ModStats     bool   `json:"mod_stats,omitempty"`
+	ZonesDropped int    `json:"zones_dropped,omitempty"`
+	ZonesCut     int    `json:"zones_truncated,omitempty"`
+	LastStatsMs  int64  `json:"last_stats_ms,omitempty"`
+	LastZonesMs  int64  `json:"last_zones_ms,omitempty"`
+	// ErrorSinceMs is when Knot became unreachable; zero while it answers.
+	ErrorSinceMs int64             `json:"error_since_ms,omitempty"`
 	Dnstap       *wire.DnstapState `json:"dnstap,omitempty"`
 }
 
@@ -142,9 +150,16 @@ func (t *Type) status(ctx context.Context, c *collector.Conn, m wire.Status) err
 	if err := t.Collectors.Store.CollectorTypeStatus(ctx, c.Collector.CollectorID, wire.TypeName, status, message); err != nil {
 		return err
 	}
+	now := t.now().UnixMilli()
 	return t.updateState(ctx, c, func(st *state) {
 		if m.Version != "" {
 			st.Version = m.Version
+		}
+		switch {
+		case m.Reachable:
+			st.ErrorSinceMs = 0
+		case st.ErrorSinceMs == 0:
+			st.ErrorSinceMs = now
 		}
 		st.Socket, st.ZoneStats, st.ModStats, st.Dnstap = m.Socket, m.ZoneStats, m.ModStats, m.Dnstap
 	})

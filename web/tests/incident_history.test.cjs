@@ -103,3 +103,24 @@ test('duration formatting handles live, long, negative, and invalid intervals', 
   assert.equal(h.format.duration('2026-10-01T00:00:01Z', '2026-10-01T00:00:00Z'), '0s');
   assert.equal(h.format.duration('invalid'), 'Unknown'); assert.equal(h.format.metric('agent_down', 0), 'Offline'); h.view.destroy();
 });
+
+test('collector incidents are described by their snapshot, whatever the source', async () => {
+  const knot = incident({ alert_nickname: '', agent_nickname: 'example.com. on ns2', subject_kind: 'knot', subject_id: 'col_s/zone/example.com.',
+    trigger: { type: 'knot_expiry', operator: '>', threshold: 24 }, trigger_value: 3.5,
+    subject: { source: 'knot', source_label: 'Knot DNS', collector: 'ns2', kind: 'zone', name: 'example.com.', label: 'Secondary zone expires within (hours)', detail: 'expires in 3.5 hours', unit: 'hours' } });
+  // An incident from before snapshots named their source.
+  const old = incident({ history_id: 'old', alert_nickname: '', subject_kind: 'crowdsec', trigger: { type: 'crowdsec_pull', operator: '>', threshold: 60 }, trigger_value: 75,
+    subject: { collector: 'lapi', kind: 'bouncer', name: 'fw', label: 'Bouncer pull', detail: 'No pull for 75m', unit: 'minutes' } });
+  const h = harness(async url => url.includes('/summary') ? response({ firing: 0, nodes: [] }) : response(page([knot, old])));
+  await flush();
+  const text = h.controls.list.textContent;
+  assert.match(text, /Knot DNS: Secondary zone expires within \(hours\)/);
+  assert.match(text, /Zoneexample\.com\./);
+  assert.match(text, /Collectorns2/);
+  assert.match(text, /What firedexpires in 3\.5 hours/);
+  assert.match(text, /Breach value3\.5 hours/);
+  assert.match(text, /crowdsec: Bouncer pull/);
+  assert.match(text, /Bouncerfw/);
+  assert.match(text, /75 minutes/);
+  h.view.destroy();
+});

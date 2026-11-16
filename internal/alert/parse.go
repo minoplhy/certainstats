@@ -76,25 +76,31 @@ func ParseAction(a *alert.AlertAction) error {
 }
 
 // CheckSubjects says which subjects a rule must have for its trigger: network
-// rules need monitors, CrowdSec rules need machines or bouncers, and every other
-// rule watches servers. It returns the problem in words, or "".
-func CheckSubjects(t alert.TriggerType, agents, monitors int, crowdsec []alert.CrowdSecSubject) string {
-	switch {
-	case alert.IsCrowdSecTrigger(t):
-		if agents > 0 || monitors > 0 || len(crowdsec) == 0 {
-			return "Select machines or bouncers for CrowdSec rules"
+// rules need monitors, collector rules need subjects of their trigger's source,
+// and every other rule watches servers. It returns the problem in words, or "".
+func CheckSubjects(t alert.TriggerType, agents, monitors int, subjects []alert.Subject) string {
+	if source, ok := alert.SourceOf(t); ok {
+		label := source
+		if src, ok := alert.SubjectSourceFor(source); ok {
+			label = src.Label
 		}
-		for _, s := range crowdsec {
-			if _, ok := alert.ParseCrowdSecSubject(s.Key()); !ok {
-				return "Invalid machine or bouncer selection"
+		if agents > 0 || monitors > 0 || len(subjects) == 0 {
+			return "Select what to watch for " + label + " rules"
+		}
+		for _, s := range subjects {
+			if s.Source != source || !s.Valid() {
+				return "Invalid " + label + " selection"
 			}
 		}
+		return ""
+	}
+	switch {
 	case t == alert.TriggerTypeNetworkLoss:
-		if agents > 0 || monitors == 0 || len(crowdsec) > 0 {
+		if agents > 0 || monitors == 0 || len(subjects) > 0 {
 			return "Select monitors for network rules, agents for resource rules"
 		}
 	default:
-		if monitors > 0 || len(crowdsec) > 0 {
+		if monitors > 0 || len(subjects) > 0 {
 			return "Select monitors for network rules, agents for resource rules"
 		}
 	}

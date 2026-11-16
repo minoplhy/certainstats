@@ -18,8 +18,8 @@ type Type struct {
 	Store      *Store
 	Collectors *collector.Service
 	Retention  Retention
-	// Rules holds CrowdSec alert rules and their incidents (the main database); nil alerts nothing.
-	Rules Rules
+	// Rules holds collector alert rules and their incidents (the main database); nil alerts nothing.
+	Rules collector.Rules
 	// Deliver sends a queued notification in the background (alertdelivery.Go).
 	Deliver func(eventID string)
 	// live overrides how a collector's live connection is found; tests set it.

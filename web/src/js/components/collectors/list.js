@@ -1,4 +1,4 @@
-import { el, button, api, timeAgo, typeState } from './shared.js';
+import { el, button, api, panelPath, timeAgo, typeState } from './shared.js';
 
 const CHEVRON = '<svg class="mgmt-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>';
 
@@ -123,6 +123,10 @@ export function createList(ctx) {
   function typeRow(rec, type) {
     const t = {type, row: el('div', 'cred-row'), dt: el('dt'), dd: el('dd', 'cred-value'), dot: el('span'), text: el('span', 'collector-type-state'), actions: el('span', 'collector-type-actions'), key: ''};
     t.dot.setAttribute('aria-hidden', 'true');
+    // The type's label leads to its page.
+    t.link = el('a', 'collector-type-link');
+    t.link.href = panelPath() + '/collectors/' + encodeURIComponent(type);
+    t.dt.append(t.link);
     // Forms open below the buttons, inside dd, so rebuilding the buttons leaves them alone.
     t.dd.append(t.dot, t.text, t.actions);
     t.row.append(t.dt, t.dd);
@@ -132,7 +136,7 @@ export function createList(ctx) {
   function updateTypeRow(rec, t, ct) {
     const c = rec.cur;
     const st = typeState(c, ct);
-    setText(t.dt, ct.label);
+    setText(t.link, ct.label);
     setClass(t.dot, 'status-dot ' + (!ct.enabled ? 'warn' : st.level === 'ok' ? 'online' : st.level === 'bad' ? 'offline' : 'warn'));
     setText(t.text, st.text);
     // The buttons depend only on these; rebuild them only when one changes.

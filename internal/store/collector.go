@@ -3,7 +3,7 @@ package store
 import "context"
 
 // Collector is one installed certainstats-collector. It gathers data of one or
-// more types (such as CrowdSec) from the host it runs on. Times are Unix ms; zero is unknown.
+// more types (such as CrowdSec or Knot DNS) from the host it runs on. Times are Unix ms; zero is unknown.
 type Collector struct {
 	CollectorID      string          `json:"collector_id"`
 	UserID           string          `json:"-"`

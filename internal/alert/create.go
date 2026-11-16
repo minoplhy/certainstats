@@ -40,7 +40,7 @@ func CreateAlertHandler(s store.AlertsStore) http.HandlerFunc {
 			return
 		}
 
-		if msg := CheckSubjects(req.Trigger.Type, len(req.Agents), len(req.MonitorIDs), req.CrowdSec); msg != "" {
+		if msg := CheckSubjects(req.Trigger.Type, len(req.Agents), len(req.MonitorIDs), req.AllSubjects()); msg != "" {
 			apiresponse.Error(w, http.StatusBadRequest, msg)
 			return
 		}
@@ -68,7 +68,7 @@ func CreateAlertHandler(s store.AlertsStore) http.HandlerFunc {
 			UserID:     userID,
 			Nickname:   req.Nickname,
 			MonitorIDs: req.MonitorIDs,
-			CrowdSec:   req.CrowdSec,
+			Subjects:   req.AllSubjects(),
 			Enabled:    req.Enabled,
 			Trigger:    req.Trigger,
 			Action:     req.Action,

@@ -3,16 +3,30 @@
 
   let panelPath = '';
 
-  // crowdsecRule shows the machines and bouncers picker for a CrowdSec condition
-  // and sets the threshold's unit and range from the selected option.
-  function crowdsecRule(selectEl, prefix, modal) {
+  // subjectRule shows what a collector condition can watch: the collectors of the
+  // condition's source and, in each, the sections of its kind (scope "all" is
+  // always offered). Hidden choices are disabled so they are not submitted. It
+  // also sets the threshold's unit and range from the selected option.
+  function subjectRule(selectEl, prefix, modal) {
     const option = selectEl.selectedOptions && selectEl.selectedOptions[0];
-    const on = !!(option && option.hasAttribute('data-crowdsec'));
-    const group = document.querySelector('[data-crowdsec-rule=' + prefix + ']');
+    const source = option ? option.getAttribute('data-subject-source') || '' : '';
+    const kind = option ? option.getAttribute('data-kind') || '' : '';
+    const on = source !== '';
+    const group = document.querySelector('[data-subject-rule=' + prefix + ']');
     if (group) {
       group.hidden = !on;
-      group.querySelectorAll('input').forEach(cb => { cb.disabled = !on; });
-      const hint = group.querySelector('[data-crowdsec-hint]');
+      group.querySelectorAll('.subjects-collector').forEach(block => {
+        const shown = on && block.getAttribute('data-source') === source;
+        block.hidden = !shown;
+        block.querySelectorAll('.subject-all input').forEach(cb => { cb.disabled = !shown; });
+        block.querySelectorAll('.subjects-section').forEach(section => {
+          const fits = shown && section.getAttribute('data-kind') === kind;
+          section.hidden = !fits;
+          section.querySelectorAll('input').forEach(cb => { cb.disabled = !fits; });
+        });
+      });
+      group.querySelectorAll('[data-subject-empty]').forEach(p => { p.hidden = !on || p.getAttribute('data-subject-empty') !== source; });
+      const hint = group.querySelector('[data-subject-hint]');
       if (hint) hint.textContent = on ? option.getAttribute('data-hint') || '' : '';
     }
     // The check does its own timing and always compares one way.
@@ -23,9 +37,10 @@
     const threshold = document.getElementById(prefix + '-threshold');
     if (threshold) {
       if (on) {
-        threshold.min = option.getAttribute('data-min');
+        const min = option.getAttribute('data-min');
+        threshold.min = min;
         threshold.max = option.getAttribute('data-max');
-        threshold.step = '1';
+        threshold.step = Number(min) % 1 === 0 ? '1' : 'any';
         if (prefix === 'create') threshold.value = option.getAttribute('data-default');
       } else {
         threshold.min = '0';
@@ -53,14 +68,14 @@
       group.querySelectorAll('input').forEach(cb => { cb.disabled = !network; });
     }
     const modal = document.querySelector('#' + (prefix === 'create' ? 'new' : prefix) + '-alert-modal');
-    const crowdsec = crowdsecRule(selectEl, prefix, modal);
+    const collectorRule = subjectRule(selectEl, prefix, modal);
     if (modal) {
-      const noServers = network || crowdsec;
+      const noServers = network || collectorRule;
       modal.querySelectorAll('input[name=agents]').forEach(cb => { cb.disabled = noServers; });
       const servers = modal.querySelector('[data-click-action="toggleAllNodes"]');
       if (servers) servers.closest('.form-fieldset').hidden = noServers;
     }
-    if (crowdsec) return;
+    if (collectorRule) return;
     const duration = document.getElementById(prefix + '-duration');
     if (duration) {
       duration.readOnly = network;
@@ -208,9 +223,9 @@
           document.querySelectorAll('#edit-alert-modal input[name=monitor_ids]').forEach(cb => {
             cb.checked = monitorIDs.includes(cb.value);
           });
-          // One machine or bouncer selection per line: collector/scope/name.
-          const subjects = (this.getAttribute('data-crowdsec') || '').split('\n');
-          document.querySelectorAll('#edit-alert-modal input[name=crowdsec_subjects]').forEach(cb => {
+          // One collector subject per line: source/collector/scope[/name].
+          const subjects = (this.getAttribute('data-subjects') || '').split('\n');
+          document.querySelectorAll('#edit-alert-modal input[name=subjects]').forEach(cb => {
             cb.checked = subjects.includes(cb.value);
           });
 

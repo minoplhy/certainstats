@@ -4,7 +4,6 @@ import (
 	agentdata "certainstats/internal/agent_data"
 	alertrules "certainstats/internal/alert"
 	c "certainstats/internal/base/alert"
-	"certainstats/internal/collector/type/crowdsec"
 	"certainstats/internal/networkmonitor"
 	"certainstats/internal/store"
 	"fmt"
@@ -47,26 +46,25 @@ func (h *WebHandler) AlertsListHandler(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 	}
-	// CrowdSec rules watch machines and bouncers; the list only offers them.
-	var crowdsecSubjects []crowdsec.CollectorSubjects
-	if h.CrowdSec != nil {
-		if crowdsecSubjects, err = h.CrowdSec.Subjects(r.Context(), userID); err != nil {
-			http.Error(w, "Failed to load machines and bouncers", http.StatusInternalServerError)
+	// Collector rules watch what each collector type offers; the form only offers those.
+	var options []c.SubjectOptions
+	if h.AlertSubjects != nil {
+		if options, err = h.AlertSubjects.AlertSubjects(r.Context(), userID); err != nil {
+			http.Error(w, "Failed to load collector subjects", http.StatusInternalServerError)
 			return
 		}
 	}
 	collectorNames := map[string]string{}
-	for _, cs := range crowdsecSubjects {
-		collectorNames[cs.CollectorID] = cs.Name
+	for _, o := range options {
+		collectorNames[o.CollectorID] = o.CollectorName
 	}
 	pd := h.newPageData(r, "Alert System", "alerts", map[string]any{
-		"Alerts":           alerts,
-		"Monitors":         monitors,
-		"Targets":          targets,
-		"Agents":           agents,
-		"CrowdSecSubjects": crowdsecSubjects,
-		"CrowdSecTriggers": c.SubjectTriggers(),
-		"CollectorNames":   collectorNames,
+		"Alerts":         alerts,
+		"Monitors":       monitors,
+		"Targets":        targets,
+		"Agents":         agents,
+		"SubjectSources": subjectSources(options),
+		"CollectorNames": collectorNames,
 	})
 	h.Renderer.RenderHTTP(w, http.StatusOK, "alerts_list.html", pd)
 }
@@ -113,11 +111,12 @@ func (h *WebHandler) AlertCreateHandler(w http.ResponseWriter, r *http.Request) 
 
 	agents := r.Form["agents"]
 	monitors := r.Form["monitor_ids"]
-	var subjects []c.CrowdSecSubject
+	var subjects []c.Subject
+	_, isSubject := c.SourceOf(triggerType)
 	switch {
-	case c.IsCrowdSecTrigger(triggerType):
+	case isSubject:
 		var msg string
-		if subjects, msg = crowdsecRule(r, triggerType, threshold, thresholdErr); msg != "" {
+		if subjects, msg = subjectRule(r, triggerType, threshold, thresholdErr); msg != "" {
 			http.Error(w, msg, http.StatusBadRequest)
 			return
 		}
@@ -139,7 +138,7 @@ func (h *WebHandler) AlertCreateHandler(w http.ResponseWriter, r *http.Request) 
 		AlertID:    alertID,
 		UserID:     userID,
 		MonitorIDs: monitors,
-		CrowdSec:   subjects,
+		Subjects:   subjects,
 		Nickname:   nickname,
 		Enabled:    enabled,
 		Trigger: c.Trigger{
@@ -226,11 +225,12 @@ func (h *WebHandler) AlertUpdateHandler(w http.ResponseWriter, r *http.Request) 
 
 	agents := r.Form["agents"]
 	monitors := r.Form["monitor_ids"]
-	var subjects []c.CrowdSecSubject
+	var subjects []c.Subject
+	_, isSubject := c.SourceOf(triggerType)
 	switch {
-	case c.IsCrowdSecTrigger(triggerType):
+	case isSubject:
 		var msg string
-		if subjects, msg = crowdsecRule(r, triggerType, threshold, thresholdErr); msg != "" {
+		if subjects, msg = subjectRule(r, triggerType, threshold, thresholdErr); msg != "" {
 			http.Error(w, msg, http.StatusBadRequest)
 			return
 		}
@@ -251,7 +251,7 @@ func (h *WebHandler) AlertUpdateHandler(w http.ResponseWriter, r *http.Request) 
 		AlertID:    alertID,
 		UserID:     userID,
 		MonitorIDs: monitors,
-		CrowdSec:   subjects,
+		Subjects:   subjects,
 		Nickname:   nickname,
 		Enabled:    enabled,
 		Trigger: c.Trigger{
@@ -375,9 +375,10 @@ func (h *WebHandler) TargetDeleteHandler(w http.ResponseWriter, r *http.Request)
 	http.Redirect(w, r, h.PanelPath+"/alerts?tab=targets", http.StatusSeeOther)
 }
 
-// crowdsecRule reads a CrowdSec rule's machines and bouncers from the form and
-// checks its threshold. It returns the problem in words, or "".
-func crowdsecRule(r *http.Request, t c.TriggerType, threshold float64, thresholdErr error) ([]c.CrowdSecSubject, string) {
+// subjectRule reads a collector rule's subjects (form field "subjects",
+// source/collector/scope[/name]) and checks its threshold. It returns the
+// problem in words, or "".
+func subjectRule(r *http.Request, t c.TriggerType, threshold float64, thresholdErr error) ([]c.Subject, string) {
 	trig := c.Trigger{Type: t, Threshold: threshold}
 	if thresholdErr != nil {
 		return nil, "Invalid threshold"
@@ -385,12 +386,12 @@ func crowdsecRule(r *http.Request, t c.TriggerType, threshold float64, threshold
 	if err := alertrules.ParseTrigger(&trig); err != nil {
 		return nil, err.Error()
 	}
-	var subjects []c.CrowdSecSubject
+	var subjects []c.Subject
 	seen := map[string]bool{}
-	for _, v := range r.Form["crowdsec_subjects"] {
-		s, ok := c.ParseCrowdSecSubject(v)
+	for _, v := range r.Form["subjects"] {
+		s, ok := c.ParseSubject(v)
 		if !ok {
-			return nil, "Invalid machine or bouncer selection"
+			return nil, "Invalid selection"
 		}
 		if !seen[s.Key()] {
 			seen[s.Key()] = true
@@ -398,4 +399,37 @@ func crowdsecRule(r *http.Request, t c.TriggerType, threshold float64, threshold
 		}
 	}
 	return subjects, alertrules.CheckSubjects(t, 0, 0, subjects)
+}
+
+// subjectSourceView is one collector source on the Alerts page: its rule
+// conditions and what each of the owner's collectors offers them.
+type subjectSourceView struct {
+	Name     string
+	Label    string
+	Empty    string
+	Triggers []c.SubjectTrigger
+	Options  []c.SubjectOptions
+}
+
+// subjectSources groups the registered sources' conditions with the options of
+// the owner's collectors. Sources without a condition are left out.
+func subjectSources(options []c.SubjectOptions) []subjectSourceView {
+	var out []subjectSourceView
+	for _, src := range c.SubjectSources() {
+		v := subjectSourceView{Name: src.Name, Label: src.Label, Empty: src.Empty}
+		for _, t := range c.SubjectTriggers() {
+			if t.Source == src.Name {
+				v.Triggers = append(v.Triggers, t)
+			}
+		}
+		for _, o := range options {
+			if o.Source == src.Name {
+				v.Options = append(v.Options, o)
+			}
+		}
+		if len(v.Triggers) > 0 {
+			out = append(out, v)
+		}
+	}
+	return out
 }

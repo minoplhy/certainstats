@@ -55,7 +55,7 @@ func (s *Store) AlertCreate(ctx context.Context, d store.Alert) error {
 	if err = s.setAlertMonitors(ctx, tx, d); err != nil {
 		return err
 	}
-	if err = s.setAlertCrowdSec(ctx, tx, d); err != nil {
+	if err = s.setAlertSubjects(ctx, tx, d); err != nil {
 		return err
 	}
 	return tx.Commit()
@@ -128,7 +128,7 @@ func (s *Store) AlertList(ctx context.Context, userID string) ([]store.Alert, er
 		if err = s.loadAlertMonitors(ctx, &out[i]); err != nil {
 			return nil, err
 		}
-		if err = s.loadAlertCrowdSec(ctx, &out[i]); err != nil {
+		if err = s.loadAlertSubjects(ctx, &out[i]); err != nil {
 			return nil, err
 		}
 	}
@@ -179,7 +179,7 @@ func (s *Store) AlertGetInfo(ctx context.Context, alertID string, userID string)
 	if err = s.loadAlertMonitors(ctx, &a); err != nil {
 		return store.Alert{}, err
 	}
-	if err = s.loadAlertCrowdSec(ctx, &a); err != nil {
+	if err = s.loadAlertSubjects(ctx, &a); err != nil {
 		return store.Alert{}, err
 	}
 	return a, nil
@@ -345,7 +345,7 @@ func (s *Store) AlertUpdate(ctx context.Context, d store.Alert, newAgents []stri
 	if err = s.setAlertMonitors(ctx, tx, d); err != nil {
 		return err
 	}
-	if err = s.setAlertCrowdSec(ctx, tx, d); err != nil {
+	if err = s.setAlertSubjects(ctx, tx, d); err != nil {
 		return err
 	}
 	return tx.Commit()

@@ -172,7 +172,8 @@ validated, and the collector's own machine login, which never sends a heartbeat.
 Notifications come from ordinary alert rules on the Alerts page. **New rule**
 offers a CrowdSec group under **When**, one condition per check
 (`crowdsec_heartbeat`, `crowdsec_pull`, `crowdsec_held`, `crowdsec_siblings`),
-and in place of **Servers** a **Machines and bouncers** list per collector:
+and in place of **Servers** a **Watch** list per collector, showing the machines
+or the bouncers depending on the condition:
 
 - **Every machine and bouncer** of a collector, including ones added later;
 - one machine;
@@ -244,9 +245,12 @@ bouncer of a collector, with its signals by source, its current findings, the
 streaks of its checks and whether it is muted) and `collector_health` (per
 collector: the last report's parts, error and active decisions). Removing a
 collector removes both. CrowdSec alert rules keep their machines and bouncers in
-the main database (`alert_crowdsec_subjects`), and their incidents are
-`alert_history` rows with `subject_kind` `crowdsec`, the collector in
-`agent_id`, the component in `subject_id` and what fired in `subject_snapshot`.
+the main database (`alert_subjects`, source `crowdsec`, scopes `all`, `machine`,
+`bouncer` and `group`), and their incidents are `alert_history` rows with
+`subject_kind` `crowdsec`, the collector in `agent_id`, the component in
+`subject_id` and what fired in `subject_snapshot`, like every collector type's
+(see [collectors](collectors.md#storage)). Evaluation runs through the shared
+`collector.Round`.
 
 ### Retention
 
@@ -298,7 +302,7 @@ error, never zeros.
 
 ## The page
 
-`/crowdsec` opens with a sentence headline and figures: alerts, unique IPs,
+`/collectors/crowdsec` (reached from the Collectors page; `/crowdsec` redirects there) opens with a sentence headline and figures: alerts, unique IPs,
 active bans now and collectors reporting. **Collectors** links to the
 Collectors page. Below is a one-row filter bar:
 - search;

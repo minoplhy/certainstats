@@ -3,7 +3,8 @@
 The Knot DNS [collector](collectors.md) type reads an authoritative Knot DNS
 server directly, without Prometheus exporters. On the host it talks to Knot's
 control socket, the one `knotc` uses, and can optionally receive Knot's dnstap
-stream. The page is `/knot`, in the main navigation.
+stream. The page is `/collectors/knot`, reached from the Collectors page;
+`/knot` redirects there.
 
 It is off unless the collector host sets `ENABLE_KNOT_DNS=true`. The generic
 `COLLECT_KNOT` switch does nothing.
@@ -190,7 +191,8 @@ counter charts keep showing all traffic and a note explains why.
 
 ## Checks
 
-Shown on the page; alert rules for Knot are not available yet.
+Shown on the page with fixed limits. Alert rules use the same measures with
+limits of their own; see [Alert rules](#alert-rules).
 
 | Check | Level |
 | --- | --- |
@@ -205,6 +207,31 @@ Shown on the page; alert rules for Knot are not available yet.
 | A per-zone error reported by Knot | warn |
 | dnstap switched on but the collector is not listening | bad |
 | dnstap switched on but no traffic for 5 minutes | warn |
+
+## Alert rules
+
+On the Alerts page, **New rule** offers a Knot DNS group under **When** once a
+collector reads Knot DNS. A rule watches a server (all of it, which for zone
+conditions means every zone of that server, new ones included) or single zones.
+Its threshold is the condition's one number; there is no operator or duration.
+
+| Condition | Watches | Threshold (default) | Fires when |
+| --- | --- | --- | --- |
+| `knot_unreachable` | server | minutes (5) | Knot has not answered on its control socket, or the collector has not connected, for that long |
+| `knot_servfail` | server | % (1) | SERVFAIL is above that share of at least 100 responses over 15 minutes |
+| `knot_dnstap_quiet` | server | minutes (5) | dnstap is switched on but no traffic arrived for that long |
+| `knot_expiry` | zone | hours (24) | a secondary zone expires within that time, or has expired |
+| `knot_drift` | zone | minutes (15) | a server's serial is below the primary's, that long after the primary changed |
+
+Incidents appear in the Alerts incident history like any other, with
+`{{NICKNAME}}` the zone or server, `{{COLLECTOR}}` the server's collector,
+`{{SUBJECT_KIND}}` `server` or `zone`, and `{{DETAIL}}` what fired, such as
+"expires in 3.5 hours". While a collector is offline its zone incidents are
+kept as they are; an unreachable rule is what judges it then. An incident
+closes without a notification when its rule is disabled, deleted or no longer
+covers the subject, or the zone is gone from the server. Rules are evaluated
+every minute (`internal/collector/type/knot/alerts.go`, through
+`collector.Round`).
 
 ## Private API
 

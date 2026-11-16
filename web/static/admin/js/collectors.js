@@ -174,6 +174,9 @@
     function typeRow(rec, type) {
       const t = { type, row: el("div", "cred-row"), dt: el("dt"), dd: el("dd", "cred-value"), dot: el("span"), text: el("span", "collector-type-state"), actions: el("span", "collector-type-actions"), key: "" };
       t.dot.setAttribute("aria-hidden", "true");
+      t.link = el("a", "collector-type-link");
+      t.link.href = panelPath() + "/collectors/" + encodeURIComponent(type);
+      t.dt.append(t.link);
       t.dd.append(t.dot, t.text, t.actions);
       t.row.append(t.dt, t.dd);
       return t;
@@ -181,7 +184,7 @@
     function updateTypeRow(rec, t, ct) {
       const c = rec.cur;
       const st = typeState(c, ct);
-      setText(t.dt, ct.label);
+      setText(t.link, ct.label);
       setClass(t.dot, "status-dot " + (!ct.enabled ? "warn" : st.level === "ok" ? "online" : st.level === "bad" ? "offline" : "warn"));
       setText(t.text, st.text);
       const key = [ct.enabled, c.connected, ct.label].join("|");
@@ -325,6 +328,68 @@
     return { render, busy, search };
   }
 
+  // web/src/js/components/collectors/types.js
+  function summarize(items, type) {
+    const out = { total: 0, reporting: 0, problems: 0, waiting: 0 };
+    for (const c of items) {
+      const ct = (c.types || []).find((t) => t.type === type && t.enabled);
+      if (!ct) continue;
+      out.total++;
+      const level = typeState(c, ct).level;
+      if (level === "ok") out.reporting++;
+      else if (level === "bad") out.problems++;
+      else out.waiting++;
+    }
+    return out;
+  }
+  function summaryText(s) {
+    if (!s.total) return "No collector yet";
+    const parts = [s.reporting + " reporting"];
+    if (s.problems) parts.push(s.problems + " offline or failing");
+    if (s.waiting) parts.push(s.waiting + " waiting");
+    return parts.join(" · ");
+  }
+  function createTypes(ctx2) {
+    const rows = /* @__PURE__ */ new Map();
+    function render() {
+      const box = ctx2.ui.typeList;
+      if (!box) return;
+      const nodes = [];
+      for (const t of ctx2.state.types) {
+        let r = rows.get(t.type);
+        if (!r) {
+          r = { li: el("li", "collector-type-row"), dot: el("span", "status-dot"), text: el("span", "collector-type-summary muted") };
+          r.dot.setAttribute("aria-hidden", "true");
+          const link = el("a", "collector-type-name", t.label);
+          link.href = panelPath() + "/collectors/" + encodeURIComponent(t.type);
+          const open2 = el("a", "btn btn-secondary btn-sm", "Open");
+          open2.href = link.href;
+          open2.setAttribute("aria-label", "Open " + t.label);
+          r.li.append(
+            r.dot,
+            link,
+            r.text,
+            el("span", "toolbar-spacer"),
+            open2,
+            button("Add", "btn btn-ghost btn-sm", () => ctx2.openAdd(t.type))
+          );
+          rows.set(t.type, r);
+        }
+        const s = summarize(ctx2.state.items, t.type);
+        const text = summaryText(s);
+        if (r.text.textContent !== text) r.text.textContent = text;
+        const dot = "status-dot " + (s.problems ? "offline" : s.reporting ? "online" : "warn");
+        if (r.dot.className !== dot) r.dot.className = dot;
+        nodes.push(r.li);
+      }
+      nodes.forEach((node, i) => {
+        if (box.children[i] !== node) box.insertBefore(node, box.children[i] || null);
+      });
+      while (box.children.length > nodes.length) box.lastChild.remove();
+    }
+    return { render };
+  }
+
   // web/src/js/components/collectors/index.js
   var listeners = /* @__PURE__ */ new Set();
   var state = { items: [], types: [], loaded: false };
@@ -345,6 +410,7 @@
     state.loaded = true;
     if (ctx) {
       ctx.list.render();
+      ctx.types.render();
       const n = state.items.length;
       const online = state.items.filter((c) => c.connected).length;
       ctx.ui.count.textContent = (n === 1 ? "1 collector" : n + " collectors") + (n ? " · " + online + " connected" : "");
@@ -392,10 +458,12 @@
       state,
       refresh,
       showInstall,
+      openAdd,
       ui: {
         count: q("count"),
         message: q("message"),
         list: q("list"),
+        typeList: q("type-list"),
         add: q("add"),
         search: q("search"),
         dialog: q("add-modal"),
@@ -408,6 +476,7 @@
       }
     };
     ctx.list = createList(ctx);
+    ctx.types = createTypes(ctx);
     const ui = ctx.ui;
     ui.add.addEventListener("click", () => openAdd());
     ui.search?.addEventListener("input", () => ctx.list.search(ui.search.value));

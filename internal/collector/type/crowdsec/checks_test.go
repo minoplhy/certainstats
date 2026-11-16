@@ -285,17 +285,17 @@ func TestSubjectMatching(t *testing.T) {
 	m := component(wire.KindMachine, "web-01", DBSignals{})
 	b := component(wire.KindBouncer, "fw@10.0.0.5", DBSignals{})
 	for _, tc := range []struct {
-		s    alert.CrowdSecSubject
+		s    alert.Subject
 		c    *Component
 		want bool
 	}{
-		{alert.CrowdSecSubject{CollectorID: "col_a", Scope: alert.ScopeAll}, m, true},
-		{alert.CrowdSecSubject{CollectorID: "col_b", Scope: alert.ScopeAll}, m, false},
-		{alert.CrowdSecSubject{CollectorID: "col_a", Scope: alert.ScopeMachine, Name: "web-01"}, m, true},
-		{alert.CrowdSecSubject{CollectorID: "col_a", Scope: alert.ScopeMachine, Name: "web-01"}, b, false},
-		{alert.CrowdSecSubject{CollectorID: "col_a", Scope: alert.ScopeGroup, Name: "fw"}, b, true},
-		{alert.CrowdSecSubject{CollectorID: "col_a", Scope: alert.ScopeBouncer, Name: "fw"}, b, false},
-		{alert.CrowdSecSubject{CollectorID: "col_a", Scope: alert.ScopeBouncer, Name: "fw@10.0.0.5"}, b, true},
+		{alert.Subject{Source: "crowdsec", CollectorID: "col_a", Scope: alert.ScopeAll}, m, true},
+		{alert.Subject{Source: "crowdsec", CollectorID: "col_b", Scope: alert.ScopeAll}, m, false},
+		{alert.Subject{Source: "crowdsec", CollectorID: "col_a", Scope: ScopeMachine, Name: "web-01"}, m, true},
+		{alert.Subject{Source: "crowdsec", CollectorID: "col_a", Scope: ScopeMachine, Name: "web-01"}, b, false},
+		{alert.Subject{Source: "crowdsec", CollectorID: "col_a", Scope: ScopeGroup, Name: "fw"}, b, true},
+		{alert.Subject{Source: "crowdsec", CollectorID: "col_a", Scope: ScopeBouncer, Name: "fw"}, b, false},
+		{alert.Subject{Source: "crowdsec", CollectorID: "col_a", Scope: ScopeBouncer, Name: "fw@10.0.0.5"}, b, true},
 	} {
 		if got := tc.c.matches(tc.s); got != tc.want {
 			t.Errorf("%+v on %s: %v", tc.s, tc.c.Name, got)

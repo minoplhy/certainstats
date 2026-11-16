@@ -211,10 +211,16 @@ func NewRenderer(protobuf bool) (*TemplateRenderer, error) {
 		"public_dashboard.html",
 		"alerts_list.html",
 		"settings.html",
-		"crowdsec.html",
-		"knot.html",
 		"collectors.html",
 	}
+	// Each collector type's page is collector_types/<name>.html, found rather
+	// than listed, so adding a type needs no change here.
+	_ = fs.WalkDir(tmplFS, "collector_types", func(path string, d fs.DirEntry, err error) error {
+		if err == nil && !d.IsDir() && strings.HasSuffix(path, ".html") {
+			pages = append(pages, path)
+		}
+		return nil
+	})
 
 	var partialFiles []string
 	_ = fs.WalkDir(tmplFS, "partials", func(path string, d fs.DirEntry, err error) error {

@@ -19,16 +19,6 @@ import (
 // switched off never sets off a round of notifications.
 const reportFresh = 5 * time.Minute
 
-// Rules is the part of the main database that holds CrowdSec alert rules and
-// their incidents, which are ordinary alert rules and incident history.
-type Rules interface {
-	CrowdSecRules(ctx context.Context) ([]store.Alert, error)
-	CrowdSecOpenIncidents(ctx context.Context, userID string) ([]store.CrowdSecIncident, error)
-	CrowdSecFire(ctx context.Context, rule store.Alert, collectorID, subjectID string, snap alert.CrowdSecSnapshot, value float64) (string, error)
-	CrowdSecResolve(ctx context.Context, historyID string) (string, error)
-	CrowdSecClose(ctx context.Context, historyID string) error
-}
-
 // health stores a cs_health report. Only a host that set CROWDSEC_HEALTH=true sends one.
 func (t *Type) health(ctx context.Context, c *collector.Conn, m wire.Health) error {
 	if len(m.Components) > wire.MaxComponents {
@@ -66,44 +56,24 @@ func (t *Type) Tick(ctx context.Context) {
 	}
 }
 
-func (t *Type) deliver(eventID string) {
-	if eventID != "" && t.Deliver != nil {
-		t.Deliver(eventID)
-	}
-}
-
-// openKey identifies an incident: one rule on one machine or bouncer.
-type openKey struct{ alertID, subjectID string }
-
 // Evaluate refreshes every judged collector's findings, then opens and resolves
-// rule incidents. An open incident is closed quietly when nothing keeps it:
-// its rule is gone, disabled or no longer covers the component, the component
-// was muted or removed, or its collector was removed. Incidents of a collector
-// that cannot be judged right now are left as they are.
+// rule incidents through a collector.Round. An open incident is closed quietly
+// when nothing keeps it: its rule is gone, disabled or no longer covers the
+// component, the component was muted or removed, or its collector was removed.
+// Incidents of a collector that cannot be judged right now are left as they are.
 func (t *Type) Evaluate(ctx context.Context, now int64) error {
 	list, err := t.Store.reportedHealth(ctx)
 	if err != nil {
 		return err
 	}
-	var rules []store.Alert
-	open := map[openKey]store.CrowdSecIncident{}
+	var rules collector.Rules
 	if t.Rules != nil {
-		if rules, err = t.Rules.CrowdSecRules(ctx); err != nil {
-			return err
-		}
-		incidents, err := t.Rules.CrowdSecOpenIncidents(ctx, "")
-		if err != nil {
-			return err
-		}
-		for _, i := range incidents {
-			open[openKey{i.AlertID, i.SubjectID}] = i
-		}
+		rules = t.Rules
 	}
-	ruleByID := map[string]bool{}
-	for _, r := range rules {
-		ruleByID[r.AlertID] = true
+	round, err := collector.StartRound(ctx, rules, wire.TypeName, t.Deliver)
+	if err != nil {
+		return err
 	}
-	kept := map[openKey]bool{}
 	for _, h := range list {
 		col, err := t.Collectors.Store.CollectorGet(ctx, h.CollectorID, h.UserID)
 		if errors.Is(err, sql.ErrNoRows) {
@@ -117,43 +87,28 @@ func (t *Type) Evaluate(ctx context.Context, now int64) error {
 			return err
 		}
 		if !t.judged(h, now) {
-			for k, i := range open {
-				if i.CollectorID == h.CollectorID && ruleByID[i.AlertID] {
-					kept[k] = true
-				}
-			}
+			round.Hold(h.CollectorID)
 			continue
 		}
-		if err := t.evaluateCollector(ctx, h, col, rules, open, kept, now); err != nil {
+		if err := t.evaluateCollector(ctx, h, col, round, now); err != nil {
 			return err
 		}
 	}
-	for k, i := range open {
-		if kept[k] {
-			continue
-		}
-		if err := t.Rules.CrowdSecClose(ctx, i.HistoryID); err != nil {
-			return err
-		}
-	}
-	return nil
+	return round.Finish(ctx)
 }
 
-func (t *Type) evaluateCollector(ctx context.Context, h *CollectorHealth, col *store.Collector, rules []store.Alert,
-	open map[openKey]store.CrowdSecIncident, kept map[openKey]bool, now int64) error {
+func (t *Type) evaluateCollector(ctx context.Context, h *CollectorHealth, col *store.Collector, round *collector.Round, now int64) error {
 	comps, err := t.Store.collectorComponents(ctx, h.CollectorID)
 	if err != nil {
 		return err
 	}
+	rules := round.RulesOf(h.UserID)
 	ec := evalContext{Active: h.Active, Parts: h.partSet(), Self: readState(col).Machine, Groups: groupBouncers(comps), Now: now}
 	for _, c := range comps {
 		before := jsonText(c.Findings) + jsonText(c.Progress)
 		c.evaluate(ec)
 		for _, rule := range rules {
-			if rule.UserID != h.UserID {
-				continue
-			}
-			if err := t.evaluateRule(ctx, rule, c, col.Name, ec, open, kept); err != nil {
+			if err := t.evaluateRule(ctx, rule, c, col.Name, ec, round); err != nil {
 				return err
 			}
 		}
@@ -166,48 +121,23 @@ func (t *Type) evaluateCollector(ctx context.Context, h *CollectorHealth, col *s
 	return nil
 }
 
-func (t *Type) evaluateRule(ctx context.Context, rule store.Alert, c *Component, collectorName string, ec evalContext,
-	open map[openKey]store.CrowdSecIncident, kept map[openKey]bool) error {
+func (t *Type) evaluateRule(ctx context.Context, rule store.Alert, c *Component, collectorName string, ec evalContext, round *collector.Round) error {
 	check := checkForTrigger(rule.Trigger.Type)
 	if check == nil || check.Kind != c.Kind {
 		return nil
 	}
 	covered := false
-	for _, s := range rule.CrowdSec {
+	for _, s := range rule.Subjects {
 		covered = covered || c.matches(s)
 	}
 	if !covered {
 		return nil
 	}
-	k := openKey{rule.AlertID, c.key()}
-	incident, isOpen := open[k]
 	r := c.run(check, check.ruleValues(rule.Trigger.Threshold), ec, "rule:"+rule.AlertID)
-	switch {
-	case !r.Judged:
-		// Nothing to go on (never seen, metrics missing): an open incident stays,
-		// unless the component was muted, which ends it.
-		if isOpen && !c.skipped(ec) {
-			kept[k] = true
-		}
-	case r.Bad && isOpen:
-		kept[k] = true
-	case r.Bad:
-		snap := alert.CrowdSecSnapshot{Collector: collectorName, Kind: c.Kind, Name: c.Name, Label: check.Label, Detail: r.Detail, Unit: check.Unit}
-		eventID, err := t.Rules.CrowdSecFire(ctx, rule, c.CollectorID, c.key(), snap, r.Value)
-		if err != nil {
-			return err
-		}
-		kept[k] = true
-		t.deliver(eventID)
-	case isOpen:
-		eventID, err := t.Rules.CrowdSecResolve(ctx, incident.HistoryID)
-		if err != nil {
-			return err
-		}
-		kept[k] = true // resolved, not to be closed as well
-		t.deliver(eventID)
-	default:
-		// Healthy with nothing open; also not "still bad but waiting for more reports".
-	}
-	return nil
+	// Nothing to go on (never seen, metrics missing): an open incident stays,
+	// unless the component was muted, which ends it.
+	return round.Judge(ctx, rule, c.CollectorID, c.key(), collector.Verdict{
+		Judged: r.Judged, Bad: r.Bad, KeepUnjudged: !c.skipped(ec), Value: r.Value,
+		Snapshot: alert.SubjectSnapshot{Collector: collectorName, Kind: c.Kind, Name: c.Name, Label: check.Label, Detail: r.Detail, Unit: check.Unit},
+	})
 }

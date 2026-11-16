@@ -1,0 +1,46 @@
+{{define "alerts_subject_triggers"}}
+{{range .SubjectSources}}
+{{if .Options}}
+<optgroup label="{{.Label}}">
+  {{$src := .Name}}
+  {{range .Triggers}}
+  <option value="{{.Type}}" data-subject-source="{{$src}}" data-kind="{{.Kind}}" data-unit="{{.Unit}}" data-default="{{.Default}}" data-min="{{.Min}}" data-max="{{.Max}}" data-hint="{{.Hint}}">{{.Label}}</option>
+  {{end}}
+</optgroup>
+{{end}}
+{{end}}
+{{end}}
+
+{{define "alerts_subjects"}}
+<div class="fieldset-head">
+  <h3 class="fieldset-title">Watch</h3>
+</div>
+<p class="form-hint" data-subject-hint></p>
+{{range .SubjectSources}}
+{{if not .Options}}<p class="form-hint" data-subject-empty="{{.Name}}" hidden>{{.Empty}}</p>{{end}}
+{{end}}
+<div class="subjects">
+  {{range .SubjectSources}}
+  {{range $o := .Options}}
+  <div class="subjects-collector" data-source="{{$o.Source}}" hidden>
+    <label class="subject subject-all">
+      <input type="checkbox" name="subjects" value="{{$o.AllKey}}" disabled>
+      <span><strong>{{$o.AllLabel}}</strong> <span class="muted">including ones added later</span></span>
+    </label>
+    {{range $o.Sections}}
+    {{$kind := .Kind}}
+    <div class="subjects-section" data-kind="{{$kind}}">
+      <p class="subjects-kind">{{.Label}}</p>
+      {{range .Entries}}
+      <label class="subject{{if .Child}} subject-entry{{end}}" data-kind="{{$kind}}">
+        <input type="checkbox" name="subjects" value="{{$o.Key .}}" disabled>
+        <span><span class="mono">{{.Name}}</span>{{if .Note}} <span class="muted">{{.Note}}</span>{{end}}</span>
+      </label>
+      {{end}}
+    </div>
+    {{end}}
+  </div>
+  {{end}}
+  {{end}}
+</div>
+{{end}}

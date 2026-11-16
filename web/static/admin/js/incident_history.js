@@ -1,7 +1,6 @@
 (function () {
   'use strict';
-  const LABELS = { network_loss: 'Network monitor loss', agent_down: 'Node offline', cpu_usage: 'CPU usage', cpu_iowait: 'CPU I/O wait', cpu_steal: 'CPU steal', ram_usage: 'RAM usage', swap_usage: 'Swap usage', disk_usage: 'Disk usage', net_rx: 'Network in', net_tx: 'Network out', disk_read: 'Disk read', disk_write: 'Disk write',
-    crowdsec_heartbeat: 'CrowdSec machine heartbeat', crowdsec_pull: 'CrowdSec bouncer pull', crowdsec_held: 'CrowdSec bouncer holds decisions', crowdsec_siblings: 'CrowdSec bouncer behind its siblings' };
+  const LABELS = { network_loss: 'Network monitor loss', agent_down: 'Node offline', cpu_usage: 'CPU usage', cpu_iowait: 'CPU I/O wait', cpu_steal: 'CPU steal', ram_usage: 'RAM usage', swap_usage: 'Swap usage', disk_usage: 'Disk usage', net_rx: 'Network in', net_tx: 'Network out', disk_read: 'Disk read', disk_write: 'Disk write' };
   const STATUS = { queued: 'Queued', pending: 'Sending', success: 'Delivered', failed: 'Failed', unknown: 'Outcome unknown', skipped: 'Skipped' };
   function el(tag, cls, text) { const node = document.createElement(tag); if (cls) node.className = cls; if (text != null) node.textContent = text; return node; }
   function date(value) { const t = new Date(value); return Number.isFinite(t.getTime()) ? t.toLocaleString() : 'Unknown time'; }
@@ -14,12 +13,22 @@
     const hours = Math.floor(minutes / 60); if (hours < 24) return hours + 'h ' + minutes % 60 + 'm';
     return Math.floor(hours / 24) + 'd ' + hours % 24 + 'h';
   }
-  function metric(type, value) {
+  // A collector incident (a CrowdSec bouncer, a Knot DNS zone) keeps what fired in
+  // its subject snapshot: label, unit and kind come from there, not from a table.
+  function collectorSubject(h) {
+    return !!(h && h.subject && h.subject_kind && h.subject_kind !== 'agent' && h.subject_kind !== 'network_monitor');
+  }
+  function conditionLabel(h, type) {
+    if (collectorSubject(h) && h.subject.label) return (h.subject.source_label || h.subject_kind) + ': ' + h.subject.label;
+    return LABELS[type] || type;
+  }
+  function metric(type, value, h) {
     if (type === 'agent_down') return 'Offline';
     if (!type || !Number.isFinite(value)) return 'Unknown';
-    if (type === 'crowdsec_heartbeat' || type === 'crowdsec_pull') return value.toLocaleString(undefined, { maximumFractionDigits: 0 }) + ' min';
+    if (collectorSubject(h)) return value.toLocaleString(undefined, { maximumFractionDigits: 1 }) + (h.subject.unit ? ' ' + h.subject.unit : '');
     return value.toLocaleString(undefined, { maximumFractionDigits: 1 }) + (['net_rx', 'net_tx', 'disk_read', 'disk_write'].includes(type) ? ' KB/s' : '%');
   }
+  function capital(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : ''; }
   function badge(status, text) { return el('span', 'incident-badge incident-' + status, text || STATUS[status] || 'Not recorded'); }
 
   function mount(root, options) {
@@ -103,7 +112,7 @@
       rows.forEach(h => {
         const details = el('details', 'incident-record'); details.dataset.incidentId = h.history_id;
         const summary = el('summary', 'incident-row');
-        const identity = el('div', 'incident-identity'); identity.append(el('strong', '', h.alert_nickname || LABELS[h.trigger && h.trigger.type] || 'Rule'), el('span', 'muted', h.agent_nickname || h.agent_id));
+        const identity = el('div', 'incident-identity'); identity.append(el('strong', '', h.alert_nickname || conditionLabel(h, h.trigger && h.trigger.type) || 'Rule'), el('span', 'muted', h.agent_nickname || h.agent_id));
         const state = h.closed_at ? 'closed' : h.resolved_at ? 'resolved' : 'firing';
         const times = el('div', 'incident-times'); times.append(el('span', '', date(h.triggered_at)), el('span', 'muted', h.closed_at ? 'Closed ' + date(h.closed_at) : h.resolved_at ? 'Recovered ' + date(h.resolved_at) : 'Awaiting recovery'));
         const elapsed = el('span', 'incident-duration mono', duration(h.triggered_at, h.closed_at || h.resolved_at)); elapsed.dataset.durationStart = h.triggered_at; elapsed.dataset.durationEnd = h.closed_at || h.resolved_at || ''; elapsed.title = h.trigger && h.trigger.type === 'agent_down' ? 'Downtime' : 'Duration';
@@ -114,9 +123,9 @@
         const facts = el('dl', 'incident-facts');
         function fact(label, value) { const pair = el('div'); const detail = el('dd', '', value); pair.append(el('dt', 'muted', label), detail); facts.append(pair); return detail; }
         const trigger = h.trigger || {};
-        if (h.subject_kind === 'crowdsec' && h.subject) {
-          // A CrowdSec machine or bouncer, kept as it was when the incident started.
-          fact(h.subject.kind === 'machine' ? 'Machine' : 'Bouncer', h.subject.name);
+        if (collectorSubject(h)) {
+          // What a collector rule watched, kept as it was when the incident started.
+          fact(capital(h.subject.kind) || 'Subject', h.subject.name);
           fact('Collector', h.subject.collector);
           if (h.subject.detail) fact('What fired', h.subject.detail);
         }
@@ -125,8 +134,8 @@
           fact('Protocol', h.monitor.protocol);
           if (h.monitor.dns_server) fact('DNS server', h.monitor.dns_server);
         }
-        fact(h.legacy ? 'Available condition at migration' : 'Condition at start', trigger.type === 'agent_down' ? 'Node offline' : (LABELS[trigger.type] || trigger.type || 'Unknown condition') + (trigger.type ? ' ' + (trigger.operator || '') + ' ' + metric(trigger.type, trigger.threshold) : ''));
-        fact('Breach value', metric(trigger.type, h.trigger_value));
+        fact(h.legacy ? 'Available condition at migration' : 'Condition at start', trigger.type === 'agent_down' ? 'Node offline' : (conditionLabel(h, trigger.type) || 'Unknown condition') + (trigger.type ? ' ' + (trigger.operator || '') + ' ' + metric(trigger.type, trigger.threshold, h) : ''));
+        fact('Breach value', metric(trigger.type, h.trigger_value, h));
         const liveDuration = fact(trigger.type === 'agent_down' ? 'Downtime' : 'Duration', duration(h.triggered_at, h.closed_at || h.resolved_at)); liveDuration.dataset.durationStart = h.triggered_at; liveDuration.dataset.durationEnd = h.closed_at || h.resolved_at || '';
         fact('Started', date(h.triggered_at)).title = Intl.DateTimeFormat().resolvedOptions().timeZone;
         if (h.resolved_at) fact('Recovered', date(h.resolved_at));

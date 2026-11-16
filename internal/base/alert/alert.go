@@ -48,18 +48,20 @@ type Alert struct {
 	Trigger    Trigger      `json:"trigger"`
 	Action     AlertAction  `json:"action"`
 	Agents     []AgentState `json:"agents"`
-	// CrowdSec lists the machines and bouncers a CrowdSec rule watches.
-	CrowdSec []CrowdSecSubject `json:"crowdsec,omitempty"`
+	// Subjects lists what a collector rule watches.
+	Subjects []Subject `json:"subjects,omitempty"`
 }
 
 type AlertPayload struct {
-	MonitorIDs []string          `json:"monitor_ids"`
-	CrowdSec   []CrowdSecSubject `json:"crowdsec,omitempty"`
-	Nickname   string            `json:"nickname"`
-	Enabled    bool              `json:"enabled"`
-	Trigger    Trigger           `json:"trigger"`
-	Action     AlertAction       `json:"action"`
-	Agents     []string          `json:"agents"` // List of AgentIDs
+	MonitorIDs []string  `json:"monitor_ids"`
+	Subjects   []Subject `json:"subjects,omitempty"`
+	// CrowdSec is the older form of Subjects for CrowdSec rules; AllSubjects merges it.
+	CrowdSec []LegacySubject `json:"crowdsec,omitempty"`
+	Nickname string          `json:"nickname"`
+	Enabled  bool            `json:"enabled"`
+	Trigger  Trigger         `json:"trigger"`
+	Action   AlertAction     `json:"action"`
+	Agents   []string        `json:"agents"` // List of AgentIDs
 }
 
 type Trigger struct {
@@ -119,28 +121,48 @@ type AlertHistory struct {
 	MonitorID           string    `json:"monitor_id,omitempty"`
 	Monitor             nm.Config `json:"monitor,omitempty"`
 	MonitoringAvailable bool      `json:"-"`
-	// SubjectID and Subject are set for CrowdSec incidents: the machine or
-	// bouncer (collector/kind/name) and what fired, in words.
-	SubjectID        string           `json:"subject_id,omitempty"`
-	Subject          CrowdSecSnapshot `json:"subject,omitempty"`
-	ClosedAt         *time.Time       `json:"closed_at,omitempty"`
-	CloseReason      string           `json:"close_reason,omitempty"`
-	Legacy           bool             `json:"legacy"`
-	RetryAvailable   bool             `json:"retry_available"`
-	FiringDelivery   string           `json:"firing_delivery,omitempty"`
-	RecoveryDelivery string           `json:"recovery_delivery,omitempty"`
-	HistoryID        string           `json:"history_id"`
-	AlertID          string           `json:"alert_id"`
-	UserID           string           `json:"-"` // Denormalized for ultra-fast query
-	AgentID          string           `json:"agent_id"`
-	AgentNickname    string           `json:"agent_nickname"`
-	AlertNickname    string           `json:"alert_nickname"`
-	TriggeredAt      time.Time        `json:"triggered_at"`
-	ResolvedAt       *time.Time       `json:"resolved_at,omitempty"`
-	TriggerValue     float64          `json:"trigger_value"`
-	NotifiedStatus   string           `json:"notified_status"`
-	Trigger          Trigger          `json:"trigger"`
-	TargetID         string           `json:"target_id,omitempty"`
-	TargetName       string           `json:"target_name,omitempty"`
-	ErrorMessage     string           `json:"error_message,omitempty"`
+	// SubjectID and Subject are set for collector incidents: the subject
+	// (collector/kind/name) and what fired, in words.
+	SubjectID        string          `json:"subject_id,omitempty"`
+	Subject          SubjectSnapshot `json:"subject,omitempty"`
+	ClosedAt         *time.Time      `json:"closed_at,omitempty"`
+	CloseReason      string          `json:"close_reason,omitempty"`
+	Legacy           bool            `json:"legacy"`
+	RetryAvailable   bool            `json:"retry_available"`
+	FiringDelivery   string          `json:"firing_delivery,omitempty"`
+	RecoveryDelivery string          `json:"recovery_delivery,omitempty"`
+	HistoryID        string          `json:"history_id"`
+	AlertID          string          `json:"alert_id"`
+	UserID           string          `json:"-"` // Denormalized for ultra-fast query
+	AgentID          string          `json:"agent_id"`
+	AgentNickname    string          `json:"agent_nickname"`
+	AlertNickname    string          `json:"alert_nickname"`
+	TriggeredAt      time.Time       `json:"triggered_at"`
+	ResolvedAt       *time.Time      `json:"resolved_at,omitempty"`
+	TriggerValue     float64         `json:"trigger_value"`
+	NotifiedStatus   string          `json:"notified_status"`
+	Trigger          Trigger         `json:"trigger"`
+	TargetID         string          `json:"target_id,omitempty"`
+	TargetName       string          `json:"target_name,omitempty"`
+	ErrorMessage     string          `json:"error_message,omitempty"`
+}
+
+// LegacySubject is a CrowdSec rule subject as the API took it before subjects
+// carried their source.
+type LegacySubject struct {
+	CollectorID string `json:"collector_id"`
+	Scope       string `json:"scope"`
+	Name        string `json:"name,omitempty"`
+}
+
+// LegacySource is the source of LegacySubject entries.
+const LegacySource = "crowdsec"
+
+// AllSubjects returns Subjects followed by the legacy CrowdSec entries.
+func (p AlertPayload) AllSubjects() []Subject {
+	out := append([]Subject{}, p.Subjects...)
+	for _, l := range p.CrowdSec {
+		out = append(out, Subject{Source: LegacySource, CollectorID: l.CollectorID, Scope: l.Scope, Name: l.Name})
+	}
+	return out
 }

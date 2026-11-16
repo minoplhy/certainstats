@@ -2,7 +2,7 @@ package web
 
 import (
 	"certainstats/internal/auth"
-	"certainstats/internal/collector/type/crowdsec"
+	"certainstats/internal/base/alert"
 	ctx "certainstats/internal/context"
 	"certainstats/internal/metrics"
 	"certainstats/internal/security"
@@ -24,13 +24,13 @@ type WebHandler struct {
 	StaticPath string
 	// Agents holds live agent connections, closed when credentials are revoked.
 	Agents *ws.Manager
-	// CrowdSec lists the machines and bouncers alert rules can watch; nil hides them.
-	CrowdSec CrowdSecSubjects
+	// AlertSubjects lists what collector alert rules can watch (collector.Service); nil hides them.
+	AlertSubjects AlertSubjectLister
 }
 
-// CrowdSecSubjects is the CrowdSec type's list of what alert rules can watch.
-type CrowdSecSubjects interface {
-	Subjects(c stdctx.Context, userID string) ([]crowdsec.CollectorSubjects, error)
+// AlertSubjectLister lists, per collector of the owner, what collector alert rules can watch.
+type AlertSubjectLister interface {
+	AlertSubjects(c stdctx.Context, userID string) ([]alert.SubjectOptions, error)
 }
 
 // Helper to extract user ID from context
