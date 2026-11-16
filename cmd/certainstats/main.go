@@ -188,6 +188,8 @@ func main() {
 
 	routine := &routine.Routine{
 		JournalRetention: journalKeep,
+		MemoryLog:        os.Getenv("MEMORY_LOG") == "true",
+		MemoryStats:      func() map[string]int { return map[string]int{"io_states": agent.IOStateCount()} },
 		Maintenance:      []func(context.Context){crowdsecType.Maintain, knotType.Maintain},
 		Tick:             []func(context.Context){crowdsecType.Tick, knotType.Tick},
 		Store:            db,
@@ -552,6 +554,13 @@ func main() {
 
 	log.Printf("Starting server on %s", displayAddr)
 	server := &http.Server{Addr: cfg.Host + ":" + cfg.Port, Handler: masterHandler, ReadHeaderTimeout: 10 * time.Second, ReadTimeout: 30 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 1 << 20}
+	pprofServer, err := startPprof(strings.TrimSpace(os.Getenv("PPROF_ADDR")))
+	if err != nil {
+		log.Fatalf("config: %v", err)
+	}
+	if pprofServer != nil {
+		log.Printf("pprof listening on %s (PPROF_ADDR)", pprofServer.Addr)
+	}
 	stopped := make(chan os.Signal, 1)
 	signal.Notify(stopped, os.Interrupt, syscall.SIGTERM)
 	defer signal.Stop(stopped)
@@ -570,6 +579,9 @@ func main() {
 	defer shutdownCancel()
 	if err := server.Shutdown(shutdownCtx); err != nil {
 		log.Printf("HTTP shutdown: %v", err)
+	}
+	if pprofServer != nil {
+		pprofServer.Close()
 	}
 	uiBroadcaster.CloseAll()
 	wsManager.CloseAll()

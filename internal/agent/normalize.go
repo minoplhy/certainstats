@@ -31,6 +31,21 @@ type agentIOState struct {
 
 var ioStates sync.Map
 
+// ForgetAgent drops the per-agent traffic state of a revoked agent. It holds
+// the agent's ingestion lock so an in-flight rollback cannot restore it.
+func ForgetAgent(agentID string) {
+	unlock := lockAgent(agentID)
+	defer unlock()
+	ioStates.Delete(agentID)
+}
+
+// IOStateCount reports how many agents have traffic state in memory.
+func IOStateCount() int {
+	n := 0
+	ioStates.Range(func(any, any) bool { n++; return true })
+	return n
+}
+
 func configuredCadence() float64 {
 	for _, key := range []string{"UPDATE_EVERY", "BESZEL_EVERY"} {
 		raw := os.Getenv(key)

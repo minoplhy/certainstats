@@ -19,6 +19,8 @@ Choose one way to place the panel and public dashboards; mixing them stops start
 | `ALLOWED_ORIGINS` | *none* | Comma-separated list of allowed origins. |
 | `WS_PROTOBUF` | `false` | Experimental browser Protobuf WebSockets. Only the exact value `true` enables it; all other values use JSON. Read once at startup; restart the server and reload open tabs after changing it. Compose forwards `.env` values; the application reads process environment only. |
 | `DEBUG` | `false` | Enable verbose trace logging. |
+| `MEMORY_LOG` | `false` | Opt-in. Only the exact value `true` adds an hourly `[Maintenance] memory` log line with heap, GC and goroutine figures plus realtime-cache and per-agent state counts. Off by default. |
+| `PPROF_ADDR` | *none* (off) | Opt-in Go profiling listener, e.g. `127.0.0.1:6060`. Must be a loopback host (`127.0.0.1`, `::1` or `localhost`); anything else stops startup. Served on its own port, separate from the app. Unset opens no port. |
 | `UPDATE_EVERY` | `60` | Metric sweep frequency (seconds). |
 | `BESZEL_EVERY` | `60` | Beszel-agent metrics sweep frequency (syncs to `UPDATE_EVERY` by default). |
 

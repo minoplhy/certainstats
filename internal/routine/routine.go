@@ -185,6 +185,7 @@ func (e *Routine) runCleanup(ctx context.Context) {
 		log.Printf("[Maintenance] network_samples=%v", e.Cache.NetworkStatistics())
 		log.Debugln("[Timer] Expired metrics cache windows evicted")
 	}
+	e.maybeLogMemory()
 }
 
 func (e *Routine) EvaluateAll(ctx context.Context) {

@@ -25,6 +25,11 @@ type Routine struct {
 	// JournalRetention is how long completed ingestion batches are kept to
 	// detect resent batches; zero keeps them forever.
 	JournalRetention time.Duration
+	// MemoryLog adds an hourly memory line to the maintenance log (MEMORY_LOG=true).
+	MemoryLog bool
+	// MemoryStats supplies extra counts for the memory line, from packages
+	// routine does not import.
+	MemoryStats func() map[string]int
 	// Deliver sends a queued alert attempt; nil means alertdelivery.Go.
 	Deliver func(eventID string)
 

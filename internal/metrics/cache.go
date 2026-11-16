@@ -314,6 +314,13 @@ func (c *RealtimeCache) Delete(agentID string) {
 	delete(c.agents, agentID)
 }
 
+// Len reports how many agent snapshots are held.
+func (c *RealtimeCache) Len() int {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return len(c.agents)
+}
+
 // GetAll returns a shallow copy of all agent snapshots.
 func (c *RealtimeCache) GetAll() map[string]*AgentSnapshot {
 	c.mu.RLock()

@@ -45,9 +45,11 @@ func (b *AgentBroadcaster) UnsubscribeUser(userID string, conn *websocket.Conn) 
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
+	// The writer stops even when CloseDash/CloseAll already dropped the set,
+	// or its goroutine and the connection it holds would never be released.
+	b.stopWriter(conn)
 	if clients, exists := b.userClients[userID]; exists {
 		delete(clients, conn)
-		b.stopWriter(conn)
 		if len(clients) == 0 {
 			delete(b.userClients, userID)
 		}
@@ -71,9 +73,11 @@ func (b *AgentBroadcaster) UnsubscribeDash(dashID string, conn *websocket.Conn) 
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
+	// The writer stops even when CloseDash/CloseAll already dropped the set,
+	// or its goroutine and the connection it holds would never be released.
+	b.stopWriter(conn)
 	if clients, exists := b.dashClients[dashID]; exists {
 		delete(clients, conn)
-		b.stopWriter(conn)
 		if len(clients) == 0 {
 			delete(b.dashClients, dashID)
 		}

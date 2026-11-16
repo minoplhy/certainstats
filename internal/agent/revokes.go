@@ -38,6 +38,7 @@ func RevokeAgentHandler(agent store.AgentStore, tdb *tsdb.DB, cache *metrics.Rea
 		if wsManager != nil {
 			wsManager.CloseAgent(agentID)
 		}
+		ForgetAgent(agentID)
 
 		// 0. Evict from in-memory telemetry cache
 		if cache != nil {
