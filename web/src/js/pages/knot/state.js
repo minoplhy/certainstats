@@ -10,6 +10,8 @@ export const state = {
   filterMenu: null,
   // onZoom applies a range brushed on any chart.
   onZoom: null,
+  // onFilter adds a filter from a clicked dnstap row.
+  onFilter: null,
   requests: {},
   loaded: false
 };

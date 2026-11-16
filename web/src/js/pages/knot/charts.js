@@ -3,7 +3,6 @@ import { get, isAbort } from './api.js';
 import { counterParams } from './view.js';
 import { el, formatRate, formatBytes, formatCount } from './format.js';
 
-export const GROUPS = ['protocol', 'rcode', 'qtype', 'operation', 'bytes'];
 const PALETTE = ['--s1', '--s2', '--s3', '--s4'];
 const OTHER = '--s5';
 
@@ -19,7 +18,7 @@ export function seriesFor(lines) {
 }
 
 function legend(group, lines, series) {
-  const box = document.querySelector('[data-kn-legend="' + group + '"]');
+  const box = state.ui.legend;
   if (!box) return;
   box.replaceChildren(...lines.map((l, i) => {
     const item = el('span', 'chart-legend-item');
@@ -32,9 +31,8 @@ function legend(group, lines, series) {
   }));
 }
 
-function message(group, text) {
-  const node = document.querySelector('[data-kn-chart-message="' + group + '"]');
-  if (node) node.textContent = text;
+function message(text) {
+  if (state.ui.chartMessage) state.ui.chartMessage.textContent = text;
 }
 
 // countMax is a y-axis top for whole counts: a multiple of the four grid
@@ -61,29 +59,44 @@ export function drawChart(key, canvasId, series, data, formatter, yMax = null) {
   return state.charts[key];
 }
 
+// shown is the group on the traffic chart. The chart keeps the formatter it
+// was made with, so that formatter reads this to label bytes or rates.
+let shown = 'protocol';
+const trafficFormat = v => shown === 'bytes' ? formatBytes(v) + '/s' : formatRate(v) + '/s';
+
 function draw(group, data) {
+  shown = group;
   const series = seriesFor(data.series);
-  const formatter = group === 'bytes' ? v => formatBytes(v) + '/s' : v => formatRate(v) + '/s';
-  drawChart(group, 'kn-chart-' + group, series, data, formatter);
+  drawChart('traffic', 'kn-chart-traffic', series, data, trafficFormat);
   legend(group, data.series, series);
 }
 
-// loadCharts reads one series group per request, in parallel.
-export async function loadCharts(signal, note) {
-  const v = state.view;
-  await Promise.all(GROUPS.map(async group => {
-    if (note) {
-      draw(group, {series: [], start: Date.now() - 3600000, end: Date.now(), step: 60000});
-      message(group, note);
-      return;
-    }
-    try {
-      const data = await get('series?' + counterParams(v, {group}), signal);
-      draw(group, data);
-      const empty = data.series.every(l => !l.total);
-      message(group, data.collecting ? 'Collecting, first numbers in about a minute.' : empty ? 'No traffic in this range.' : '');
-    } catch (e) {
-      if (!isAbort(e)) message(group, 'Could not load: ' + e.message);
-    }
-  }));
+// syncTrafficTabs marks the traffic tab of the view's group as selected.
+export function syncTrafficTabs() {
+  for (const tab of state.ui.trafficTabs?.querySelectorAll('[data-kn-traffic-tab]') || []) {
+    const on = tab.dataset.knTrafficTab === state.view.chart;
+    tab.setAttribute('aria-selected', String(on));
+    tab.tabIndex = on ? 0 : -1;
+  }
+}
+
+// loadTraffic reads the one counter group the traffic chart shows. A reply
+// for a group the reader has since switched away from is dropped.
+export async function loadTraffic(signal, note) {
+  const group = state.view.chart;
+  syncTrafficTabs();
+  if (note) {
+    draw(group, {series: [], start: Date.now() - 3600000, end: Date.now(), step: 60000});
+    message(note);
+    return;
+  }
+  try {
+    const data = await get('series?' + counterParams(state.view, {group}), signal);
+    if (group !== state.view.chart) return;
+    draw(group, data);
+    const empty = data.series.every(l => !l.total);
+    message(data.collecting ? 'Collecting, first numbers in about a minute.' : empty ? 'No traffic in this range.' : '');
+  } catch (e) {
+    if (!isAbort(e)) message('Could not load: ' + e.message);
+  }
 }

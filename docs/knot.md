@@ -266,12 +266,17 @@ means every server of the owner.
   (zone, name, query type, response code; "is" only), kept in the URL as `hours` or `start`/`end`. Older links with
   `range=7d` open the same window. Brushing any chart zooms the whole page to
   that range.
-- Checks, then charts from counters: queries per second by protocol, response
-  codes, query types, operations and traffic.
-- With dnstap: the matching queries over time, and top names, query types,
-  response codes, zones, response sizes and, when allowed, client networks.
-  Clicking a row filters by it.
-- A dense list of zones with roles, serial, soonest expiry and status. Clicking a
+- Checks, then **Traffic**: one chart from counters with a switch between
+  queries per second by protocol, response codes, query types, operations, and
+  bytes per second. Only the chosen group is read; it is kept in the URL as
+  `chart` when it is not protocol.
+- With dnstap, **Queries**: the matching queries over time beside one ranked
+  list, with tabs for names, query types, response codes, zones, response sizes
+  and, when a server counts them, client networks. One request answers both the
+  chart and the list; the tab is kept in the URL as `top` when it is not names.
+  Clicking a row filters by it; a client network, which has no filter, is
+  copied instead.
+- **Zones**: a dense list with roles, serial, soonest expiry and status. Clicking a
   zone opens it on every server.
 
 ## Privacy

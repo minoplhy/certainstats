@@ -79,7 +79,7 @@ func TestKnotPageRenders(t *testing.T) {
 	for _, want := range []string{
 		`href="/panel/collectors" class="nav-link" aria-current="page"`, `href="/panel/collectors">&larr; Collectors</a>`,
 		`data-kn-page`, `href="/panel/collectors?add=knot"`, `data-kn-zone-list`,
-		`id="kn-chart-protocol"`, `id="kn-chart-bytes"`, `id="kn-chart-dnstap"`,
+		`id="kn-chart-traffic"`, `id="kn-chart-dnstap"`, `data-kn-traffic-tab="bytes"`,
 		`data-module="CertainStatsKnot">{}</script>`, `admin/js/knot`,
 	} {
 		if !strings.Contains(html, want) {
@@ -90,12 +90,19 @@ func TestKnotPageRenders(t *testing.T) {
 	for _, role := range []string{"main", "empty", "refresh", "headline", "server-count", "stat-requests", "stat-qps", "stat-nxdomain",
 		"stat-servfail", "stat-transfers", "stat-note", "server", "time-picker",
 		"source-note", "checks", "check-list", "zone-view", "zone-title", "zone-note", "zone-rows", "zone-close", "dnstap",
-		"dnstap-note", "dnstap-total", "dnstap-message", "breakdowns", "zone-count", "zone-search", "zone-list", "zones-message"} {
+		"dnstap-note", "dnstap-total", "dnstap-message", "traffic-tabs", "legend", "chart-message",
+		"top-tabs", "top-list", "top-status", "top-foot", "zone-count", "zone-search", "zone-list", "zones-message"} {
 		if n := len(regexp.MustCompile(`data-kn-`+role+`[\s>=]`).FindAllString(html, -1)); n != 1 {
 			t.Errorf("data-kn-%s appears %d times", role, n)
 		}
 	}
 	assertFilterMenu(t, html)
+	// One traffic chart with a switcher, and one dnstap list: the old per-group charts and cards are gone.
+	for _, gone := range []string{`id="kn-chart-protocol"`, `id="kn-chart-rcode"`, `data-kn-breakdowns`, `kn-chart-grid`} {
+		if strings.Contains(html, gone) {
+			t.Errorf("knot page still has %q", gone)
+		}
+	}
 	if strings.Contains(html, "<script>") {
 		t.Error("the Knot page must not carry inline scripts")
 	}

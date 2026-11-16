@@ -39,8 +39,16 @@ function helpers() {
 test('view round-trips through the URL with the shared range keys and one value per filter', () => {
   const kn = helpers();
   const v = kn.parseView('?server=col_a&hours=168&zone=Example.COM&qname=www.example.com.&qtype=aaaa&rcode=nxdomain');
-  assert.deepEqual({...v}, {server: 'col_a', hours: 168, start: null, end: null, zone: 'example.com.', qname: 'www.example.com.', qtype: 'AAAA', rcode: 'NXDOMAIN'});
+  assert.deepEqual({...v}, {server: 'col_a', hours: 168, start: null, end: null, zone: 'example.com.', qname: 'www.example.com.', qtype: 'AAAA', rcode: 'NXDOMAIN',
+    chart: 'protocol', top: 'qname'});
   assert.deepEqual({...kn.parseView('?' + kn.toQuery(v))}, {...v});
+  // What the traffic chart and dnstap list show is kept in the URL, only when not the default, and never sent to the API.
+  const shown = kn.parseView('?chart=bytes&top=client');
+  assert.equal(shown.chart + ' ' + shown.top, 'bytes client');
+  assert.equal(kn.toQuery(shown).toString(), 'hours=24&chart=bytes&top=client');
+  assert.equal(kn.apiParams(shown, {dim: 'client'}), 'hours=24&dim=client');
+  const bad = kn.parseView('?chart=nope&top=nope');
+  assert.equal(bad.chart + ' ' + bad.top, 'protocol qname');
   // Hours outside the picker's quick ranges fall back; old range= links still open the same window.
   assert.equal(kn.parseView('?hours=5').hours, 24);
   assert.equal(kn.parseView('', 720).hours, 720);
@@ -132,7 +140,7 @@ function page(url, fixtures = {}) {
     else if (path === 'series') body = {group: u.searchParams.get('group'), start: now - 86400000, end: now, step: 600000, collecting: false,
       series: [{name: 'udp4', total: 400000, points: [[now - 600000, 5]]}, {name: 'other', total: 1, points: [[now - 600000, 0]]}]};
     else if (path === 'queries') body = {start: now - 86400000, end: now, step: 600000, breakdown: {dim: u.searchParams.get('dim'), total: 90, exact: true,
-      rows: [{key: u.searchParams.get('dim') === 'qname' ? 'www.example.com.' : 'AAAA', count: 60}], other: 30, approximate: true, series: [[now - 600000, 90]]}};
+      rows: [{key: {qname: 'www.example.com.', client: '203.0.113.0/24'}[u.searchParams.get('dim')] || 'AAAA', count: 60}], other: 30, approximate: true, series: [[now - 600000, 90]]}};
     else if (path === 'zones') body = {zones: [{zone: 'example.com.', primary_serial: 7, drift: true, expire_at: now + 3600000,
       servers: [{collector_id: 'col_a', server: 'ns1', role: 'primary', serial: 7, has_serial: true}, {collector_id: 'col_b', server: 'ns2', role: 'secondary', serial: 6, has_serial: true, behind: true, expire_at: now + 3600000}]}]};
     else if (path.startsWith('zones/')) body = {zone_stats: false, zone: {zone: 'example.com.', primary_serial: 7, drift: true,
@@ -167,19 +175,82 @@ test('the page loads counters, dnstap and zones, one resource per request', asyn
   assert.equal(p.q('[data-kn-stat-nxdomain]').textContent, '2.6%');
   assert.equal(p.q('[data-kn-server-count]').textContent, '2 servers, 2 connected');
   assert.deepEqual(p.qa('[data-kn-server] option').map(o => o.textContent), ['All servers', 'ns1', 'ns2']);
-  // Five counter groups, six dnstap breakdowns minus clients (off), each its own GET with single values.
-  const groups = p.requests.filter(u => u.pathname.endsWith('/series')).map(u => u.searchParams.get('group')).sort();
-  assert.deepEqual(groups, ['bytes', 'operation', 'protocol', 'qtype', 'rcode']);
-  const dims = p.requests.filter(u => u.pathname.endsWith('/queries')).map(u => u.searchParams.get('dim')).sort();
-  assert.deepEqual(dims, ['qname', 'qtype', 'rcode', 'size', 'zone']);
+  // One counter group for the traffic chart and one dnstap dimension for the list, each its own GET with single values.
+  const groups = p.requests.filter(u => u.pathname.endsWith('/series')).map(u => u.searchParams.get('group'));
+  assert.deepEqual(groups, ['protocol']);
+  const dims = p.requests.filter(u => u.pathname.endsWith('/queries')).map(u => u.searchParams.get('dim'));
+  assert.deepEqual(dims, ['qname']);
   for (const u of p.requests) for (const [, v] of u.searchParams) assert.ok(!v.includes(','), 'comma list in ' + u);
-  assert.ok(p.charts.some(c => c.id === 'kn-chart-protocol'));
-  assert.ok(p.charts.some(c => c.id === 'kn-chart-dnstap'));
+  assert.deepEqual(p.charts.map(c => c.id).sort(), ['kn-chart-dnstap', 'kn-chart-traffic']);
   assert.equal(p.q('[data-kn-dnstap]').hidden, false);
-  assert.match(p.q('[data-kn-breakdowns]').textContent, /lower bounds/);
+  // Clients are off, so the list offers five tabs, Names selected.
+  assert.deepEqual(p.qa('[data-kn-top-tab]').map(t => t.textContent), ['Names', 'Types', 'Codes', 'Zones', 'Sizes']);
+  assert.equal(p.q('[data-kn-top-tab="qname"]').getAttribute('aria-selected'), 'true');
+  assert.equal(p.q('[data-kn-traffic-tab="protocol"]').getAttribute('aria-selected'), 'true');
+  assert.match(p.q('[data-kn-top-list]').textContent, /www\.example\.com/);
+  assert.match(p.q('[data-kn-top-foot]').textContent, /lower bounds/);
   const row = p.q('.kn-zones-row');
   assert.match(row.textContent, /example\.com/);
   assert.match(row.textContent, /1 behind/);
+});
+
+test('the traffic and top tabs each read one resource, without reloading the page', async () => {
+  const p = page('http://x/panel/knot?hours=24');
+  await settle();
+  const before = p.requests.length;
+  p.q('[data-kn-traffic-tab="bytes"]').click();
+  await settle();
+  const fresh = p.requests.slice(before);
+  assert.deepEqual(fresh.map(u => u.pathname.split('/').pop() + ' ' + (u.searchParams.get('group') || '')), ['series bytes']);
+  assert.match(p.w.location.search, /chart=bytes/);
+  assert.equal(p.q('[data-kn-traffic-tab="bytes"]').getAttribute('aria-selected'), 'true');
+  assert.equal(p.q('[data-kn-traffic-tab="protocol"]').getAttribute('aria-selected'), 'false');
+  // The traffic chart is one canvas: switching updates it rather than making another.
+  assert.equal(p.charts.filter(c => c.id === 'kn-chart-traffic').length, 1);
+  assert.match(p.q('[data-kn-legend]').textContent, /udp4/);
+
+  const mid = p.requests.length;
+  p.q('[data-kn-top-tab="qtype"]').click();
+  await settle();
+  const top = p.requests.slice(mid);
+  assert.deepEqual(top.map(u => u.pathname.split('/').pop() + ' ' + u.searchParams.get('dim')), ['queries qtype']);
+  assert.match(p.w.location.search, /top=qtype/);
+  assert.match(p.q('[data-kn-top-list]').textContent, /AAAA/);
+  assert.equal(p.q('[data-kn-top-tab="qtype"]').getAttribute('aria-selected'), 'true');
+  // Arrow keys move along the tabs.
+  p.q('[data-kn-top-tab="qtype"]').focus();
+  p.q('[data-kn-top-tabs]').dispatchEvent(new p.w.KeyboardEvent('keydown', {key: 'ArrowRight', bubbles: true}));
+  await settle();
+  assert.match(p.w.location.search, /top=rcode/);
+});
+
+test('a Clients tab appears only when a server counts clients', async () => {
+  const off = page('http://x/panel/knot?top=client');
+  await settle();
+  assert.equal(off.q('[data-kn-top-tab="client"]'), null);
+  assert.deepEqual(off.requests.filter(u => u.pathname.endsWith('/queries')).map(u => u.searchParams.get('dim')), ['qname'], 'falls back to names');
+  const now = Date.now();
+  const on = page('http://x/panel/knot?top=client', {servers: [{collector_id: 'col_a', name: 'ns1', enabled: true, connected: true, reported_on: true, status: 'ok', mod_stats: true,
+    dnstap: {socket: '/s', listening: true, clients: true}, last_dnstap_ms: now}]});
+  await settle();
+  assert.equal(on.q('[data-kn-top-tab="client"]').getAttribute('aria-selected'), 'true');
+  assert.deepEqual(on.requests.filter(u => u.pathname.endsWith('/queries')).map(u => u.searchParams.get('dim')), ['client']);
+  // A client network has no filter: clicking it, or its copy button, copies it.
+  const copied = [], toasts = [];
+  Object.defineProperty(on.w.navigator, 'clipboard', {configurable: true, value: {writeText: async t => { copied.push(t); }}});
+  on.w.CertainStatsTelemetry.showToast = (m, ok) => toasts.push(m + ' ' + ok);
+  const value = on.q('[data-kn-top-list] .cs-rank-value');
+  assert.equal(value.disabled, false);
+  value.click();
+  on.q('[data-kn-top-list] .cs-icon-btn[aria-label="Copy 203.0.113.0/24"]').click();
+  await settle();
+  assert.deepEqual(copied, ['203.0.113.0/24', '203.0.113.0/24']);
+  assert.deepEqual(toasts, ['Network copied true', 'Network copied true']);
+  assert.equal(on.w.location.search, '?top=client', 'copying never filters');
+  // Other rows without a filter stay plain, with no copy button.
+  on.q('[data-kn-top-tab="size"]').click();
+  await settle();
+  assert.equal(on.q('[data-kn-top-list] .cs-icon-btn'), null);
 });
 
 test('clicking a name filters by it, and counters say what they cannot split', async () => {
@@ -208,7 +279,7 @@ test('a zone opens its view and explains when per-zone counters are off', async 
   assert.equal(p.q('[data-kn-zone-view]').hidden, false);
   assert.equal(p.q('[data-kn-zone-title]').textContent, 'example.com');
   assert.match(p.q('[data-kn-source-note]').textContent, /KNOT_ZONE_STATS=true/);
-  assert.match(p.q('[data-kn-chart-message="rcode"]').textContent, /Per-zone counters are off/);
+  assert.match(p.q('[data-kn-chart-message]').textContent, /Per-zone counters are off/);
   assert.equal(p.requests.filter(u => u.pathname.endsWith('/series') && u.searchParams.get('zone')).length, 0, 'no counter request for a zone without zone stats');
 });
 
@@ -241,7 +312,7 @@ test('the shared picker sets the range, and brushing a chart zooms the whole pag
   assert.equal(p.requests.filter(u => u.pathname.endsWith('/totals')).pop().searchParams.get('hours'), '6');
 
   // Every chart gets the zoom handler; brushing one moves all requests to start/end.
-  const chart = p.charts.find(c => c.id === 'kn-chart-rcode');
+  const chart = p.charts.find(c => c.id === 'kn-chart-traffic');
   assert.equal(typeof chart.opts.onZoom, 'function');
   assert.equal(typeof p.charts.find(c => c.id === 'kn-chart-dnstap').opts.onZoom, 'function');
   const now = Date.now();

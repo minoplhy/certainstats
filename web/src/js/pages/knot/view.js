@@ -6,6 +6,11 @@ import { TIME_RANGES } from '../../lib/time_ranges.js';
 
 export const FILTERS = ['zone', 'qname', 'qtype', 'rcode'];
 
+// The traffic chart shows one counter group, the dnstap list one dimension;
+// both are page choices, kept in the URL but never sent to the API as filters.
+export const CHART_GROUPS = ['protocol', 'rcode', 'qtype', 'operation', 'bytes'];
+export const TOP_DIMS = ['qname', 'qtype', 'rcode', 'zone', 'size', 'client'];
+
 // Links from before the shared picker said range=7d.
 const LEGACY_RANGES = {'1h': 1, '6h': 6, '24h': 24, '7d': 168, '30d': 720, '90d': 2160};
 
@@ -20,7 +25,9 @@ function int(value) {
 
 export function parseView(search, fallbackHours = 24) {
   const q = new URLSearchParams(search || '');
-  const v = {server: q.get('server') || '', hours: quick(fallbackHours) ? fallbackHours : 24, start: null, end: null, zone: '', qname: '', qtype: '', rcode: ''};
+  const v = {server: q.get('server') || '', hours: quick(fallbackHours) ? fallbackHours : 24, start: null, end: null, zone: '', qname: '', qtype: '', rcode: '',
+    chart: CHART_GROUPS.includes(q.get('chart')) ? q.get('chart') : CHART_GROUPS[0],
+    top: TOP_DIMS.includes(q.get('top')) ? q.get('top') : TOP_DIMS[0]};
   const hours = int(q.get('hours')) || LEGACY_RANGES[q.get('range')] || 0;
   if (quick(hours)) v.hours = hours;
   const start = int(q.get('start')), end = int(q.get('end'));
@@ -40,7 +47,19 @@ export function toQuery(v) {
   if (v.server) q.set('server', v.server);
   setRange(q, v);
   for (const f of FILTERS) if (v[f]) q.set(f, v[f]);
+  if (v.chart && v.chart !== CHART_GROUPS[0]) q.set('chart', v.chart);
+  if (v.top && v.top !== TOP_DIMS[0]) q.set('top', v.top);
   return q;
+}
+
+// writeUrl records the view in the address bar: push for a new view Back
+// should return to, replace for a choice of what to show.
+export function writeUrl(v, push = false) {
+  const query = toQuery(v).toString();
+  const url = window.location.pathname + (query ? '?' + query : '');
+  if (url === window.location.pathname + window.location.search) return;
+  if (push) history.pushState({}, '', url);
+  else history.replaceState({}, '', url);
 }
 
 // apiParams builds the API query string; the server filter is called collector there.

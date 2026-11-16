@@ -1,83 +1,57 @@
 {{define "knot_panels"}}
-<section class="page-section kn-panels" aria-label="Traffic from Knot's counters" data-kn-panels>
-<article class="chart-card chart-card-wide">
-  <div class="chart-header-row">
-    <h2 class="chart-header-title">Queries per second by protocol</h2>
-    <div class="chart-legend-pills" data-kn-legend="protocol"></div>
+<section class="page-section kn-section" aria-labelledby="kn-traffic-title" data-kn-panels>
+  <div class="kn-section-head">
+    <h2 class="section-title" id="kn-traffic-title">Traffic</h2>
   </div>
-  <p class="cs-status" role="status" aria-live="polite" data-kn-chart-message="protocol"></p>
-  <div class="chart-container">
-    <canvas class="chart-canvas" id="kn-chart-protocol" role="img" aria-label="Queries per second by protocol"></canvas>
-  </div>
-</article>
-  <div class="kn-chart-grid">
-    <article class="chart-card">
-      <div class="chart-header-row">
-        <h2 class="chart-header-title">Response codes</h2>
-        <div class="chart-legend-pills" data-kn-legend="rcode"></div>
+  <article class="chart-card chart-card-wide">
+    <div class="chart-header-row kn-card-head">
+      <div class="kn-tabs" role="tablist" aria-label="Traffic by" data-kn-traffic-tabs>
+        <button type="button" role="tab" aria-selected="true" data-kn-traffic-tab="protocol">Protocol</button>
+        <button type="button" role="tab" aria-selected="false" data-kn-traffic-tab="rcode">Response codes</button>
+        <button type="button" role="tab" aria-selected="false" data-kn-traffic-tab="qtype">Query types</button>
+        <button type="button" role="tab" aria-selected="false" data-kn-traffic-tab="operation">Operations</button>
+        <button type="button" role="tab" aria-selected="false" data-kn-traffic-tab="bytes">Bytes</button>
       </div>
-      <p class="cs-status" role="status" aria-live="polite" data-kn-chart-message="rcode"></p>
-      <div class="chart-container">
-        <canvas class="chart-canvas" id="kn-chart-rcode" role="img" aria-label="Response codes"></canvas>
-      </div>
-    </article>
-    <article class="chart-card">
-      <div class="chart-header-row">
-        <h2 class="chart-header-title">Query types</h2>
-        <div class="chart-legend-pills" data-kn-legend="qtype"></div>
-      </div>
-      <p class="cs-status" role="status" aria-live="polite" data-kn-chart-message="qtype"></p>
-      <div class="chart-container">
-        <canvas class="chart-canvas" id="kn-chart-qtype" role="img" aria-label="Query types"></canvas>
-      </div>
-    </article>
-    <article class="chart-card">
-      <div class="chart-header-row">
-        <h2 class="chart-header-title">Operations</h2>
-        <div class="chart-legend-pills" data-kn-legend="operation"></div>
-      </div>
-      <p class="cs-status" role="status" aria-live="polite" data-kn-chart-message="operation"></p>
-      <div class="chart-container">
-        <canvas class="chart-canvas" id="kn-chart-operation" role="img" aria-label="Operations"></canvas>
-      </div>
-    </article>
-    <article class="chart-card">
-      <div class="chart-header-row">
-        <h2 class="chart-header-title">Traffic, bytes per second</h2>
-        <div class="chart-legend-pills" data-kn-legend="bytes"></div>
-      </div>
-      <p class="cs-status" role="status" aria-live="polite" data-kn-chart-message="bytes"></p>
-      <div class="chart-container">
-        <canvas class="chart-canvas" id="kn-chart-bytes" role="img" aria-label="Traffic, bytes per second"></canvas>
-      </div>
-    </article>
-  </div>
+      <div class="chart-legend-pills" data-kn-legend></div>
+    </div>
+    <p class="cs-status" role="status" aria-live="polite" data-kn-chart-message></p>
+    <div class="chart-container">
+      <canvas class="chart-canvas" id="kn-chart-traffic" role="img" aria-label="Traffic over time" data-kn-traffic-canvas></canvas>
+    </div>
+  </article>
 </section>
 {{end}}
 
 {{define "knot_dnstap"}}
-<section class="page-section kn-dnstap" aria-labelledby="kn-dnstap-title" data-kn-dnstap hidden>
-  <div class="chart-header-row">
-    <h2 class="section-title" id="kn-dnstap-title">Queries from dnstap</h2>
-    <span class="muted kn-note" data-kn-dnstap-note></span>
+<section class="page-section kn-section kn-dnstap" aria-labelledby="kn-dnstap-title" data-kn-dnstap hidden>
+  <div class="kn-section-head">
+    <h2 class="section-title" id="kn-dnstap-title">Queries <span class="muted">from dnstap</span></h2>
+    <span class="kn-note" data-kn-dnstap-note></span>
   </div>
-  <article class="chart-card chart-card-wide">
-    <div class="chart-header-row">
-      <h3 class="chart-header-title">Matching queries</h3>
-      <div class="chart-legend-pills"><span class="chart-legend-item"><span class="chart-legend-dot sw-s1" aria-hidden="true"></span>Queries <span class="chart-legend-val" data-kn-dnstap-total>–</span></span></div>
-    </div>
-    <p class="cs-status" role="status" aria-live="polite" data-kn-dnstap-message></p>
-    <div class="chart-container">
-      <canvas class="chart-canvas" id="kn-chart-dnstap" role="img" aria-label="Matching queries over time"></canvas>
-    </div>
-  </article>
-  <div class="cs-breakdowns" data-kn-breakdowns></div>
+  <div class="kn-dnstap-grid">
+    <article class="chart-card">
+      <div class="chart-header-row">
+        <h3 class="chart-header-title">Matching queries</h3>
+        <div class="chart-legend-pills"><span class="chart-legend-item"><span class="chart-legend-dot sw-s1" aria-hidden="true"></span>Queries <span class="chart-legend-val" data-kn-dnstap-total>–</span></span></div>
+      </div>
+      <p class="cs-status" role="status" aria-live="polite" data-kn-dnstap-message></p>
+      <div class="chart-container">
+        <canvas class="chart-canvas" id="kn-chart-dnstap" role="img" aria-label="Matching queries over time"></canvas>
+      </div>
+    </article>
+    <article class="chart-card kn-top">
+      <div class="kn-tabs kn-tabs-fill" role="tablist" aria-label="Top" data-kn-top-tabs></div>
+      <p class="cs-status" role="status" aria-live="polite" data-kn-top-status></p>
+      <ol class="cs-rank kn-top-list" data-kn-top-list></ol>
+      <p class="kn-note" data-kn-top-foot></p>
+    </article>
+  </div>
 </section>
 {{end}}
 
 {{define "knot_zones"}}
-<section class="page-section kn-zones" aria-labelledby="kn-zones-title">
-  <div class="chart-header-row">
+<section class="page-section kn-section kn-zones" aria-labelledby="kn-zones-title">
+  <div class="kn-section-head">
     <h2 class="section-title" id="kn-zones-title">Zones <span class="muted mono" data-kn-zone-count></span></h2>
     <label class="toolbar-search kn-zone-search">
       <span class="sr-only">Search zones</span>

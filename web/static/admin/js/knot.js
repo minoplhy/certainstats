@@ -20,6 +20,8 @@
     filterMenu: null,
     // onZoom applies a range brushed on any chart.
     onZoom: null,
+    // onFilter adds a filter from a clicked dnstap row.
+    onFilter: null,
     requests: {},
     loaded: false
   };
@@ -72,6 +74,8 @@
 
   // web/src/js/pages/knot/view.js
   var FILTERS = ["zone", "qname", "qtype", "rcode"];
+  var CHART_GROUPS = ["protocol", "rcode", "qtype", "operation", "bytes"];
+  var TOP_DIMS = ["qname", "qtype", "rcode", "zone", "size", "client"];
   var LEGACY_RANGES = { "1h": 1, "6h": 6, "24h": 24, "7d": 168, "30d": 720, "90d": 2160 };
   function quick(hours) {
     return TIME_RANGES.some((r) => r.value === hours);
@@ -82,7 +86,18 @@
   }
   function parseView(search, fallbackHours = 24) {
     const q = new URLSearchParams(search || "");
-    const v = { server: q.get("server") || "", hours: quick(fallbackHours) ? fallbackHours : 24, start: null, end: null, zone: "", qname: "", qtype: "", rcode: "" };
+    const v = {
+      server: q.get("server") || "",
+      hours: quick(fallbackHours) ? fallbackHours : 24,
+      start: null,
+      end: null,
+      zone: "",
+      qname: "",
+      qtype: "",
+      rcode: "",
+      chart: CHART_GROUPS.includes(q.get("chart")) ? q.get("chart") : CHART_GROUPS[0],
+      top: TOP_DIMS.includes(q.get("top")) ? q.get("top") : TOP_DIMS[0]
+    };
     const hours = int(q.get("hours")) || LEGACY_RANGES[q.get("range")] || 0;
     if (quick(hours)) v.hours = hours;
     const start = int(q.get("start")), end = int(q.get("end"));
@@ -104,7 +119,16 @@
     if (v.server) q.set("server", v.server);
     setRange(q, v);
     for (const f of FILTERS) if (v[f]) q.set(f, v[f]);
+    if (v.chart && v.chart !== CHART_GROUPS[0]) q.set("chart", v.chart);
+    if (v.top && v.top !== TOP_DIMS[0]) q.set("top", v.top);
     return q;
+  }
+  function writeUrl(v, push = false) {
+    const query = toQuery(v).toString();
+    const url = window.location.pathname + (query ? "?" + query : "");
+    if (url === window.location.pathname + window.location.search) return;
+    if (push) history.pushState({}, "", url);
+    else history.replaceState({}, "", url);
   }
   function apiParams(v, extra) {
     const q = new URLSearchParams();
@@ -268,7 +292,6 @@
   }
 
   // web/src/js/pages/knot/charts.js
-  var GROUPS = ["protocol", "rcode", "qtype", "operation", "bytes"];
   var PALETTE = ["--s1", "--s2", "--s3", "--s4"];
   var OTHER = "--s5";
   function seriesFor(lines) {
@@ -281,7 +304,7 @@
     }));
   }
   function legend(group, lines, series) {
-    const box = document.querySelector('[data-kn-legend="' + group + '"]');
+    const box = state.ui.legend;
     if (!box) return;
     box.replaceChildren(...lines.map((l, i) => {
       const item = el("span", "chart-legend-item");
@@ -293,9 +316,8 @@
       return item;
     }));
   }
-  function message(group, text) {
-    const node = document.querySelector('[data-kn-chart-message="' + group + '"]');
-    if (node) node.textContent = text;
+  function message(text) {
+    if (state.ui.chartMessage) state.ui.chartMessage.textContent = text;
   }
   function countMax(series) {
     const top = Math.max(0, ...series.flatMap((s) => s.data.map((p) => p.value)));
@@ -321,78 +343,162 @@
     });
     return state.charts[key];
   }
+  var shown = "protocol";
+  var trafficFormat = (v) => shown === "bytes" ? formatBytes(v) + "/s" : formatRate(v) + "/s";
   function draw(group, data) {
+    shown = group;
     const series = seriesFor(data.series);
-    const formatter = group === "bytes" ? (v) => formatBytes(v) + "/s" : (v) => formatRate(v) + "/s";
-    drawChart(group, "kn-chart-" + group, series, data, formatter);
+    drawChart("traffic", "kn-chart-traffic", series, data, trafficFormat);
     legend(group, data.series, series);
   }
-  async function loadCharts(signal, note) {
-    const v = state.view;
-    await Promise.all(GROUPS.map(async (group) => {
-      if (note) {
-        draw(group, { series: [], start: Date.now() - 36e5, end: Date.now(), step: 6e4 });
-        message(group, note);
-        return;
-      }
-      try {
-        const data = await get("series?" + counterParams(v, { group }), signal);
-        draw(group, data);
-        const empty = data.series.every((l) => !l.total);
-        message(group, data.collecting ? "Collecting, first numbers in about a minute." : empty ? "No traffic in this range." : "");
-      } catch (e) {
-        if (!isAbort(e)) message(group, "Could not load: " + e.message);
-      }
-    }));
+  function syncTrafficTabs() {
+    for (const tab of state.ui.trafficTabs?.querySelectorAll("[data-kn-traffic-tab]") || []) {
+      const on = tab.dataset.knTrafficTab === state.view.chart;
+      tab.setAttribute("aria-selected", String(on));
+      tab.tabIndex = on ? 0 : -1;
+    }
+  }
+  async function loadTraffic(signal, note) {
+    const group = state.view.chart;
+    syncTrafficTabs();
+    if (note) {
+      draw(group, { series: [], start: Date.now() - 36e5, end: Date.now(), step: 6e4 });
+      message(note);
+      return;
+    }
+    try {
+      const data = await get("series?" + counterParams(state.view, { group }), signal);
+      if (group !== state.view.chart) return;
+      draw(group, data);
+      const empty = data.series.every((l) => !l.total);
+      message(data.collecting ? "Collecting, first numbers in about a minute." : empty ? "No traffic in this range." : "");
+    } catch (e) {
+      if (!isAbort(e)) message("Could not load: " + e.message);
+    }
+  }
+
+  // web/src/js/lib/clipboard.js
+  async function copyText(text, label) {
+    try {
+      await navigator.clipboard.writeText(text);
+      window.CertainStatsTelemetry?.showToast((label || "Value") + " copied", true);
+      return true;
+    } catch (e) {
+      window.CertainStatsTelemetry?.showToast("Copy failed; select the text and copy it by hand", false);
+      return false;
+    }
+  }
+  function copyIcon(doc, label, onClick) {
+    const node = doc.createElement("button");
+    node.type = "button";
+    node.className = "cs-icon-btn";
+    node.setAttribute("aria-label", label);
+    node.title = label;
+    const svg = doc.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("viewBox", "0 0 24 24");
+    svg.setAttribute("aria-hidden", "true");
+    const path = doc.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("d", "M9 9h10v10H9zM5 15V5h10");
+    path.setAttribute("fill", "none");
+    path.setAttribute("stroke", "currentColor");
+    path.setAttribute("stroke-width", "2");
+    path.setAttribute("stroke-linejoin", "round");
+    svg.append(path);
+    node.append(svg);
+    node.addEventListener("click", onClick);
+    return node;
   }
 
   // web/src/js/pages/knot/dnstap.js
   var CARDS = [
-    { dim: "qname", title: "Top names", filter: "qname" },
-    { dim: "qtype", title: "Query types", filter: "qtype" },
-    { dim: "rcode", title: "Response codes", filter: "rcode" },
+    { dim: "qname", title: "Names", filter: "qname", limit: 25 },
+    { dim: "qtype", title: "Types", filter: "qtype" },
+    { dim: "rcode", title: "Codes", filter: "rcode" },
     { dim: "zone", title: "Zones", filter: "zone" },
-    { dim: "size", title: "Response sizes" },
-    { dim: "client", title: "Client networks", clients: true }
+    { dim: "size", title: "Sizes" },
+    { dim: "client", title: "Clients", clients: true, limit: 25 }
   ];
   function sizeLabel(key) {
     const n = Number(key);
     return n ? "up to " + n + " B" : "larger";
   }
-  function card(spec) {
-    const article = el("article", "chart-card cs-rank-card");
-    const head = el("div", "chart-header-row");
-    head.append(el("h3", "chart-header-title", spec.title));
-    const status = el("p", "cs-status");
-    status.setAttribute("role", "status");
-    const list = el("ol", "cs-rank");
-    const foot = el("p", "kn-note");
-    article.append(head, status, list, foot);
-    return { article, status, list, foot };
-  }
-  function rows(slot, spec, b, onFilter) {
+  function rows(slot2, spec, b, onFilter) {
     const max = Math.max(1, ...b.rows.map((r) => r.count));
-    slot.list.replaceChildren(...b.rows.map((r) => {
+    slot2.list.replaceChildren(...b.rows.map((r) => {
       const li = el("li", "cs-rank-row");
       const label = spec.dim === "size" ? sizeLabel(r.key) : spec.dim === "zone" || spec.dim === "qname" ? zoneName(r.key) : r.key || "(unknown)";
       const value = el("button", "cs-rank-value", label);
       value.type = "button";
       value.title = r.key;
+      const copyable = spec.dim === "client" && r.key;
       if (spec.filter && r.key) value.addEventListener("click", () => onFilter(spec.filter, r.key));
-      else value.disabled = true;
+      else if (copyable) {
+        value.classList.add("mono");
+        value.title = "Copy " + r.key;
+        value.addEventListener("click", () => copyText(r.key, "Network"));
+      } else value.disabled = true;
       const meter = el("meter", "cs-rank-meter");
       meter.min = 0;
       meter.max = max;
       meter.value = r.count;
-      li.append(value, el("span", "cs-rank-count mono", formatCount(r.count)), meter);
+      li.append(value);
+      if (copyable) li.append(copyIcon(li.ownerDocument, "Copy " + r.key, () => copyText(r.key, "Network")));
+      li.append(el("span", "cs-rank-count mono", formatCount(r.count)), meter);
       return li;
     }));
-    slot.status.textContent = b.rows.length ? "" : "Nothing in this range.";
+    slot2.status.textContent = b.rows.length ? "" : "Nothing in this range.";
     const notes = [];
     if (b.other) notes.push(formatCount(b.other) + " more not listed");
     if (spec.dim === "qname" && b.approximate) notes.push("names below the per-minute cap are folded away, so counts are lower bounds");
     if (b.ignored?.length) notes.push("not split by " + b.ignored.join(", "));
-    slot.foot.textContent = notes.join(" · ");
+    slot2.foot.textContent = notes.join(" · ");
+  }
+  function specs() {
+    const clients = (state.overview?.servers || []).some((s) => s.dnstap?.clients);
+    return CARDS.filter((c) => !c.clients || clients);
+  }
+  function slot() {
+    const ui = state.ui;
+    return { status: ui.topStatus, list: ui.topList, foot: ui.topFoot };
+  }
+  function tabs(list) {
+    const box = state.ui.topTabs;
+    const want = list.map((c) => c.dim).join(" ");
+    if (box.dataset.dims !== want) {
+      box.dataset.dims = want;
+      box.replaceChildren(...list.map((spec) => {
+        const tab = el("button", "", spec.title);
+        tab.type = "button";
+        tab.setAttribute("role", "tab");
+        tab.dataset.knTopTab = spec.dim;
+        tab.addEventListener("click", () => switchTop(spec.dim));
+        return tab;
+      }));
+    }
+    for (const tab of box.children) {
+      const on = tab.dataset.knTopTab === state.view.top;
+      tab.setAttribute("aria-selected", String(on));
+      tab.tabIndex = on ? 0 : -1;
+    }
+  }
+  async function readTop(signal) {
+    const spec = CARDS.find((c) => c.dim === state.view.top);
+    const s = slot();
+    try {
+      const data = await get("queries?" + apiParams(state.view, { dim: spec.dim, limit: spec.limit || 12 }), signal);
+      if (spec.dim !== state.view.top) return;
+      rows(s, spec, data.breakdown, state.onFilter);
+      drawSeries(data);
+    } catch (e) {
+      if (!isAbort(e)) s.status.textContent = "Could not load: " + e.message;
+    }
+  }
+  function switchTop(dim) {
+    if (dim === state.view.top) return;
+    state.view.top = dim;
+    writeUrl(state.view);
+    tabs(specs());
+    return readTop(begin("top"));
   }
   async function loadDnstap(signal, onFilter) {
     const ui = state.ui;
@@ -400,27 +506,11 @@
     const on = servers.some((s) => s.dnstap || s.last_dnstap_ms);
     ui.dnstap.hidden = !on;
     if (!on) return;
-    const clients = servers.some((s) => s.dnstap?.clients);
-    const specs = CARDS.filter((c) => !c.clients || clients);
-    if (!state.cards || state.cards.length !== specs.length) {
-      state.cards = specs.map(card);
-      ui.breakdowns.replaceChildren(...state.cards.map((c) => c.article));
-    }
-    const v = state.view;
-    let first = true;
-    await Promise.all(specs.map(async (spec, i) => {
-      const slot = state.cards[i];
-      try {
-        const data = await get("queries?" + apiParams(v, { dim: spec.dim, limit: spec.dim === "qname" ? 25 : 12 }), signal);
-        rows(slot, spec, data.breakdown, onFilter);
-        if (first) {
-          first = false;
-          drawSeries(data);
-        }
-      } catch (e) {
-        if (!isAbort(e)) slot.status.textContent = "Could not load: " + e.message;
-      }
-    }));
+    state.onFilter = onFilter;
+    const list = specs();
+    if (!list.some((c) => c.dim === state.view.top)) state.view.top = list[0].dim;
+    tabs(list);
+    await readTop(signal);
   }
   function drawSeries(data) {
     const ui = state.ui;
@@ -549,7 +639,13 @@
     dnstapNote: "dnstap-note",
     dnstapTotal: "dnstap-total",
     dnstapMessage: "dnstap-message",
-    breakdowns: "breakdowns",
+    topTabs: "top-tabs",
+    topList: "top-list",
+    topStatus: "top-status",
+    topFoot: "top-foot",
+    trafficTabs: "traffic-tabs",
+    legend: "legend",
+    chartMessage: "chart-message",
     zoneCount: "zone-count",
     zoneSearch: "zone-search",
     zoneList: "zone-list",
@@ -557,10 +653,14 @@
   };
   var FIELD_LABELS = { zone: "Zone", qname: "Name", qtype: "Query type", rcode: "Response code" };
   function update() {
-    const query = toQuery(state.view).toString();
-    const url = window.location.pathname + (query ? "?" + query : "");
-    if (url !== window.location.pathname + window.location.search) history.pushState({}, "", url);
+    writeUrl(state.view, true);
     load();
+  }
+  function showTraffic(group) {
+    if (group === state.view.chart) return;
+    state.view.chart = group;
+    writeUrl(state.view);
+    loadTraffic(begin("traffic"), sourceNote());
   }
   var HOURS_KEY = "certainstats_knot_hours";
   function syncRange() {
@@ -669,7 +769,7 @@
       get("totals?" + counterParams(v), signal).then((t) => renderHero(chartNote ? null : t)).catch((e) => {
         if (!isAbort(e)) ui.statNote.textContent = "Could not load totals: " + e.message;
       }),
-      loadCharts(signal, chartNote),
+      loadTraffic(signal, chartNote),
       loadDnstap(signal, filter),
       get("zones", signal).then((z) => {
         state.zones = z.zones;
@@ -689,6 +789,16 @@
     }
     await Promise.all(tasks);
     state.loaded = true;
+  }
+  function arrowTabs(e) {
+    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+    const list = [...e.currentTarget.querySelectorAll('[role="tab"]')];
+    const at = list.indexOf(document.activeElement);
+    if (at < 0) return;
+    const next = list[(at + (e.key === "ArrowRight" ? 1 : list.length - 1)) % list.length];
+    next.focus();
+    next.click();
+    e.preventDefault();
   }
   function openZone(zone) {
     filter("zone", zone);
@@ -718,6 +828,11 @@
       exclude: false,
       onAdd: (field, value) => filter(field, value)
     });
+    ui.trafficTabs.addEventListener("click", (e) => {
+      const tab = e.target.closest("[data-kn-traffic-tab]");
+      if (tab) showTraffic(tab.dataset.knTrafficTab);
+    });
+    for (const box of [ui.trafficTabs, ui.topTabs]) box.addEventListener("keydown", arrowTabs);
     ui.zoneClose.addEventListener("click", () => {
       removeFilter(state.view, "zone");
       update();

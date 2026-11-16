@@ -1,34 +1,23 @@
 import { state } from './state.js';
-import { get, isAbort } from './api.js';
-import { apiParams } from './view.js';
+import { begin, get, isAbort } from './api.js';
+import { apiParams, writeUrl } from './view.js';
 import { drawChart, countMax } from './charts.js';
 import { el, formatCount, zoneName } from './format.js';
+import { copyText, copyIcon } from '../../lib/clipboard.js';
 
-// Each card is one dimension; clicking a row filters by it where a filter exists.
+// Each tab is one dimension; clicking a row filters by it where a filter exists.
 export const CARDS = [
-  {dim: 'qname', title: 'Top names', filter: 'qname'},
-  {dim: 'qtype', title: 'Query types', filter: 'qtype'},
-  {dim: 'rcode', title: 'Response codes', filter: 'rcode'},
+  {dim: 'qname', title: 'Names', filter: 'qname', limit: 25},
+  {dim: 'qtype', title: 'Types', filter: 'qtype'},
+  {dim: 'rcode', title: 'Codes', filter: 'rcode'},
   {dim: 'zone', title: 'Zones', filter: 'zone'},
-  {dim: 'size', title: 'Response sizes'},
-  {dim: 'client', title: 'Client networks', clients: true}
+  {dim: 'size', title: 'Sizes'},
+  {dim: 'client', title: 'Clients', clients: true, limit: 25}
 ];
 
 export function sizeLabel(key) {
   const n = Number(key);
   return n ? 'up to ' + n + ' B' : 'larger';
-}
-
-function card(spec) {
-  const article = el('article', 'chart-card cs-rank-card');
-  const head = el('div', 'chart-header-row');
-  head.append(el('h3', 'chart-header-title', spec.title));
-  const status = el('p', 'cs-status');
-  status.setAttribute('role', 'status');
-  const list = el('ol', 'cs-rank');
-  const foot = el('p', 'kn-note');
-  article.append(head, status, list, foot);
-  return {article, status, list, foot};
 }
 
 function rows(slot, spec, b, onFilter) {
@@ -39,13 +28,21 @@ function rows(slot, spec, b, onFilter) {
     const value = el('button', 'cs-rank-value', label);
     value.type = 'button';
     value.title = r.key;
+    // Client networks have no filter; clicking one copies it instead.
+    const copyable = spec.dim === 'client' && r.key;
     if (spec.filter && r.key) value.addEventListener('click', () => onFilter(spec.filter, r.key));
-    else value.disabled = true;
+    else if (copyable) {
+      value.classList.add('mono');
+      value.title = 'Copy ' + r.key;
+      value.addEventListener('click', () => copyText(r.key, 'Network'));
+    } else value.disabled = true;
     const meter = el('meter', 'cs-rank-meter');
     meter.min = 0;
     meter.max = max;
     meter.value = r.count;
-    li.append(value, el('span', 'cs-rank-count mono', formatCount(r.count)), meter);
+    li.append(value);
+    if (copyable) li.append(copyIcon(li.ownerDocument, 'Copy ' + r.key, () => copyText(r.key, 'Network')));
+    li.append(el('span', 'cs-rank-count mono', formatCount(r.count)), meter);
     return li;
   }));
   slot.status.textContent = b.rows.length ? '' : 'Nothing in this range.';
@@ -56,34 +53,74 @@ function rows(slot, spec, b, onFilter) {
   slot.foot.textContent = notes.join(' · ');
 }
 
-// loadDnstap reads one breakdown per request and draws the matching-queries chart from the first.
+// specs are the tabs this page offers: Clients only when a server counts them.
+function specs() {
+  const clients = (state.overview?.servers || []).some(s => s.dnstap?.clients);
+  return CARDS.filter(c => !c.clients || clients);
+}
+
+function slot() {
+  const ui = state.ui;
+  return {status: ui.topStatus, list: ui.topList, foot: ui.topFoot};
+}
+
+// tabs draws the top list's tabs, rebuilding them only when the set changes.
+function tabs(list) {
+  const box = state.ui.topTabs;
+  const want = list.map(c => c.dim).join(' ');
+  if (box.dataset.dims !== want) {
+    box.dataset.dims = want;
+    box.replaceChildren(...list.map(spec => {
+      const tab = el('button', '', spec.title);
+      tab.type = 'button';
+      tab.setAttribute('role', 'tab');
+      tab.dataset.knTopTab = spec.dim;
+      tab.addEventListener('click', () => switchTop(spec.dim));
+      return tab;
+    }));
+  }
+  for (const tab of box.children) {
+    const on = tab.dataset.knTopTab === state.view.top;
+    tab.setAttribute('aria-selected', String(on));
+    tab.tabIndex = on ? 0 : -1;
+  }
+}
+
+// readTop fetches the view's dimension. Every reply carries the matching total
+// and its series, so the chart is drawn from the same request.
+async function readTop(signal) {
+  const spec = CARDS.find(c => c.dim === state.view.top);
+  const s = slot();
+  try {
+    const data = await get('queries?' + apiParams(state.view, {dim: spec.dim, limit: spec.limit || 12}), signal);
+    if (spec.dim !== state.view.top) return;
+    rows(s, spec, data.breakdown, state.onFilter);
+    drawSeries(data);
+  } catch (e) {
+    if (!isAbort(e)) s.status.textContent = 'Could not load: ' + e.message;
+  }
+}
+
+function switchTop(dim) {
+  if (dim === state.view.top) return;
+  state.view.top = dim;
+  writeUrl(state.view);
+  tabs(specs());
+  return readTop(begin('top'));
+}
+
+// loadDnstap shows the dnstap section when any server sends dnstap, with one request.
 export async function loadDnstap(signal, onFilter) {
   const ui = state.ui;
   const servers = state.overview?.servers || [];
   const on = servers.some(s => s.dnstap || s.last_dnstap_ms);
   ui.dnstap.hidden = !on;
   if (!on) return;
-  const clients = servers.some(s => s.dnstap?.clients);
-  const specs = CARDS.filter(c => !c.clients || clients);
-  if (!state.cards || state.cards.length !== specs.length) {
-    state.cards = specs.map(card);
-    ui.breakdowns.replaceChildren(...state.cards.map(c => c.article));
-  }
-  const v = state.view;
-  let first = true;
-  await Promise.all(specs.map(async (spec, i) => {
-    const slot = state.cards[i];
-    try {
-      const data = await get('queries?' + apiParams(v, {dim: spec.dim, limit: spec.dim === 'qname' ? 25 : 12}), signal);
-      rows(slot, spec, data.breakdown, onFilter);
-      if (first) {
-        first = false;
-        drawSeries(data);
-      }
-    } catch (e) {
-      if (!isAbort(e)) slot.status.textContent = 'Could not load: ' + e.message;
-    }
-  }));
+  state.onFilter = onFilter;
+  const list = specs();
+  if (!list.some(c => c.dim === state.view.top)) state.view.top = list[0].dim;
+  tabs(list);
+  await readTop(signal);
 }
 
 function drawSeries(data) {

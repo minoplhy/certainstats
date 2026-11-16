@@ -1,9 +1,9 @@
 import { state } from './state.js';
 import { begin, get, isAbort } from './api.js';
-import { parseView, toQuery, counterParams, addFilter, removeFilter, dnstapOnly, setCustom, FILTERS } from './view.js';
+import { parseView, writeUrl, counterParams, addFilter, removeFilter, dnstapOnly, setCustom, FILTERS } from './view.js';
 import { zoneName } from './format.js';
 import { renderHero, renderChecks } from './hero.js';
-import { loadCharts } from './charts.js';
+import { loadTraffic } from './charts.js';
 import { loadDnstap } from './dnstap.js';
 import { renderZones, renderZoneView } from './zones.js';
 
@@ -13,18 +13,25 @@ const ROLES = {
   statTransfers: 'stat-transfers', statNote: 'stat-note', server: 'server', timePicker: 'time-picker', sourceNote: 'source-note',
   checks: 'checks', checkList: 'check-list', zoneView: 'zone-view', zoneTitle: 'zone-title', zoneNote: 'zone-note',
   zoneRows: 'zone-rows', zoneClose: 'zone-close', dnstap: 'dnstap', dnstapNote: 'dnstap-note', dnstapTotal: 'dnstap-total',
-  dnstapMessage: 'dnstap-message', breakdowns: 'breakdowns', zoneCount: 'zone-count', zoneSearch: 'zone-search',
-  zoneList: 'zone-list', zonesMessage: 'zones-message'
+  dnstapMessage: 'dnstap-message', topTabs: 'top-tabs', topList: 'top-list', topStatus: 'top-status', topFoot: 'top-foot',
+  trafficTabs: 'traffic-tabs', legend: 'legend', chartMessage: 'chart-message',
+  zoneCount: 'zone-count', zoneSearch: 'zone-search', zoneList: 'zone-list', zonesMessage: 'zones-message'
 };
 
 const FIELD_LABELS = {zone: 'Zone', qname: 'Name', qtype: 'Query type', rcode: 'Response code'};
 
 // update records the view in the URL and reloads.
 function update() {
-  const query = toQuery(state.view).toString();
-  const url = window.location.pathname + (query ? '?' + query : '');
-  if (url !== window.location.pathname + window.location.search) history.pushState({}, '', url);
+  writeUrl(state.view, true);
   load();
+}
+
+// showTraffic switches the traffic chart to another counter group, alone.
+function showTraffic(group) {
+  if (group === state.view.chart) return;
+  state.view.chart = group;
+  writeUrl(state.view);
+  loadTraffic(begin('traffic'), sourceNote());
 }
 
 const HOURS_KEY = 'certainstats_knot_hours';
@@ -138,7 +145,7 @@ export async function load() {
   const v = state.view;
   const tasks = [
     get('totals?' + counterParams(v), signal).then(t => renderHero(chartNote ? null : t)).catch(e => { if (!isAbort(e)) ui.statNote.textContent = 'Could not load totals: ' + e.message; }),
-    loadCharts(signal, chartNote),
+    loadTraffic(signal, chartNote),
     loadDnstap(signal, filter),
     get('zones', signal).then(z => { state.zones = z.zones; renderZones(openZone); }).catch(e => { if (!isAbort(e)) ui.zonesMessage.textContent = 'Could not load zones: ' + e.message; })
   ];
@@ -153,6 +160,18 @@ export async function load() {
   }
   await Promise.all(tasks);
   state.loaded = true;
+}
+
+// arrowTabs moves between tabs with the arrow keys, as a tab list does.
+function arrowTabs(e) {
+  if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+  const list = [...e.currentTarget.querySelectorAll('[role="tab"]')];
+  const at = list.indexOf(document.activeElement);
+  if (at < 0) return;
+  const next = list[(at + (e.key === 'ArrowRight' ? 1 : list.length - 1)) % list.length];
+  next.focus();
+  next.click();
+  e.preventDefault();
 }
 
 function openZone(zone) {
@@ -178,6 +197,11 @@ export function init(root, config) {
     exclude: false,
     onAdd: (field, value) => filter(field, value)
   });
+  ui.trafficTabs.addEventListener('click', e => {
+    const tab = e.target.closest('[data-kn-traffic-tab]');
+    if (tab) showTraffic(tab.dataset.knTrafficTab);
+  });
+  for (const box of [ui.trafficTabs, ui.topTabs]) box.addEventListener('keydown', arrowTabs);
   ui.zoneClose.addEventListener('click', () => { removeFilter(state.view, 'zone'); update(); });
   ui.zoneSearch.addEventListener('input', () => renderZones(openZone));
   window.addEventListener('popstate', () => { state.view = parseView(window.location.search, state.view.hours); load(); });

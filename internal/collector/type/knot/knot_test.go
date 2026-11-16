@@ -2,6 +2,7 @@ package knot
 
 import (
 	"context"
+	"encoding/json"
 	"math"
 	"path/filepath"
 	"strings"
@@ -303,5 +304,28 @@ func TestChecks(t *testing.T) {
 	}
 	if len(got) != len(want) {
 		t.Errorf("unexpected checks: %v", got)
+	}
+}
+
+// The page reads dnstap state by these names (dnstap.js); Go's default
+// capitalised keys hid the Client networks card.
+func TestDnstapStateJSONNames(t *testing.T) {
+	raw, err := json.Marshal(Server{Dnstap: &wire.DnstapState{Socket: "/s", Listening: true, LastFrameMs: 5, Clients: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got struct {
+		Dnstap map[string]any `json:"dnstap"`
+	}
+	if err := json.Unmarshal(raw, &got); err != nil {
+		t.Fatal(err)
+	}
+	for _, k := range []string{"socket", "listening", "connected", "last_frame_ms", "dropped", "clients"} {
+		if _, ok := got.Dnstap[k]; !ok {
+			t.Errorf("dnstap has no %q: %s", k, raw)
+		}
+	}
+	if got.Dnstap["clients"] != true {
+		t.Errorf("clients: %s", raw)
 	}
 }

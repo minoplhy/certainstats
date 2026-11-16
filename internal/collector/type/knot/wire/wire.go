@@ -66,15 +66,15 @@ type Status struct {
 
 // DnstapState describes the dnstap listener, when the host switched it on.
 type DnstapState struct {
-	Socket    string `cbor:"socket"`
-	Listening bool   `cbor:"listening"`
-	Connected bool   `cbor:"connected"`
-	Error     string `cbor:"error,omitempty"`
+	Socket    string `cbor:"socket" json:"socket"`
+	Listening bool   `cbor:"listening" json:"listening"`
+	Connected bool   `cbor:"connected" json:"connected"`
+	Error     string `cbor:"error,omitempty" json:"error,omitempty"`
 	// LastFrameMs is when the last dnstap frame arrived; zero for never.
-	LastFrameMs int64 `cbor:"last_frame_ms"`
+	LastFrameMs int64 `cbor:"last_frame_ms" json:"last_frame_ms"`
 	// Dropped counts frames that could not be decoded since the collector started.
-	Dropped uint64 `cbor:"dropped"`
-	Clients bool   `cbor:"clients"`
+	Dropped uint64 `cbor:"dropped" json:"dropped"`
+	Clients bool   `cbor:"clients" json:"clients"`
 }
 
 // Counter is one Knot counter: section and item name it (server.zone-count,
