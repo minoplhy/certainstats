@@ -1,9 +1,9 @@
 # CertainStats — Frontend Design Document (legacy React frontend)
 
 
-> Current security, caching, ingestion and deployment behavior is described in [security and rollout](security-and-rollout.md). Where this older design document differs, that implementation reference takes precedence.
+> **Archived.** This is a historical document, kept for reference and no longer maintained. It does not describe the current code. See the [docs index](../README.md) for current documentation.
 
-> **Superseded.** This document describes the old React/TypeScript frontends in `frontend-admin/` and `frontend-public/`, which the Go template UI has replaced. See [design_frontend.md](design_frontend.md) for the current design system.
+> **Superseded.** This document describes the old React/TypeScript frontends in `frontend-admin/` and `frontend-public/`, which the Go template UI has replaced. See [frontend](../develop/frontend.md) for the current design system.
 
 > **Version:** 2.0 · **Date:** 2026-07-20 · **Author:** Minoplhy
 
@@ -25,7 +25,7 @@ CertainStats UI is inspired by best-in-class ops dashboards — Datadog, Fly.io,
 
 ## 2. Design Tokens
 
-All tokens live in [`frontend-admin/src/app/globals.css`](../frontend-admin/src/app/globals.css) on `:root` (dark default) and `[data-theme='light']`.
+All tokens live in [`frontend-admin/src/app/globals.css`](../../frontend-admin/src/app/globals.css) on `:root` (dark default) and `[data-theme='light']`.
 
 ### 2.1 Color Palette
 
@@ -331,7 +331,7 @@ Portal-rendered via `ReactDOM.createPortal(_, document.body)`. Key behaviour:
 
 ### 5.1 `UsageBar`
 
-**File:** [`frontend-admin/src/lib/UsageBar.tsx`](../frontend-admin/src/lib/UsageBar.tsx)
+**File:** [`frontend-admin/src/lib/UsageBar.tsx`](../../frontend-admin/src/lib/UsageBar.tsx)
 
 The primary data visualization primitive — a segmented horizontal bar with an optional legend and portal tooltip.
 
@@ -366,7 +366,7 @@ Colors are passed in as a `segments` prop array; the consuming component hardcod
 
 ### 5.2 `TelemetryChart`
 
-**File:** [`frontend-admin/src/app/agent/TelemetryChart.tsx`](../frontend-admin/src/app/agent/TelemetryChart.tsx)
+**File:** [`frontend-admin/src/app/agent/TelemetryChart.tsx`](../../frontend-admin/src/app/agent/TelemetryChart.tsx)
 
 Recharts wrapper. Renders either `AreaChart` (when any series has `fill: true`) or `LineChart`.
 
@@ -396,7 +396,7 @@ Recharts wrapper. Renders either `AreaChart` (when any series has `fill: true`) 
 
 ### 5.3 `TotalTelemetryPanel`
 
-**File:** [`frontend-admin/src/lib/TotalTelemetryPanel.tsx`](../frontend-admin/src/lib/TotalTelemetryPanel.tsx)
+**File:** [`frontend-admin/src/lib/TotalTelemetryPanel.tsx`](../../frontend-admin/src/lib/TotalTelemetryPanel.tsx)
 
 Four aggregate stat cards in a `auto-fit minmax(260px, 1fr)` responsive grid, shown above the agent list on the Hub and on the Public Dashboard.
 

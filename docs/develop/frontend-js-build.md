@@ -1,4 +1,6 @@
-# Frontend assets: areas, sources and bundles
+# Frontend JavaScript build
+
+This page explains how static assets are split by audience, how the browser scripts are organised as ES module sources, and how they are bundled and checked. It is for developers changing `web/`. It is the single home for the asset area and bundle rules; other pages link here.
 
 Static assets are split by who may download them. The larger browser scripts
 are written as small ES modules under `web/src/js` and bundled with esbuild
@@ -19,7 +21,7 @@ for it in `internal/web/static.go`, and every other path is a 404:
 |---|---|---|
 | `shared/` | What every page uses: `css/base.css`, fonts, `browser`, `disk_dom`, `requests`, `browser_protocol`, `telemetry`, `chart` | panel and public |
 | `auth/` | Sign-in and first-time setup: `css/auth.css`, `js/setup.js` | panel, without a session |
-| `admin/` | Panel pages: `css/admin.css`, `admin_core`, `admin_agents`, `network_monitors`, `collectors`, `crowdsec`, `admin_alerts`, `admin_modals`, `agent_management`, `dashboard_edit`, `incident_history`, `provision_renderer` | panel, signed-in only (`Cache-Control: private`) |
+| `admin/` | Panel pages: `css/admin.css`, `admin_core`, `admin_agents`, `network_monitors`, `collectors`, `crowdsec`, `knot`, `admin_alerts`, `admin_modals`, `agent_management`, `dashboard_edit`, `incident_history`, `provision_renderer` | panel, signed-in only (`Cache-Control: private`) |
 | `public/` | Status pages: `css/public.css`, `public_dashboard` | public |
 
 So the public host can't fetch any admin or sign-in asset. On the panel, a
@@ -79,14 +81,18 @@ web/src/js/
       nav/  detail/  time/
     crowdsec/           -> admin/js/crowdsec.js          (CertainStatsCrowdSec)
       url/  panels/  filters/  table/  ip/
+    knot/               -> admin/js/knot.js              (CertainStatsKnot)
 ```
 
 The import graph from `index.js` decides what goes into a bundle and in what
 order. Folder and file names carry no ordering.
 
-Small hand-written scripts such as `admin/js/admin_alerts.js` and
-`shared/js/requests.js` stay as flat files in their area. Move a script into
-`web/src/js` once it outgrows the size rule below.
+Small hand-written scripts such as `admin/js/admin_alerts.js`,
+`admin/js/provision_renderer.js` (`window.CertainStatsProvision`) and
+`shared/js/requests.js` stay as flat files in their area. A hand-written script
+wraps its code in an IIFE (`(function () { 'use strict'; ... })();`) and
+exports explicitly to `window`; bundle sources export from their `index.js`
+instead. Move a script into `web/src/js` once it outgrows the size rule below.
 
 ## Rules
 
@@ -158,7 +164,7 @@ the Go pipeline. Commit the sources and the regenerated bundle together.
 3. Load it in the template with the usual tag, including the area:
    `<script src="{{.StaticPath}}/{{asset "admin/js/<name>.js"}}" integrity="{{integrity "admin/js/<name>.js"}}"></script>`.
    Put `#page-config` ahead of it if the page passes configuration.
-4. Add the page to the route map in [design_frontend.md](design_frontend.md).
+4. Add the page to the route map in [frontend](frontend.md#routes).
 
 ## CI
 

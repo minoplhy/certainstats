@@ -1,7 +1,9 @@
 # CertainStats — Design Document
 
 
-> Current security, caching, ingestion and deployment behavior is described in [security and rollout](security-and-rollout.md). Where this older design document differs, that implementation reference takes precedence.
+> **Archived.** This is a historical document, kept for reference and no longer maintained. It does not describe the current code. See the [docs index](../README.md) for current documentation.
+>
+> The parts that are still accurate were moved, updated, into [architecture](../develop/architecture.md).
 
 > **Version:** 1.0
 > **Date:** 2026-07-20
@@ -24,7 +26,7 @@ The backend is a single Go binary (`certainstats`) using:
 - **Prometheus TSDB** for time-series storage
 - **SQLite** (via `modernc.org/sqlite`) for agent state, sessions, alerts, dashboards
 - **WebSockets** for real-time agent data push to the admin UI
-- **JSON** for admin/public browser WebSocket pulses by default, with experimental binary **Protocol Buffers** enabled by `WS_PROTOBUF=true`; see [browser protocol](browser-protocol.md)
+- **JSON** for admin/public browser WebSocket pulses by default, with experimental binary **Protocol Buffers** enabled by `WS_PROTOBUF=true`; see [browser protocol](../develop/browser-protocol.md)
 - **CBOR** encoding for agent submissions
 
 ---
@@ -99,7 +101,7 @@ CertainStats supports three deployment topologies:
 | **Virtual Host** | different | different | Each frontend on its own domain (recommended for production) |
 | **Custom Path** | — | — | Both on same host, configurable sub-paths |
 
-Configuration via environment variables — see [`environment.md`](environment.md).
+Configuration via environment variables — see [configuration](../operate/configuration.md).
 
 ---
 
@@ -321,7 +323,7 @@ The Agent Hub is the primary landing page of the admin panel. It presents:
 
 ### 9.2 Alerts Panel + Public Dashboard
 
-![Alerts Panel and Public Dashboard](mockup-alerts-public.png)
+*(The original mockup image, `mockup-alerts-public.png`, was never committed.)*
 
 **Top — Alerts Panel:**
 
@@ -478,7 +480,7 @@ docker run -p 8080:8080 -v ./data:/app/data certainstats:latest
 
 ## 15. Configuration Reference
 
-See [`environment.md`](environment.md) for the full environment variable reference.
+See [configuration](../operate/configuration.md) for the full environment variable reference.
 
 | Variable | Default | Description |
 |---|---|---|

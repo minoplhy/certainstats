@@ -86,4 +86,4 @@ grep -E 'VmRSS|RssAnon|RssFile' /proc/$PID/status
 
 On a healthy server, the block counts stay roughly constant over days. `RssFile` and the open-file count stay flat instead of growing with uptime.
 
-See [security and rollout](security-and-rollout.md) for upgrade steps and [environment](environment.md) for the retention and size settings.
+See [install and upgrade](../operate/install-and-upgrade.md#upgrading-from-older-releases) for upgrade steps, [configuration](../operate/configuration.md#retention-and-storage) for the retention and size settings, and [troubleshooting](../operate/troubleshooting.md) for the memory log.
