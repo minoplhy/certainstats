@@ -142,6 +142,16 @@ func (e *Routine) runCleanup(ctx context.Context) {
 		} else {
 			log.Printf("[Maintenance] ingestion_journal_pending=%d", len(pending))
 		}
+		if e.JournalRetention > 0 {
+			if n, err := e.Store.IngestionPrune(ctx, time.Now().Add(-e.JournalRetention)); err != nil {
+				log.Printf("journal prune error: %v", err)
+			} else {
+				log.Printf("[Maintenance] ingestion_journal_pruned=%d", n)
+			}
+		}
+		if err := e.Store.ReclaimSpace(ctx); err != nil {
+			log.Printf("database reclaim error: %v", err)
+		}
 	}
 
 	for _, task := range e.Maintenance {

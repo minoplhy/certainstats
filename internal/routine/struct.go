@@ -6,6 +6,7 @@ import (
 	"certainstats/internal/store/sqlite"
 	"certainstats/internal/ws"
 	"context"
+	"time"
 
 	"github.com/prometheus/prometheus/tsdb"
 )
@@ -21,6 +22,9 @@ type Routine struct {
 	Maintenance []func(context.Context)
 	// Tick runs on every central tick, for checks outside the alert rules.
 	Tick []func(context.Context)
+	// JournalRetention is how long completed ingestion batches are kept to
+	// detect resent batches; zero keeps them forever.
+	JournalRetention time.Duration
 	// Deliver sends a queued alert attempt; nil means alertdelivery.Go.
 	Deliver func(eventID string)
 

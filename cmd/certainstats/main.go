@@ -181,15 +181,21 @@ func main() {
 		log.Fatalf("collectors: %v", err)
 	}
 
+	journalKeep, err := retentionEnvDefault("INGESTION_JOURNAL_RETENTION", 24*time.Hour)
+	if err != nil {
+		log.Fatalf("config: %v", err)
+	}
+
 	routine := &routine.Routine{
-		Maintenance: []func(context.Context){crowdsecType.Maintain, knotType.Maintain},
-		Tick:        []func(context.Context){crowdsecType.Tick, knotType.Tick},
-		Store:       db,
-		Network:     networkService,
-		TSDB:        tdb,
-		WS:          wsManager,
-		Cache:       metricsCache,
-		Broadcaster: uiBroadcaster,
+		JournalRetention: journalKeep,
+		Maintenance:      []func(context.Context){crowdsecType.Maintain, knotType.Maintain},
+		Tick:             []func(context.Context){crowdsecType.Tick, knotType.Tick},
+		Store:            db,
+		Network:          networkService,
+		TSDB:             tdb,
+		WS:               wsManager,
+		Cache:            metricsCache,
+		Broadcaster:      uiBroadcaster,
 	}
 	routineDone := make(chan struct{})
 	go func() { defer close(routineDone); routine.Start(ctx) }()

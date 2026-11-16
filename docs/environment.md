@@ -39,6 +39,7 @@ Choose one way to place the panel and public dashboards; mixing them stops start
 | `COLLECTOR_STORAGE_MAX_BYTES` | `0` (unlimited) | Block retention size of `collector_tsdb`, in bytes. Independent of `STORAGE_MAX_BYTES`. |
 | `KNOT_DNSTAP_RAW_RETENTION` | `168h` (7 days) | How long Knot DNS dnstap minute buckets are kept in `knot.db`. `0` keeps them forever. At least `1h`. See [Knot DNS](knot.md). |
 | `KNOT_DNSTAP_ROLLUP_RETENTION` | `2160h` (90 days) | How long Knot DNS dnstap hourly buckets are kept. `0` keeps them forever. At least `1h`. |
+| `INGESTION_JOURNAL_RETENTION` | `24h` | How long completed agent ingestion batches stay in the main database so resent batches are recognised and skipped. Pending batches are always kept. `0` keeps them forever. At least `1h`. Freed space is returned to the filesystem by incremental vacuum on the hourly cleanup. |
 
 `ALLOWED_ORIGINS` adds explicit HTTP(S) origins to same-origin browser WebSockets. Empty configuration no longer permits arbitrary origins. Forwarded HTTPS indicators require a trusted proxy. Browser HTTP defaults are a ten-second header timeout, thirty-second read/write timeouts and sixty-second idle timeout. Forms/JSON are limited to 1 MiB; agent submissions remain 16 KiB. Collector frames are limited to 1 MiB; the collector's own settings are described in [collectors](collectors.md).
 
