@@ -195,7 +195,7 @@ func (t *Type) zones(ctx context.Context, c *collector.Conn, m wire.Zones) error
 // dnstap stores one bucket part and acknowledges it. A store failure is
 // answered, so the collector keeps the part and sends it again.
 func (t *Type) dnstap(ctx context.Context, c *collector.Conn, m wire.Dnstap) error {
-	if len(m.Names) > wire.MaxTop*4 || len(m.Clients) > wire.MaxClients {
+	if len(m.Names) > wire.MaxTop*4 || len(m.Clients) > wire.MaxClientRows*4 {
 		return c.Send(wire.MsgAck, wire.Ack{MinuteMs: m.MinuteMs, Part: m.Part, Error: "bucket too large"})
 	}
 	now := t.now().UnixMilli()

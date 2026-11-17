@@ -31,8 +31,10 @@ const (
 	MaxZoneStats = 1000
 	// MaxTop caps name rows in one dnstap bucket.
 	MaxTop = 5000
-	// MaxClients caps client subnet rows in one dnstap bucket.
+	// MaxClients caps the client subnets in one dnstap bucket.
 	MaxClients = 200
+	// MaxClientRows caps the subnet-by-name rows in one dnstap bucket.
+	MaxClientRows = 5000
 	// MaxPending is how many unacknowledged dnstap minutes a collector keeps.
 	MaxPending = 60
 
@@ -132,9 +134,15 @@ type Name struct {
 	Count uint64 `cbor:"n"`
 }
 
-// Client is one client subnet's count, only when the host allows it.
+// Client is one client subnet's count for one zone, name, qtype and rcode, only
+// when the host allows it. Names below the cap fold into one Other row per
+// subnet, zone, qtype and rcode, so a subnet's rows add up to its traffic.
 type Client struct {
 	Subnet string `cbor:"s"`
+	Zone   string `cbor:"z"`
+	QName  string `cbor:"q"`
+	QType  string `cbor:"t"`
+	RCode  string `cbor:"r"`
 	Count  uint64 `cbor:"n"`
 }
 

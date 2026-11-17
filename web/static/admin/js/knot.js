@@ -73,7 +73,7 @@
   }
 
   // web/src/js/pages/knot/view.js
-  var FILTERS = ["zone", "qname", "qtype", "rcode"];
+  var FILTERS = ["zone", "qname", "qtype", "rcode", "client"];
   var CHART_GROUPS = ["protocol", "rcode", "qtype", "operation", "bytes"];
   var TOP_DIMS = ["qname", "qtype", "rcode", "zone", "size", "client"];
   var LEGACY_RANGES = { "1h": 1, "6h": 6, "24h": 24, "7d": 168, "30d": 720, "90d": 2160 };
@@ -95,6 +95,7 @@
       qname: "",
       qtype: "",
       rcode: "",
+      client: "",
       chart: CHART_GROUPS.includes(q.get("chart")) ? q.get("chart") : CHART_GROUPS[0],
       top: TOP_DIMS.includes(q.get("top")) ? q.get("top") : TOP_DIMS[0]
     };
@@ -154,6 +155,7 @@
   function normalize(field, value) {
     let s = String(value || "").trim();
     if (!s) return "";
+    if (field === "client") return s.toLowerCase();
     if (field === "zone" || field === "qname") {
       s = s.toLowerCase();
       if (s !== "(none)" && s !== "(other)" && !s.endsWith(".")) s += ".";
@@ -171,7 +173,7 @@
     return v;
   }
   function dnstapOnly(v) {
-    return Boolean(v.qname || v.qtype || v.rcode);
+    return Boolean(v.qname || v.qtype || v.rcode || v.client);
   }
 
   // web/src/js/pages/knot/format.js
@@ -416,13 +418,13 @@
     { dim: "rcode", title: "Codes", filter: "rcode" },
     { dim: "zone", title: "Zones", filter: "zone" },
     { dim: "size", title: "Sizes" },
-    { dim: "client", title: "Clients", clients: true, limit: 25 }
+    { dim: "client", title: "Clients", filter: "client", clients: true, limit: 25 }
   ];
   function sizeLabel(key) {
     const n = Number(key);
     return n ? "up to " + n + " B" : "larger";
   }
-  function rows(slot2, spec, b, onFilter) {
+  function rows(slot2, spec, b, onFilter, widened) {
     const max = Math.max(1, ...b.rows.map((r) => r.count));
     slot2.list.replaceChildren(...b.rows.map((r) => {
       const li = el("li", "cs-rank-row");
@@ -431,12 +433,12 @@
       value.type = "button";
       value.title = r.key;
       const copyable = spec.dim === "client" && r.key;
-      if (spec.filter && r.key) value.addEventListener("click", () => onFilter(spec.filter, r.key));
-      else if (copyable) {
+      if (copyable) {
         value.classList.add("mono");
-        value.title = "Copy " + r.key;
-        value.addEventListener("click", () => copyText(r.key, "Network"));
-      } else value.disabled = true;
+        value.title = "Show queries from " + r.key;
+      }
+      if (spec.filter && r.key) value.addEventListener("click", () => onFilter(spec.filter, r.key));
+      else value.disabled = true;
       const meter = el("meter", "cs-rank-meter");
       meter.min = 0;
       meter.max = max;
@@ -451,6 +453,7 @@
     if (b.other) notes.push(formatCount(b.other) + " more not listed");
     if (spec.dim === "qname" && b.approximate) notes.push("names below the per-minute cap are folded away, so counts are lower bounds");
     if (b.ignored?.length) notes.push("not split by " + b.ignored.join(", "));
+    if (widened) notes.push("client networks are counted per /24 or /48, so the filter matched " + widened);
     slot2.foot.textContent = notes.join(" · ");
   }
   function specs() {
@@ -487,7 +490,7 @@
     try {
       const data = await get("queries?" + apiParams(state.view, { dim: spec.dim, limit: spec.limit || 12 }), signal);
       if (spec.dim !== state.view.top) return;
-      rows(s, spec, data.breakdown, state.onFilter);
+      rows(s, spec, data.breakdown, state.onFilter, data.widened);
       drawSeries(data);
     } catch (e) {
       if (!isAbort(e)) s.status.textContent = "Could not load: " + e.message;
@@ -519,7 +522,7 @@
     drawChart("dnstap", "kn-chart-dnstap", series, data, (v) => formatCount(Math.round(v)), countMax(series));
     ui.dnstapTotal.textContent = formatCount(b.total);
     ui.dnstapMessage.textContent = b.total ? "" : "No dnstap traffic matches in this range.";
-    const notes = [b.exact ? "Totals are exact" : "Filtered by name, so totals are lower bounds"];
+    const notes = [b.exact ? "Totals are exact" : state.view.client ? "Filtered by client network, so totals count only each minute's busiest networks and are lower bounds" : "Filtered by name, so totals are lower bounds"];
     if (b.queries_only) notes.push("some minutes had no responses logged, so response codes are unknown there (turn on log-responses)");
     ui.dnstapNote.textContent = notes.join(" · ");
   }
@@ -651,7 +654,7 @@
     zoneList: "zone-list",
     zonesMessage: "zones-message"
   };
-  var FIELD_LABELS = { zone: "Zone", qname: "Name", qtype: "Query type", rcode: "Response code" };
+  var FIELD_LABELS = { zone: "Zone", qname: "Name", qtype: "Query type", rcode: "Response code", client: "Client network" };
   function update() {
     writeUrl(state.view, true);
     load();
@@ -696,7 +699,7 @@
     state.filterMenu?.setField(field);
     update();
   }
-  var PLACEHOLDERS = { zone: "e.g. example.com", qname: "e.g. www.example.com", qtype: "e.g. AAAA", rcode: "e.g. NXDOMAIN" };
+  var PLACEHOLDERS = { zone: "e.g. example.com", qname: "e.g. www.example.com", qtype: "e.g. AAAA", rcode: "e.g. NXDOMAIN", client: "e.g. 192.0.2.0/24" };
   function renderChips() {
     const v = state.view;
     const chips = FILTERS.filter((f) => v[f]).map((f) => ({
@@ -736,7 +739,10 @@
       notes.push(chartNote);
     }
     if (dnstapOnly(v)) {
-      notes.push("Knot's counters cannot filter by name, query type or response code, so the charts above show all traffic" + (v.zone ? " for the zone" : "") + ". " + (dnstap ? "Queries from dnstap below answer the filtered question." : "Switch on dnstap (KNOT_DNSTAP=true) to filter by these."));
+      notes.push("Knot's counters cannot filter by name, query type, response code or client network, so the charts above show all traffic" + (v.zone ? " for the zone" : "") + ". " + (dnstap ? "Queries from dnstap below answer the filtered question." : "Switch on dnstap (KNOT_DNSTAP=true) to filter by these."));
+    }
+    if (v.client && dnstap && !servers.some((s) => s.dnstap?.clients)) {
+      notes.push("No server counts client networks, so nothing matches a client filter. Set KNOT_DNSTAP_CLIENTS=true on the collector.");
     }
     state.ui.sourceNote.hidden = !notes.length;
     state.ui.sourceNote.textContent = notes.join(" ");

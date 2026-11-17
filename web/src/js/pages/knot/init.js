@@ -18,7 +18,7 @@ const ROLES = {
   zoneCount: 'zone-count', zoneSearch: 'zone-search', zoneList: 'zone-list', zonesMessage: 'zones-message'
 };
 
-const FIELD_LABELS = {zone: 'Zone', qname: 'Name', qtype: 'Query type', rcode: 'Response code'};
+const FIELD_LABELS = {zone: 'Zone', qname: 'Name', qtype: 'Query type', rcode: 'Response code', client: 'Client network'};
 
 // update records the view in the URL and reloads.
 function update() {
@@ -76,7 +76,7 @@ function filter(field, value) {
   update();
 }
 
-const PLACEHOLDERS = {zone: 'e.g. example.com', qname: 'e.g. www.example.com', qtype: 'e.g. AAAA', rcode: 'e.g. NXDOMAIN'};
+const PLACEHOLDERS = {zone: 'e.g. example.com', qname: 'e.g. www.example.com', qtype: 'e.g. AAAA', rcode: 'e.g. NXDOMAIN', client: 'e.g. 192.0.2.0/24'};
 
 function renderChips() {
   const v = state.view;
@@ -112,8 +112,11 @@ function sourceNote() {
     notes.push(chartNote);
   }
   if (dnstapOnly(v)) {
-    notes.push('Knot\'s counters cannot filter by name, query type or response code, so the charts above show all traffic' + (v.zone ? ' for the zone' : '') + '. ' +
+    notes.push('Knot\'s counters cannot filter by name, query type, response code or client network, so the charts above show all traffic' + (v.zone ? ' for the zone' : '') + '. ' +
       (dnstap ? 'Queries from dnstap below answer the filtered question.' : 'Switch on dnstap (KNOT_DNSTAP=true) to filter by these.'));
+  }
+  if (v.client && dnstap && !servers.some(s => s.dnstap?.clients)) {
+    notes.push('No server counts client networks, so nothing matches a client filter. Set KNOT_DNSTAP_CLIENTS=true on the collector.');
   }
   state.ui.sourceNote.hidden = !notes.length;
   state.ui.sourceNote.textContent = notes.join(' ');

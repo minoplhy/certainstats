@@ -3,6 +3,7 @@ package knot
 import (
 	"context"
 	"fmt"
+	"net/netip"
 	"sort"
 	"strconv"
 	"strings"
@@ -18,8 +19,10 @@ type Query struct {
 	QName       string
 	QType       string
 	RCode       string
-	Start, End  int64 // [Start, End) Unix ms
-	Step        int64 // series bucket width
+	// Client limits rows to client networks inside this prefix; zero matches everything.
+	Client     netip.Prefix
+	Start, End int64 // [Start, End) Unix ms
+	Step       int64 // series bucket width
 	// MinuteFrom is the oldest minute still kept; ranges starting earlier read hourly rows.
 	MinuteFrom int64
 }
@@ -41,7 +44,7 @@ type Breakdown struct {
 	Approximate bool `json:"approximate"`
 	// Exact names the source of Total: true when it comes from uncapped totals.
 	Exact bool `json:"exact"`
-	// Ignored lists filters this dimension cannot apply (clients and sizes are per collector only).
+	// Ignored lists filters this dimension cannot apply (sizes carry no zone, name or client).
 	Ignored []string   `json:"ignored,omitempty"`
 	Series  [][2]int64 `json:"series"`
 	// QueriesOnly is set when some minutes had no responses logged, so rcodes are unknown there.
@@ -81,6 +84,15 @@ func filters(q Query, keys []string) (string, []any, []string) {
 		}
 		where = append(where, f.col+" = ?")
 		args = append(args, f.val)
+	}
+	if q.Client.IsValid() {
+		if has["net"] {
+			lo, hi := netRange(q.Client)
+			where = append(where, "net >= ? AND net < ?")
+			args = append(args, lo, hi)
+		} else {
+			ignored = append(ignored, "client")
+		}
 	}
 	return strings.Join(where, " AND "), args, ignored
 }
@@ -139,20 +151,26 @@ func (s *Store) union(ctx context.Context, q Query, dim, sel, group string) ([][
 // the matching total and its series over time.
 func (s *Store) Dnstap(ctx context.Context, q Query, dim string, limit int) (Breakdown, error) {
 	b := Breakdown{Dim: dim, Rows: []Row{}, Series: [][2]int64{}}
-	// The total and series come from exact totals unless a name filter forces name rows.
+	// The total and series come from exact totals unless a filter forces finer rows:
+	// a client filter needs client rows, a name filter name rows.
 	source := "totals"
-	if q.QName != "" {
+	switch {
+	case q.Client.IsValid():
+		source = "clients"
+	case q.QName != "":
 		source = "names"
 	}
 	b.Exact = source == "totals"
-	col := map[string]string{"qname": "qname", "zone": "zone", "qtype": "qtype", "rcode": "rcode", "client": "subnet", "size": "up_to"}[dim]
+	col := map[string]string{"qname": "qname", "zone": "zone", "qtype": "qtype", "rcode": "rcode", "client": "net", "size": "up_to"}[dim]
 	if col == "" {
 		return b, fmt.Errorf("unknown dimension %q", dim)
 	}
 	table := source
 	switch dim {
 	case "qname":
-		table = "names"
+		if source != "clients" {
+			table = "names"
+		}
 	case "client":
 		table = "clients"
 	case "size":
@@ -168,8 +186,11 @@ func (s *Store) Dnstap(ctx context.Context, q Query, dim string, limit int) (Bre
 		if v, ok := r[0].([]byte); ok {
 			key = string(v)
 		}
+		if dim == "client" {
+			key = netLabel(key)
+		}
 		n := r[1].(int64)
-		if dim == "qname" && key == wire.Other {
+		if (table == "names" || table == "clients") && dim == "qname" && key == wire.Other {
 			b.Other += n
 			continue
 		}
@@ -190,11 +211,15 @@ func (s *Store) Dnstap(ctx context.Context, q Query, dim string, limit int) (Bre
 		}
 		b.Rows = b.Rows[:limit]
 	}
-	if dim == "qname" || source == "names" {
+	if dim == "qname" || source != "totals" {
 		// Any folded name row in range means names below the cap are missing from the list.
+		ft := "names"
+		if source == "clients" {
+			ft = "clients"
+		}
 		fq := q
 		fq.QName, fq.QType, fq.RCode = wire.Other, "", ""
-		folded, _, err := s.union(ctx, fq, "names", "1 AS k, count AS n", "")
+		folded, _, err := s.union(ctx, fq, ft, "1 AS k, count AS n", "")
 		if err != nil {
 			return b, err
 		}

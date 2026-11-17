@@ -97,6 +97,15 @@ func TestEndpointsTakeHoursOrStartEnd(t *testing.T) {
 	if code, body := get(r.typ.series, "group=rcode&hours=0"); code != http.StatusBadRequest || body["error"] != badRange {
 		t.Fatalf("bad range: %d %v", code, body)
 	}
+	if code, body := get(r.typ.queries, "dim=qname&hours=6&client=nope"); code != http.StatusBadRequest {
+		t.Fatalf("bad client: %d %v", code, body)
+	}
+	if code, body := get(r.typ.queries, "dim=qname&hours=6&client=10.1.2.3"); code != http.StatusOK || body["widened"] != "10.1.2.0/24" {
+		t.Fatalf("narrow client: %d %v", code, body)
+	}
+	if code, body := get(r.typ.queries, "dim=qname&hours=6&client=10.0.0.0/8"); code != http.StatusOK || body["widened"] != nil {
+		t.Fatalf("wide client: %d %v", code, body)
+	}
 }
 
 func TestDnstapSeriesHasEveryBucket(t *testing.T) {

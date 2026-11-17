@@ -88,7 +88,8 @@ On the Collectors page, add a collector with Knot DNS ticked (`/collectors?add=k
 | `KNOT_DNSTAP` | off | `true` receives dnstap |
 | `KNOT_DNSTAP_SOCKET` | `/run/certainstats/dnstap.sock` | Socket the collector creates for Knot's dnstap sink |
 | `KNOT_DNSTAP_TOP` | `1000` | Name rows kept per minute (10 to 5000). The rest fold into one "other" row per zone, query type and response code. |
-| `KNOT_DNSTAP_CLIENTS` | off | `true` also counts client networks (/24 and /48, top 50 per minute) |
+| `KNOT_DNSTAP_CLIENTS` | off | `true` also counts client networks (/24 and /48, top 50 per minute), split by zone, name, query type and response code, so you can filter by client network |
+| `KNOT_DNSTAP_CLIENT_TOP` | `1000` | Client rows (network × name) kept per minute (10 to 5000). The rest fold into one "other" row per network, zone, query type and response code. |
 
 ### 5. Docker
 
@@ -123,20 +124,23 @@ volumes:
 
 Raw queries never leave the host: dnstap is aggregated into minute buckets on the collector. Client addresses are counted only with `KNOT_DNSTAP_CLIENTS=true`, and then only as /24 or /48 networks.
 
+With `KNOT_DNSTAP_CLIENTS=true`, each network's counts are split by the names it asked for, so anyone who can see the page can see which names a /24 or /48 looked up. Leave it off where that is too much.
+
 ## The page
 
 - **Headline and totals.** A plain-language headline, then total requests, queries per second, NXDOMAIN and SERVFAIL shares, and zone transfers for the range.
 - **Controls.**
   - A server picker.
   - The shared time picker, with quick ranges and a custom range up to two years. It is remembered in `certainstats_knot_hours`.
-  - The shared **+ Filter** menu: zone, name, query type, response code ("is" only).
+  - The shared **+ Filter** menu: zone, name, query type, response code, client network ("is" only). A client network is an address or a CIDR such as `10.0.0.0/8` or `2001:db8::/32`.
   - The range is kept in the URL as `hours` or `start`/`end`. Older links with `range=7d` open the same window.
   - Brushing (dragging across) any chart zooms the whole page to that range.
 - **Checks**, described below.
 - **Traffic.** One chart from the counters, with a switch between queries per second by protocol, response codes, query types, operations, and bytes per second. Only the chosen group is loaded. It is kept in the URL as `chart` when it is not protocol.
 - **Queries** (with dnstap). The matching queries over time beside one ranked list, with tabs for names, query types, response codes, zones, response sizes and, when a server counts them, client networks.
   - The tab is kept in the URL as `top` when it is not names.
-  - Clicking a row filters by it. A client network has no filter, so clicking it copies it instead.
+  - Clicking a row filters by it. Clicking a client network shows the names, types and codes it queried; the icon beside it copies it.
+  - With a name filter, the client networks tab lists the networks that asked for that name.
 - **Zones.** A dense list with roles, serial, soonest expiry and status. Clicking a zone opens it on every server.
 
 ### Which source answers a filter
@@ -148,6 +152,7 @@ Knot's mod-stats counters are separate groups: there is "AAAA queries" and there
 | Server | Counters | Yes |
 | Zone | Counters with `KNOT_ZONE_STATS=true`, and dnstap | Yes |
 | Name, query type, response code, or any mix | dnstap only | Totals by zone, query type and response code are exact. Anything filtered by name is a lower bound, since names below the per-minute cap are folded into "other". |
+| Client network | dnstap with `KNOT_DNSTAP_CLIENTS=true` | A lower bound. Only each minute's 50 busiest networks are kept. Networks are /24 or /48, so a narrower filter (such as one address) is widened to its /24 or /48, and the page says so. |
 
 The page says which source answers. When a filter only dnstap can apply, the counter charts keep showing all traffic and a note explains why.
 
@@ -204,5 +209,7 @@ Incidents appear in the Alerts incident history like any other. Notification tem
 - **Counters** go to the collector TSDB (`collector_tsdb`), never the agent TSDB. They follow `COLLECTOR_RETENTION_DURATION`. See [collectors](README.md#storage).
 - **Zones and dnstap** live in `DATA_DIR/knot.db`. Include it in [backups](../install-and-upgrade.md#back-up).
 - **dnstap minutes** are kept for `KNOT_DNSTAP_RAW_RETENTION` (default 7 days).
-- **dnstap hours** are kept for `KNOT_DNSTAP_ROLLUP_RETENTION` (default 90 days). Every hour, minutes older than two hours are summed into hours; hourly name lists keep the top 1000 names per collector and hour.
+- **dnstap hours** are kept for `KNOT_DNSTAP_ROLLUP_RETENTION` (default 90 days). Every hour, minutes older than two hours are summed into hours; hourly name lists keep the top 1000 names per collector and hour, and so do client rows.
+- Retention covers every dnstap table, client rows included. Old rows are deleted on the hourly cleanup, so a row can outlive its cutoff by up to an hour. A retention of `0` keeps rows forever.
+- **Upgrading to client rows split by name** resets the dnstap history in `knot.db` once (zones are kept), because the old client counts cannot be split. Upgrade the server and its collectors together: the server skips client rows from an older collector.
 - Data and counters of deleted accounts are dropped.

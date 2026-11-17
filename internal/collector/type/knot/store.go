@@ -7,9 +7,11 @@ import (
 	"database/sql"
 	"fmt"
 	"net/url"
+	"strings"
 	"time"
 
 	"certainstats/internal/collector/type/knot/wire"
+	log "certainstats/internal/logger"
 
 	_ "modernc.org/sqlite"
 )
@@ -27,7 +29,8 @@ var dims = []struct {
 }{
 	{"totals", []string{"zone", "qtype", "rcode"}},
 	{"names", []string{"zone", "qname", "qtype", "rcode"}},
-	{"clients", []string{"subnet"}},
+	// clients keys each client network (see netkey.go) by zone, name, qtype and rcode.
+	{"clients", []string{"net", "zone", "qname", "qtype", "rcode"}},
 	{"sizes", []string{"up_to"}},
 }
 
@@ -52,8 +55,11 @@ func dimSchema() []string {
 			if d.name == "totals" || d.name == "names" {
 				out = append(out, fmt.Sprintf(`CREATE INDEX IF NOT EXISTS %s_zone ON %s(user_id, zone, bucket)`, table, table))
 			}
-			if d.name == "names" {
+			if d.name == "names" || d.name == "clients" {
 				out = append(out, fmt.Sprintf(`CREATE INDEX IF NOT EXISTS %s_qname ON %s(user_id, qname, bucket)`, table, table))
+			}
+			if d.name == "clients" {
+				out = append(out, fmt.Sprintf(`CREATE INDEX IF NOT EXISTS %s_net ON %s(user_id, net, bucket)`, table, table))
 			}
 		}
 	}
@@ -91,6 +97,57 @@ var schema = append([]string{
 	`CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value INTEGER NOT NULL) WITHOUT ROWID`,
 }, dimSchema()...)
 
+// schemaVersion 2 keys client rows by network, zone, name, qtype and rcode.
+const schemaVersion = 2
+
+// migrate brings an older knot.db up to schemaVersion. Version 1 counted client
+// networks alone, which cannot be split by name, so its dnstap history is
+// dropped; zones are kept. A new file (version 0, no tables) has nothing to drop.
+func migrate(db *sql.DB) error {
+	var v int
+	if err := db.QueryRow(`PRAGMA user_version`).Scan(&v); err != nil {
+		return err
+	}
+	if v == 0 || v >= schemaVersion {
+		return nil
+	}
+	rows, err := db.Query(`SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE 'dnstap\_%' ESCAPE '\'`)
+	if err != nil {
+		return err
+	}
+	var tables []string
+	for rows.Next() {
+		var n string
+		if err := rows.Scan(&n); err != nil {
+			rows.Close()
+			return err
+		}
+		tables = append(tables, n)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	for _, t := range tables {
+		if _, err := tx.Exec(`DROP TABLE IF EXISTS "` + t + `"`); err != nil {
+			return err
+		}
+	}
+	if _, err := tx.Exec(`DELETE FROM meta WHERE key = 'rolled_until'`); err != nil && !strings.Contains(err.Error(), "no such table") {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	log.Printf("[Knot] knot.db schema %d -> %d: dnstap history reset (client rows are now split by name)", v, schemaVersion)
+	return nil
+}
+
 // Store owns knot.db: one writer connection, a small read pool.
 type Store struct {
 	write *sql.DB
@@ -114,14 +171,17 @@ func Open(path string) (*Store, error) {
 		return nil, err
 	}
 	write.SetMaxOpenConns(1)
+	if err := migrate(write); err != nil {
+		write.Close()
+		return nil, fmt.Errorf("knot migrate: %w", err)
+	}
 	for _, stmt := range schema {
 		if _, err := write.Exec(stmt); err != nil {
 			write.Close()
 			return nil, fmt.Errorf("knot schema: %w", err)
 		}
 	}
-	// Version 1 is the first schema; later versions migrate from here.
-	if _, err := write.Exec(`PRAGMA user_version = 1`); err != nil {
+	if _, err := write.Exec(fmt.Sprintf(`PRAGMA user_version = %d`, schemaVersion)); err != nil {
 		write.Close()
 		return nil, err
 	}
@@ -278,20 +338,26 @@ func (s *Store) SaveDnstap(ctx context.Context, userID, collectorID string, d wi
 		return nil
 	}
 	var totals, names, clients, sizes [][]any
+	// Client rows of an older collector carry no name; they cannot be split, so they are skipped.
+	for _, c := range d.Clients {
+		key, ok := netKeyOf(c.Subnet)
+		if !ok || c.QName == "" {
+			continue
+		}
+		clients = append(clients, []any{key, c.Zone, c.QName, c.QType, c.RCode, int64(c.Count)})
+	}
 	for _, t := range d.Totals {
 		totals = append(totals, []any{t.Zone, t.QType, t.RCode, int64(t.Count)})
 	}
 	for _, n := range d.Names {
 		names = append(names, []any{n.Zone, n.QName, n.QType, n.RCode, int64(n.Count)})
 	}
-	for _, c := range d.Clients {
-		clients = append(clients, []any{c.Subnet, int64(c.Count)})
-	}
 	for _, z := range d.Sizes {
 		sizes = append(sizes, []any{z.UpTo, int64(z.Count)})
 	}
-	for i, rows := range [][][]any{totals, names, clients, sizes} {
-		if err := put("dnstap_"+dims[i].name+"_minute", dims[i].keys, rows); err != nil {
+	byDim := map[string][][]any{"totals": totals, "names": names, "clients": clients, "sizes": sizes}
+	for _, d := range dims {
+		if err := put("dnstap_"+d.name+"_minute", d.keys, byDim[d.name]); err != nil {
 			return err
 		}
 	}

@@ -39,12 +39,15 @@ Stored in the collector TSDB as the metric `knot_counter`, with labels `user_id`
 | `zones` | Each collector's latest view of each zone, with the time its serial last changed |
 | `dnstap_totals_minute` | Exact counts per zone, query type and response code |
 | `dnstap_names_minute` | Name rows: the top names plus "other" rows, adding up to the totals |
-| `dnstap_clients_minute`, `dnstap_sizes_minute` | Client networks and response sizes |
+| `dnstap_clients_minute` | Client rows keyed by network, zone, name, query type and response code: the top rows of the busiest networks, plus "other" rows per network |
+| `dnstap_sizes_minute` | Response sizes |
 | `dnstap_minutes` | Which minutes arrived, and whether they held only queries |
 | `*_hourly` | The hourly rollups of the minute tables |
 
 - Rows are replaced by key, so a resent part changes nothing.
-- **Hourly rollup.** Every hour, maintenance sums settled hours (older than two hours, after any resends) into the `_hourly` tables. Hourly names keep the top 1000 per collector and hour; the rest fold into "other" rows.
+- **Client network key.** `net` is 32 hex digits of the 16-byte network address (IPv4 as `::ffff:a.b.c.d`), `/`, and the 3-digit IPv6-form prefix length, e.g. `00000000000000000000ffff0a010200/120` for `10.1.2.0/24`. Text order is address order, so a CIDR filter is `net >= lo AND net < hi` on the `(user_id, net, bucket)` index. See `netkey.go`.
+- **Schema version.** `PRAGMA user_version` is 2. Opening a version 1 file (client rows by network alone) drops its `dnstap_*` tables and the `rolled_until` mark; zones are kept.
+- **Hourly rollup.** Every hour, maintenance sums settled hours (older than two hours, after any resends) into the `_hourly` tables. Hourly names and client rows keep the top 1000 per collector and hour; the rest fold into "other" rows (per network too, for client rows), so the sums still match.
 - **Which table is read.** Ranges that start within minute retention read minutes. Older ranges read hours, plus minutes for the hours not yet rolled.
 
 ## Alert evaluation
@@ -62,7 +65,7 @@ Paths are relative to the panel's `/api`. Every GET answers one resource, and ea
 | GET | `/collectors/knot/zones/{zone}` | One zone on every server |
 | GET | `/collectors/knot/totals?hours=&collector=&zone=` | Total requests, queries per second (over the time counted), responses, NXDOMAIN, SERVFAIL, REFUSED, transfers, bytes; `collecting` until the second reading |
 | GET | `/collectors/knot/series?group=&hours=&collector=&zone=` | Per-second rates for `protocol`, `rcode`, `operation`, `qtype` or `bytes`; the top four lines plus "other" |
-| GET | `/collectors/knot/queries?dim=&hours=&collector=&zone=&qname=&qtype=&rcode=&limit=` | dnstap breakdown by `qname`, `zone`, `qtype`, `rcode`, `client` or `size`, with the matching total and its series (every bucket of the window, quiet ones as 0) |
+| GET | `/collectors/knot/queries?dim=&hours=&collector=&zone=&qname=&qtype=&rcode=&client=&limit=` | dnstap breakdown by `qname`, `zone`, `qtype`, `rcode`, `client` or `size`, with the matching total and its series (every bucket of the window, quiet ones as 0). `client` is an address or CIDR; with it, everything but sizes is read from client rows (`exact: false`), and a prefix finer than /24 or /48 is widened and reported as `widened`. |
 | GET | `/collectors/{id}/knot` | That collector's Knot state |
 
 ### Time range

@@ -38,9 +38,9 @@ function helpers() {
 
 test('view round-trips through the URL with the shared range keys and one value per filter', () => {
   const kn = helpers();
-  const v = kn.parseView('?server=col_a&hours=168&zone=Example.COM&qname=www.example.com.&qtype=aaaa&rcode=nxdomain');
+  const v = kn.parseView('?server=col_a&hours=168&zone=Example.COM&qname=www.example.com.&qtype=aaaa&rcode=nxdomain&client=2001:DB8::/32');
   assert.deepEqual({...v}, {server: 'col_a', hours: 168, start: null, end: null, zone: 'example.com.', qname: 'www.example.com.', qtype: 'AAAA', rcode: 'NXDOMAIN',
-    chart: 'protocol', top: 'qname'});
+    client: '2001:db8::/32', chart: 'protocol', top: 'qname'});
   assert.deepEqual({...kn.parseView('?' + kn.toQuery(v))}, {...v});
   // What the traffic chart and dnstap list show is kept in the URL, only when not the default, and never sent to the API.
   const shown = kn.parseView('?chart=bytes&top=client');
@@ -55,7 +55,7 @@ test('view round-trips through the URL with the shared range keys and one value 
   assert.equal(kn.parseView('?range=7d').hours, 168);
   assert.equal(kn.toQuery(kn.parseView('')).toString(), 'hours=24');
   // The API calls the server filter "collector"; counters drop what they cannot filter.
-  assert.equal(kn.apiParams(v, {dim: 'qname'}), 'hours=168&collector=col_a&zone=example.com.&qname=www.example.com.&qtype=AAAA&rcode=NXDOMAIN&dim=qname');
+  assert.equal(kn.apiParams(v, {dim: 'qname'}), 'hours=168&collector=col_a&zone=example.com.&qname=www.example.com.&qtype=AAAA&rcode=NXDOMAIN&client=2001%3Adb8%3A%3A%2F32&dim=qname');
   assert.equal(kn.counterParams(v, {group: 'rcode'}), 'hours=168&collector=col_a&zone=example.com.&group=rcode');
   // A custom or zoomed range is sent as start and end instead of hours.
   kn.setCustom(v, 1000.7, 5000.2);
@@ -68,6 +68,7 @@ test('view round-trips through the URL with the shared range keys and one value 
   assert.equal(kn.toQuery(v).get('hours'), '168');
   assert.equal(kn.dnstapOnly(v), true);
   assert.equal(kn.dnstapOnly(kn.parseView('?zone=a')), false);
+  assert.equal(kn.dnstapOnly(kn.parseView('?client=10.0.0.0/8')), true);
   assert.equal(kn.normalize('zone', '(none)'), '(none)');
   kn.removeFilter(v, 'qname');
   assert.equal(v.qname, '');
@@ -235,22 +236,29 @@ test('a Clients tab appears only when a server counts clients', async () => {
   await settle();
   assert.equal(on.q('[data-kn-top-tab="client"]').getAttribute('aria-selected'), 'true');
   assert.deepEqual(on.requests.filter(u => u.pathname.endsWith('/queries')).map(u => u.searchParams.get('dim')), ['client']);
-  // A client network has no filter: clicking it, or its copy button, copies it.
+  // A client network's copy button copies it; clicking the network filters by it.
   const copied = [], toasts = [];
   Object.defineProperty(on.w.navigator, 'clipboard', {configurable: true, value: {writeText: async t => { copied.push(t); }}});
   on.w.CertainStatsTelemetry.showToast = (m, ok) => toasts.push(m + ' ' + ok);
-  const value = on.q('[data-kn-top-list] .cs-rank-value');
-  assert.equal(value.disabled, false);
-  value.click();
   on.q('[data-kn-top-list] .cs-icon-btn[aria-label="Copy 203.0.113.0/24"]').click();
   await settle();
-  assert.deepEqual(copied, ['203.0.113.0/24', '203.0.113.0/24']);
-  assert.deepEqual(toasts, ['Network copied true', 'Network copied true']);
+  assert.deepEqual(copied, ['203.0.113.0/24']);
+  assert.deepEqual(toasts, ['Network copied true']);
   assert.equal(on.w.location.search, '?top=client', 'copying never filters');
   // Other rows without a filter stay plain, with no copy button.
   on.q('[data-kn-top-tab="size"]').click();
   await settle();
   assert.equal(on.q('[data-kn-top-list] .cs-icon-btn'), null);
+  on.q('[data-kn-top-tab="client"]').click();
+  await settle();
+  const value = on.q('[data-kn-top-list] .cs-rank-value');
+  assert.equal(value.disabled, false);
+  value.click();
+  await settle();
+  assert.match(on.w.location.search, /client=203\.0\.113\.0%2F24/);
+  const last = on.requests.filter(u => u.pathname.endsWith('/queries')).pop();
+  assert.equal(last.searchParams.get('client'), '203.0.113.0/24');
+  assert.match(on.q('[data-filter-chips]').textContent, /Client network/);
 });
 
 test('clicking a name filters by it, and counters say what they cannot split', async () => {
@@ -337,7 +345,7 @@ test('the shared filter menu adds a Knot filter, with "is" only', async () => {
   const p = page('http://x/panel/knot');
   await settle();
   const toggle = p.q('[data-filter-toggle]'), pop = p.q('[data-filter-popover]');
-  assert.deepEqual(p.qa('[data-filter-field] option').map(o => o.value), ['zone', 'qname', 'qtype', 'rcode']);
+  assert.deepEqual(p.qa('[data-filter-field] option').map(o => o.value), ['zone', 'qname', 'qtype', 'rcode', 'client']);
   assert.equal(p.q('[data-filter-match]').hidden, true, 'Knot filters cannot exclude');
   toggle.click();
   assert.equal(pop.hidden, false);

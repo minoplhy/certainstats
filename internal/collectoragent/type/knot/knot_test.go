@@ -333,7 +333,7 @@ func TestDnstapStreamAndAggregation(t *testing.T) {
 	if len(mins) != 1 {
 		t.Fatalf("minutes: %d", len(mins))
 	}
-	d := mins[0].bucket(1, 10)
+	d := mins[0].bucket(1, 10, 1000)
 	if d.MinuteMs != time.Date(2026, 11, 16, 12, 0, 0, 0, time.UTC).UnixMilli() || !d.QueriesOnly {
 		t.Fatalf("bucket head: %+v", d)
 	}
@@ -361,8 +361,50 @@ func TestDnstapStreamAndAggregation(t *testing.T) {
 	if names != sum || other != 3 || top != "www.example.com." {
 		t.Fatalf("names: %+v", d.Names)
 	}
-	if len(d.Clients) != 1 || d.Clients[0] != (wire.Client{Subnet: "192.0.2.0/24", Count: 6}) {
+	clients := map[clientKey]uint64{}
+	var csum uint64
+	for _, c := range d.Clients {
+		if c.Subnet != "192.0.2.0/24" {
+			t.Fatalf("client subnet: %+v", c)
+		}
+		clients[clientKey{c.Subnet, c.Zone, c.QName, c.QType, c.RCode}] = c.Count
+		csum += c.Count
+	}
+	if csum != 6 || clients[clientKey{"192.0.2.0/24", "example.com.", "www.example.com.", "AAAA", "NOERROR"}] != 3 ||
+		clients[clientKey{"192.0.2.0/24", wire.NoZone, "nothere.org.", "TXT", "REFUSED"}] != 1 {
 		t.Fatalf("clients: %+v", d.Clients)
+	}
+}
+
+func TestClientRowsTrimSubnetsAndFoldNames(t *testing.T) {
+	agg := &aggregator{zones: zoneSet{"example.com.": true}, clients: true}
+	now := time.Date(2026, 11, 16, 12, 0, 30, 0, time.UTC)
+	add := func(ip, name string, n int) {
+		for i := 0; i < n; i++ {
+			agg.add(event{response: true, qname: name, qtype: "A", rcode: "NOERROR", client: net.ParseIP(ip)}, now)
+		}
+	}
+	// Three subnets; the quietest is trimmed away with all of its rows.
+	add("10.0.0.1", "a.example.com.", 5)
+	add("10.0.0.2", "b.example.com.", 2)
+	add("10.0.0.3", "c.example.com.", 1)
+	add("10.0.1.1", "a.example.com.", 4)
+	add("10.0.2.1", "z.example.com.", 1)
+	d := agg.take(now.Add(time.Minute))[0].bucket(10, 2, 2)
+	per := map[string]uint64{}
+	var other uint64
+	for _, c := range d.Clients {
+		per[c.Subnet] += c.Count
+		if c.QName == wire.Other {
+			other += c.Count
+		}
+	}
+	if len(per) != 2 || per["10.0.0.0/24"] != 8 || per["10.0.1.0/24"] != 4 || per["10.0.2.0/24"] != 0 {
+		t.Fatalf("subnet sums: %+v", per)
+	}
+	// Two named rows stay (5 and 4); 2 and 1 fold into 10.0.0.0/24's Other row.
+	if other != 3 || len(d.Clients) != 3 {
+		t.Fatalf("fold: %+v", d.Clients)
 	}
 }
 
@@ -371,21 +413,23 @@ func TestSplitKeepsRowsDisjointAndComplete(t *testing.T) {
 	for i := 0; i < 300; i++ {
 		d.Totals = append(d.Totals, wire.Total{Zone: strings.Repeat("z", 50) + string(rune('a'+i%26)), QType: "A", RCode: "NOERROR", Count: 1})
 		d.Names = append(d.Names, wire.Name{Zone: "z.", QName: strings.Repeat("n", 100) + string(rune('a'+i%26)), QType: "A", RCode: "NOERROR", Count: 2})
+		d.Clients = append(d.Clients, wire.Client{Subnet: "192.0.2.0/24", Zone: "z.", QName: strings.Repeat("c", 100) + string(rune('a'+i%26)), QType: "A", RCode: "NOERROR", Count: 3})
 	}
 	parts := split(d, 4096)
 	if len(parts) < 2 {
 		t.Fatalf("expected several parts, got %d", len(parts))
 	}
-	var totals, names int
+	var totals, names, clients int
 	for i, p := range parts {
 		if p.Part != i || p.Parts != len(parts) || p.MinuteMs != 60000 {
 			t.Fatalf("part %d header: %+v", i, p)
 		}
 		totals += len(p.Totals)
 		names += len(p.Names)
+		clients += len(p.Clients)
 	}
-	if totals != 300 || names != 300 {
-		t.Fatalf("rows lost: %d totals, %d names", totals, names)
+	if totals != 300 || names != 300 || clients != 300 {
+		t.Fatalf("rows lost: %d totals, %d names, %d clients", totals, names, clients)
 	}
 	if one := split(wire.Dnstap{MinuteMs: 1, Totals: d.Totals[:2]}, 1<<20); len(one) != 1 || one[0].Parts != 0 {
 		t.Fatalf("small bucket split: %+v", one)

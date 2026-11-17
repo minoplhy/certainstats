@@ -2,6 +2,7 @@ package knot
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"sort"
 	"strings"
@@ -20,9 +21,10 @@ const (
 
 func hourOf(ms int64) int64 { return ms - ms%hourMs }
 
-// Rollup sums settled hours of minute rows into the hourly tables. Names keep
-// the top TopHourly rows per collector and hour; the rest fold into Other rows
-// per zone, qtype and rcode, so they still add up to the totals.
+// Rollup sums settled hours of minute rows into the hourly tables. Names and
+// client rows keep the top TopHourly rows per collector and hour; the rest fold
+// into Other rows per zone, qtype and rcode (and network, for client rows), so
+// they still add up.
 func (s *Store) Rollup(ctx context.Context, now int64) (int, error) {
 	until, err := s.rolledUntil(ctx)
 	if err != nil {
@@ -60,7 +62,7 @@ func (s *Store) rollHour(ctx context.Context, h int64) error {
 		if _, err := tx.ExecContext(ctx, `DELETE FROM `+hourT+` WHERE bucket = ?`, h); err != nil {
 			return err
 		}
-		if d.name == "names" {
+		if d.name == "names" || d.name == "clients" {
 			continue
 		}
 		keys := strings.Join(d.keys, ", ")
@@ -70,39 +72,71 @@ func (s *Store) rollHour(ctx context.Context, h int64) error {
 			return err
 		}
 	}
-	rows, err := tx.QueryContext(ctx, `SELECT user_id, collector_id, zone, qname, qtype, rcode, SUM(count) AS n FROM dnstap_names_minute
-		WHERE bucket >= ? AND bucket < ? GROUP BY user_id, collector_id, zone, qname, qtype, rcode`, h, h+hourMs)
+	if err := s.rollTop(ctx, tx, h, "names", nil); err != nil {
+		return err
+	}
+	if err := s.rollTop(ctx, tx, h, "clients", []string{"net"}); err != nil {
+		return err
+	}
+	if err := s.metaSet(ctx, tx, "rolled_until", h+hourMs); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// rollTop sums one hour of a names-type table (zone, qname, qtype, rcode, after
+// the lead keys) and keeps the top TopHourly rows per collector; the rest fold
+// into Other rows per lead keys, zone, qtype and rcode, so they still add up.
+func (s *Store) rollTop(ctx context.Context, tx *sql.Tx, h int64, dim string, lead []string) error {
+	keys := append(append([]string{}, lead...), "zone", "qname", "qtype", "rcode")
+	qi := len(lead) + 1 // index of qname in keys
+	cols := strings.Join(keys, ", ")
+	rows, err := tx.QueryContext(ctx, fmt.Sprintf(`SELECT user_id, collector_id, %s, SUM(count) FROM dnstap_%s_minute
+		WHERE bucket >= ? AND bucket < ? GROUP BY user_id, collector_id, %s`, cols, dim, cols), h, h+hourMs)
 	if err != nil {
 		return err
 	}
 	type row struct {
-		user, col, zone, qname, qtype, rcode string
-		n                                    int64
+		key []string
+		n   int64
 	}
 	groups := map[[2]string][]row{}
 	for rows.Next() {
-		var r row
-		if err := rows.Scan(&r.user, &r.col, &r.zone, &r.qname, &r.qtype, &r.rcode, &r.n); err != nil {
+		var user, col string
+		r := row{key: make([]string, len(keys))}
+		dest := []any{&user, &col}
+		for i := range r.key {
+			dest = append(dest, &r.key[i])
+		}
+		if err := rows.Scan(append(dest, &r.n)...); err != nil {
 			rows.Close()
 			return err
 		}
-		groups[[2]string{r.user, r.col}] = append(groups[[2]string{r.user, r.col}], r)
+		g := [2]string{user, col}
+		groups[g] = append(groups[g], r)
 	}
 	rows.Close()
 	if err := rows.Err(); err != nil {
 		return err
 	}
-	stmt, err := tx.PrepareContext(ctx, `INSERT INTO dnstap_names_hourly (user_id, collector_id, bucket, zone, qname, qtype, rcode, count) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
+	marks := strings.TrimSuffix(strings.Repeat("?, ", len(keys)), ", ")
+	stmt, err := tx.PrepareContext(ctx, fmt.Sprintf(`INSERT INTO dnstap_%s_hourly (user_id, collector_id, bucket, %s, count) VALUES (?, ?, ?, %s, ?)`, dim, cols, marks))
 	if err != nil {
 		return err
 	}
 	defer stmt.Close()
-	for _, list := range groups {
+	// foldKey is the row's key with qname set to Other, joined for map use.
+	foldKey := func(k []string) string {
+		f := append([]string{}, k...)
+		f[qi] = wire.Other
+		return strings.Join(f, "\x00")
+	}
+	for g, list := range groups {
 		named := list[:0:0]
-		other := map[[3]string]int64{}
+		other := map[string]int64{}
 		for _, r := range list {
-			if r.qname == wire.Other {
-				other[[3]string{r.zone, r.qtype, r.rcode}] += r.n
+			if r.key[qi] == wire.Other {
+				other[foldKey(r.key)] += r.n
 				continue
 			}
 			named = append(named, r)
@@ -111,27 +145,32 @@ func (s *Store) rollHour(ctx context.Context, h int64) error {
 			if named[i].n != named[j].n {
 				return named[i].n > named[j].n
 			}
-			return named[i].qname < named[j].qname
+			return strings.Join(named[i].key, "\x00") < strings.Join(named[j].key, "\x00")
 		})
 		if len(named) > s.TopHourly {
 			for _, r := range named[s.TopHourly:] {
-				other[[3]string{r.zone, r.qtype, r.rcode}] += r.n
+				other[foldKey(r.key)] += r.n
 			}
 			named = named[:s.TopHourly]
 		}
+		put := func(key []string, n int64) error {
+			args := []any{g[0], g[1], h}
+			for _, k := range key {
+				args = append(args, k)
+			}
+			_, err := stmt.ExecContext(ctx, append(args, n)...)
+			return err
+		}
 		for _, r := range named {
-			if _, err := stmt.ExecContext(ctx, r.user, r.col, h, r.zone, r.qname, r.qtype, r.rcode, r.n); err != nil {
+			if err := put(r.key, r.n); err != nil {
 				return err
 			}
 		}
 		for k, n := range other {
-			if _, err := stmt.ExecContext(ctx, list[0].user, list[0].col, h, k[0], wire.Other, k[1], k[2], n); err != nil {
+			if err := put(strings.Split(k, "\x00"), n); err != nil {
 				return err
 			}
 		}
 	}
-	if err := s.metaSet(ctx, tx, "rolled_until", h+hourMs); err != nil {
-		return err
-	}
-	return tx.Commit()
+	return nil
 }

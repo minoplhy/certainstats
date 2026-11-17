@@ -12,7 +12,7 @@ export const CARDS = [
   {dim: 'rcode', title: 'Codes', filter: 'rcode'},
   {dim: 'zone', title: 'Zones', filter: 'zone'},
   {dim: 'size', title: 'Sizes'},
-  {dim: 'client', title: 'Clients', clients: true, limit: 25}
+  {dim: 'client', title: 'Clients', filter: 'client', clients: true, limit: 25}
 ];
 
 export function sizeLabel(key) {
@@ -20,7 +20,7 @@ export function sizeLabel(key) {
   return n ? 'up to ' + n + ' B' : 'larger';
 }
 
-function rows(slot, spec, b, onFilter) {
+function rows(slot, spec, b, onFilter, widened) {
   const max = Math.max(1, ...b.rows.map(r => r.count));
   slot.list.replaceChildren(...b.rows.map(r => {
     const li = el('li', 'cs-rank-row');
@@ -28,14 +28,14 @@ function rows(slot, spec, b, onFilter) {
     const value = el('button', 'cs-rank-value', label);
     value.type = 'button';
     value.title = r.key;
-    // Client networks have no filter; clicking one copies it instead.
+    // Clicking a client network filters by it; the icon beside it copies it.
     const copyable = spec.dim === 'client' && r.key;
-    if (spec.filter && r.key) value.addEventListener('click', () => onFilter(spec.filter, r.key));
-    else if (copyable) {
+    if (copyable) {
       value.classList.add('mono');
-      value.title = 'Copy ' + r.key;
-      value.addEventListener('click', () => copyText(r.key, 'Network'));
-    } else value.disabled = true;
+      value.title = 'Show queries from ' + r.key;
+    }
+    if (spec.filter && r.key) value.addEventListener('click', () => onFilter(spec.filter, r.key));
+    else value.disabled = true;
     const meter = el('meter', 'cs-rank-meter');
     meter.min = 0;
     meter.max = max;
@@ -50,6 +50,7 @@ function rows(slot, spec, b, onFilter) {
   if (b.other) notes.push(formatCount(b.other) + ' more not listed');
   if (spec.dim === 'qname' && b.approximate) notes.push('names below the per-minute cap are folded away, so counts are lower bounds');
   if (b.ignored?.length) notes.push('not split by ' + b.ignored.join(', '));
+  if (widened) notes.push('client networks are counted per /24 or /48, so the filter matched ' + widened);
   slot.foot.textContent = notes.join(' · ');
 }
 
@@ -94,7 +95,7 @@ async function readTop(signal) {
   try {
     const data = await get('queries?' + apiParams(state.view, {dim: spec.dim, limit: spec.limit || 12}), signal);
     if (spec.dim !== state.view.top) return;
-    rows(s, spec, data.breakdown, state.onFilter);
+    rows(s, spec, data.breakdown, state.onFilter, data.widened);
     drawSeries(data);
   } catch (e) {
     if (!isAbort(e)) s.status.textContent = 'Could not load: ' + e.message;
@@ -130,7 +131,9 @@ function drawSeries(data) {
   drawChart('dnstap', 'kn-chart-dnstap', series, data, v => formatCount(Math.round(v)), countMax(series));
   ui.dnstapTotal.textContent = formatCount(b.total);
   ui.dnstapMessage.textContent = b.total ? '' : 'No dnstap traffic matches in this range.';
-  const notes = [b.exact ? 'Totals are exact' : 'Filtered by name, so totals are lower bounds'];
+  const notes = [b.exact ? 'Totals are exact'
+    : state.view.client ? 'Filtered by client network, so totals count only each minute\'s busiest networks and are lower bounds'
+    : 'Filtered by name, so totals are lower bounds'];
   if (b.queries_only) notes.push('some minutes had no responses logged, so response codes are unknown there (turn on log-responses)');
   ui.dnstapNote.textContent = notes.join(' · ');
 }

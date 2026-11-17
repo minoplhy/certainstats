@@ -401,6 +401,15 @@ func (t *Type) queries(w http.ResponseWriter, r *http.Request) {
 		QName: normalizeQName(qv.Get("qname")), QType: strings.ToUpper(strings.TrimSpace(qv.Get("qtype"))),
 		RCode: strings.ToUpper(strings.TrimSpace(qv.Get("rcode"))), Start: win.Start, End: win.End, Step: win.Step}
 	q.MinuteFrom = t.minuteFrom(now)
+	var widened bool
+	if raw := strings.TrimSpace(qv.Get("client")); raw != "" {
+		p, wide, err := clientFilter(raw)
+		if err != nil {
+			apiresponse.Error(w, http.StatusBadRequest, "client must be an IP address or CIDR")
+			return
+		}
+		q.Client, widened = p, wide
+	}
 	b, err := t.Store.Dnstap(r.Context(), q, dim, limit)
 	if err != nil {
 		if strings.HasPrefix(err.Error(), "unknown dimension") {
@@ -410,7 +419,12 @@ func (t *Type) queries(w http.ResponseWriter, r *http.Request) {
 		fail(w, "queries", err)
 		return
 	}
-	apiresponse.JSON(w, http.StatusOK, map[string]any{"start": win.Start, "end": win.End, "step": win.Step, "breakdown": b})
+	out := map[string]any{"start": win.Start, "end": win.End, "step": win.Step, "breakdown": b}
+	// Client rows go no finer than /24 or /48; a narrower filter says what it matched.
+	if widened {
+		out["widened"] = q.Client.String()
+	}
+	apiresponse.JSON(w, http.StatusOK, out)
 }
 
 func normalizeQName(n string) string {

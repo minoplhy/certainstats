@@ -2,8 +2,10 @@ package knot
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"math"
+	"net/netip"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -140,8 +142,16 @@ func bucketAt(minute int64) wire.Dnstap {
 			{Zone: "example.com.", QName: "nope.example.com.", QType: "AAAA", RCode: "NXDOMAIN", Count: 20},
 			{Zone: "example.com.", QName: wire.Other, QType: "AAAA", RCode: "NXDOMAIN", Count: 10},
 		},
-		Clients: []wire.Client{{Subnet: "192.0.2.0/24", Count: 100}},
-		Sizes:   []wire.Size{{UpTo: 128, Count: 90}, {UpTo: 0, Count: 10}},
+		Clients: []wire.Client{
+			{Subnet: "192.0.2.0/24", Zone: "example.com.", QName: "www.example.com.", QType: "A", RCode: "NOERROR", Count: 50},
+			{Subnet: "192.0.2.0/24", Zone: "example.com.", QName: "nope.example.com.", QType: "AAAA", RCode: "NXDOMAIN", Count: 20},
+			{Subnet: "2001:db8:1::/48", Zone: "example.com.", QName: "www.example.com.", QType: "A", RCode: "NOERROR", Count: 10},
+			{Subnet: "2001:db8:1::/48", Zone: "example.com.", QName: "mail.example.com.", QType: "A", RCode: "NOERROR", Count: 10},
+			{Subnet: "2001:db8:1::/48", Zone: "example.com.", QName: wire.Other, QType: "AAAA", RCode: "NXDOMAIN", Count: 10},
+			// A row from an older collector has no name and is skipped.
+			{Subnet: "198.51.100.0/24", Count: 999},
+		},
+		Sizes: []wire.Size{{UpTo: 128, Count: 90}, {UpTo: 0, Count: 10}},
 	}
 }
 
@@ -180,7 +190,7 @@ func TestDnstapStoreQueriesRollupAndPrune(t *testing.T) {
 		t.Fatalf("filtered by name: %+v %v", b, err)
 	}
 	b, err = s.Dnstap(ctx, Query{UserID: "u1", Zone: "example.com.", Start: old, End: now}, "client", 10)
-	if err != nil || len(b.Ignored) != 1 || b.Ignored[0] != "zone" || b.Rows[0].Count != 300 {
+	if err != nil || len(b.Ignored) != 0 || len(b.Rows) != 2 || b.Rows[0] != (Row{"192.0.2.0/24", 210}) || b.Rows[1] != (Row{"2001:db8:1::/48", 90}) {
 		t.Fatalf("clients: %+v %v", b, err)
 	}
 	if b, _ := s.Dnstap(ctx, Query{UserID: "u2", Start: old, End: now}, "rcode", 10); b.Total != 0 {
@@ -191,6 +201,7 @@ func TestDnstapStoreQueriesRollupAndPrune(t *testing.T) {
 	}
 
 	// Rolling settles hours older than the lag; the newest hour stays in minutes.
+	// TopHourly = 1 folds client names too, but each network's sum is kept.
 	n, err := s.Rollup(ctx, now)
 	if err != nil || n == 0 {
 		t.Fatalf("rollup %d %v", n, err)
@@ -217,6 +228,10 @@ func TestDnstapStoreQueriesRollupAndPrune(t *testing.T) {
 	if sum+names.Other != 300 || len(names.Rows) > 3 {
 		t.Fatalf("hourly names do not add up: %+v", names)
 	}
+	hc, err := s.Dnstap(ctx, hq, "client", 10)
+	if err != nil || len(hc.Rows) != 2 || hc.Rows[0] != (Row{"192.0.2.0/24", 210}) || hc.Rows[1] != (Row{"2001:db8:1::/48", 90}) {
+		t.Fatalf("hourly clients: %+v %v", hc, err)
+	}
 
 	// Retention drops old minutes; an unknown account loses everything.
 	if _, err := s.Prune(ctx, Retention{MinuteMs: 2 * hourMs}, now, []string{"u1"}); err != nil {
@@ -225,6 +240,17 @@ func TestDnstapStoreQueriesRollupAndPrune(t *testing.T) {
 	mb, _ := s.Dnstap(ctx, Query{UserID: "u1", Start: old, End: now}, "rcode", 10)
 	if mb.Total != 100 {
 		t.Fatalf("after minute retention %d", mb.Total)
+	}
+	if cb, _ := s.Dnstap(ctx, Query{UserID: "u1", Start: old, End: now}, "client", 10); len(cb.Rows) != 2 || cb.Rows[0].Count+cb.Rows[1].Count != 100 {
+		t.Fatalf("client rows after minute retention: %+v", cb)
+	}
+	// Hourly retention drops the rolled client rows too.
+	if _, err := s.Prune(ctx, Retention{HourlyMs: 1}, now, []string{"u1"}); err != nil {
+		t.Fatal(err)
+	}
+	var hourly int
+	if err := s.read.QueryRow(`SELECT COUNT(*) FROM dnstap_clients_hourly`).Scan(&hourly); err != nil || hourly != 0 {
+		t.Fatalf("hourly client rows left: %d %v", hourly, err)
 	}
 	s.SaveZones(ctx, "gone", "c2", []wire.Zone{{Name: "x."}}, now)
 	s.SaveDnstap(ctx, "gone", "c2", bucketAt(old), now)
@@ -327,5 +353,140 @@ func TestDnstapStateJSONNames(t *testing.T) {
 	}
 	if got.Dnstap["clients"] != true {
 		t.Errorf("clients: %s", raw)
+	}
+}
+
+func TestDnstapClientFilter(t *testing.T) {
+	s := openStore(t)
+	ctx := context.Background()
+	now := time.Date(2026, 11, 16, 12, 30, 0, 0, time.UTC).UnixMilli()
+	start := hourOf(now) - hourMs
+	for _, m := range []int64{start, start + minuteMs, start + 2*minuteMs} {
+		if err := s.SaveDnstap(ctx, "u1", "c1", bucketAt(m), now); err != nil {
+			t.Fatal(err)
+		}
+	}
+	pfx := func(raw string) netip.Prefix { return netip.MustParsePrefix(raw) }
+	q := Query{UserID: "u1", Start: start, End: now, Client: pfx("192.0.0.0/16")}
+	b, err := s.Dnstap(ctx, q, "qname", 10)
+	if err != nil || b.Total != 210 || b.Exact || len(b.Rows) != 2 || b.Rows[0] != (Row{"www.example.com.", 150}) || b.Rows[1] != (Row{"nope.example.com.", 60}) || b.Approximate {
+		t.Fatalf("names of 192.0/16: %+v %v", b, err)
+	}
+	// An IPv6 /48 inside a /32; its Other row is counted apart and marks the list approximate.
+	q.Client = pfx("2001:db8::/32")
+	b, err = s.Dnstap(ctx, q, "qname", 10)
+	if err != nil || b.Total != 90 || len(b.Rows) != 2 || b.Other != 30 || !b.Approximate {
+		t.Fatalf("names of 2001:db8::/32: %+v %v", b, err)
+	}
+	q.Client = pfx("192.0.2.0/24")
+	if b, err = s.Dnstap(ctx, q, "rcode", 10); err != nil || len(b.Rows) != 2 || b.Rows[0] != (Row{"NOERROR", 150}) {
+		t.Fatalf("rcodes of one /24: %+v %v", b, err)
+	}
+	if b, err = s.Dnstap(ctx, q, "size", 10); err != nil || len(b.Ignored) != 1 || b.Ignored[0] != "client" {
+		t.Fatalf("sizes cannot split by client: %+v %v", b, err)
+	}
+	q.Client = pfx("10.0.0.0/8")
+	if b, err = s.Dnstap(ctx, q, "qname", 10); err != nil || b.Total != 0 || len(b.Rows) != 0 {
+		t.Fatalf("no traffic from 10/8: %+v %v", b, err)
+	}
+	// The reverse: which networks asked one name.
+	b, err = s.Dnstap(ctx, Query{UserID: "u1", Start: start, End: now, QName: "www.example.com."}, "client", 10)
+	if err != nil || len(b.Rows) != 2 || b.Rows[0] != (Row{"192.0.2.0/24", 150}) || b.Rows[1] != (Row{"2001:db8:1::/48", 30}) {
+		t.Fatalf("networks asking www: %+v %v", b, err)
+	}
+}
+
+func TestOpenDropsVersionOneDnstap(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "knot.db")
+	db, err := sql.Open("sqlite", dsn(path))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, stmt := range []string{
+		`CREATE TABLE zones (user_id TEXT NOT NULL, collector_id TEXT NOT NULL, zone TEXT NOT NULL, role TEXT NOT NULL DEFAULT '', serial INTEGER NOT NULL DEFAULT 0,
+			has_serial INTEGER NOT NULL DEFAULT 0, serial_changed_at INTEGER NOT NULL DEFAULT 0, refresh_at INTEGER NOT NULL DEFAULT 0, expire_at INTEGER NOT NULL DEFAULT 0,
+			resign_at INTEGER NOT NULL DEFAULT 0, frozen INTEGER NOT NULL DEFAULT 0, error TEXT NOT NULL DEFAULT '', seen_at INTEGER NOT NULL, PRIMARY KEY (user_id, collector_id, zone)) WITHOUT ROWID`,
+		`INSERT INTO zones (user_id, collector_id, zone, seen_at) VALUES ('u1', 'c1', 'example.com.', 1)`,
+		`CREATE TABLE meta (key TEXT PRIMARY KEY, value INTEGER NOT NULL) WITHOUT ROWID`,
+		`INSERT INTO meta VALUES ('rolled_until', 123)`,
+		`CREATE TABLE dnstap_clients_minute (user_id TEXT NOT NULL, collector_id TEXT NOT NULL, bucket INTEGER NOT NULL, subnet TEXT NOT NULL, count INTEGER NOT NULL, PRIMARY KEY (user_id, collector_id, bucket, subnet)) WITHOUT ROWID`,
+		`INSERT INTO dnstap_clients_minute VALUES ('u1', 'c1', 60000, '192.0.2.0/24', 5)`,
+		`PRAGMA user_version = 1`,
+	} {
+		if _, err := db.Exec(stmt); err != nil {
+			t.Fatal(err)
+		}
+	}
+	db.Close()
+	s, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if zones, _ := s.Zones(context.Background(), "u1", ""); len(zones) != 1 {
+		t.Fatalf("zones lost: %+v", zones)
+	}
+	if rolled, _ := s.rolledUntil(context.Background()); rolled != 0 {
+		t.Fatalf("rolled_until kept: %d", rolled)
+	}
+	var n, v int
+	if err := s.read.QueryRow(`SELECT COUNT(*) FROM dnstap_clients_minute WHERE net != ''`).Scan(&n); err != nil || n != 0 {
+		t.Fatalf("old client rows: %d %v", n, err)
+	}
+	if err := s.read.QueryRow(`PRAGMA user_version`).Scan(&v); err != nil || v != schemaVersion {
+		t.Fatalf("user_version %d %v", v, err)
+	}
+}
+
+func TestNetKeys(t *testing.T) {
+	for _, c := range []string{"10.1.2.0/24", "2001:db8:1::/48", "0.0.0.0/24", "ffff:ffff:ffff::/48"} {
+		key, ok := netKeyOf(c)
+		if !ok || len(key) != 36 || netLabel(key) != c {
+			t.Errorf("%s -> %q -> %q", c, key, netLabel(key))
+		}
+	}
+	k := func(c string) string { key, _ := netKeyOf(c); return key }
+	if !(k("9.255.255.0/24") < k("10.0.0.0/24") && k("10.0.0.0/24") < k("10.0.1.0/24") && k("10.0.1.0/24") < k("255.0.0.0/24") && k("255.0.0.0/24") < k("2001:db8::/48")) {
+		t.Error("keys do not sort in address order")
+	}
+	in := func(cidr, subnet string) bool {
+		lo, hi := netRange(netip.MustParsePrefix(cidr))
+		key := k(subnet)
+		return key >= lo && key < hi
+	}
+	for _, c := range []struct {
+		cidr, subnet string
+		want         bool
+	}{
+		{"10.0.0.0/8", "10.0.0.0/24", true},
+		{"10.0.0.0/8", "10.255.255.0/24", true},
+		{"10.0.0.0/8", "11.0.0.0/24", false},
+		{"10.0.0.0/8", "9.255.255.0/24", false},
+		{"10.1.2.0/24", "10.1.2.0/24", true},
+		{"10.1.2.0/24", "10.1.3.0/24", false},
+		{"0.0.0.0/0", "255.255.255.0/24", true},
+		{"0.0.0.0/0", "2001:db8::/48", false},
+		{"2001:db8::/32", "2001:db8:ffff::/48", true},
+		{"2001:db8::/32", "2001:db9::/48", false},
+		{"::/0", "ffff:ffff:ffff::/48", true},
+	} {
+		if got := in(c.cidr, c.subnet); got != c.want {
+			t.Errorf("%s in %s = %v, want %v", c.subnet, c.cidr, got, c.want)
+		}
+	}
+	for raw, want := range map[string]string{"10.1.2.3": "10.1.2.0/24", "10.0.0.0/8": "10.0.0.0/8", "10.1.2.3/30": "10.1.2.0/24",
+		"2001:db8::1": "2001:db8::/48", "::ffff:10.1.2.3": "10.1.2.0/24", "10.9.9.9/8": "10.0.0.0/8"} {
+		p, _, err := clientFilter(raw)
+		if err != nil || p.String() != want {
+			t.Errorf("clientFilter(%q) = %s %v, want %s", raw, p, err, want)
+		}
+	}
+	if _, wide, _ := clientFilter("10.0.0.0/16"); wide {
+		t.Error("a /16 is not widened")
+	}
+	for _, bad := range []string{"", "nope", "10.0.0.0/33", "10.0.0"} {
+		if _, _, err := clientFilter(bad); err == nil {
+			t.Errorf("clientFilter(%q) accepted", bad)
+		}
 	}
 }

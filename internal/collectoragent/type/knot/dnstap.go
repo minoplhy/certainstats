@@ -221,6 +221,7 @@ func (zs zoneSet) zoneOf(name string) string {
 
 type totalKey struct{ zone, qtype, rcode string }
 type nameKey struct{ zone, qname, qtype, rcode string }
+type clientKey struct{ subnet, zone, qname, qtype, rcode string }
 
 // mapCap bounds each per-minute map, so a random-subdomain flood cannot grow
 // memory without limit; past it, new keys fold into the zone's Other row.
@@ -231,14 +232,15 @@ type minute struct {
 	start       int64
 	totals      map[totalKey]uint64
 	names       map[nameKey]uint64
-	clients     map[string]uint64
+	clients     map[clientKey]uint64
+	subnets     map[string]uint64 // each subnet's traffic, for ranking
 	sizes       []uint64
 	queriesOnly bool
 }
 
 func newMinute(start int64) *minute {
 	return &minute{start: start, totals: map[totalKey]uint64{}, names: map[nameKey]uint64{},
-		clients: map[string]uint64{}, sizes: make([]uint64, len(wire.SizeBuckets)+1)}
+		clients: map[clientKey]uint64{}, subnets: map[string]uint64{}, sizes: make([]uint64, len(wire.SizeBuckets)+1)}
 }
 
 // aggregator folds dnstap events into closed one-minute buckets.
@@ -291,8 +293,13 @@ func (a *aggregator) add(ev event, now time.Time) {
 	m.names[nk]++
 	if a.clients && ev.client != nil {
 		s := subnet(ev.client)
-		if _, ok := m.clients[s]; ok || len(m.clients) < mapCap {
-			m.clients[s]++
+		if _, ok := m.subnets[s]; ok || len(m.subnets) < mapCap {
+			m.subnets[s]++
+			ck := clientKey{s, zone, ev.qname, tk.qtype, ev.rcode}
+			if _, ok := m.clients[ck]; !ok && len(m.clients) >= mapCap {
+				ck.qname = wire.Other
+			}
+			m.clients[ck]++
 		}
 	}
 	if ev.response {
@@ -316,7 +323,10 @@ func (a *aggregator) take(now time.Time) []*minute {
 
 // bucket turns a minute into its wire form, keeping the top names and folding
 // the rest into one Other row per zone, qtype and rcode, so sums still match totals.
-func (m *minute) bucket(top, maxClients int) wire.Dnstap {
+// Client rows are kept for the busiest maxClients subnets only; of those, the top
+// clientTop rows stay and the rest fold into Other rows per subnet, zone, qtype
+// and rcode, so each subnet's rows still add up to its traffic.
+func (m *minute) bucket(top, maxClients, clientTop int) wire.Dnstap {
 	d := wire.Dnstap{MinuteMs: m.start, QueriesOnly: m.queriesOnly}
 	for k, n := range m.totals {
 		d.Totals = append(d.Totals, wire.Total{Zone: k.zone, QType: k.qtype, RCode: k.rcode, Count: n})
@@ -347,18 +357,7 @@ func (m *minute) bucket(top, maxClients int) wire.Dnstap {
 		rows = append(rows, wire.Name{Zone: k.zone, QName: wire.Other, QType: k.qtype, RCode: k.rcode, Count: n})
 	}
 	d.Names = rows
-	for s, n := range m.clients {
-		d.Clients = append(d.Clients, wire.Client{Subnet: s, Count: n})
-	}
-	sort.Slice(d.Clients, func(i, j int) bool {
-		if d.Clients[i].Count != d.Clients[j].Count {
-			return d.Clients[i].Count > d.Clients[j].Count
-		}
-		return d.Clients[i].Subnet < d.Clients[j].Subnet
-	})
-	if len(d.Clients) > maxClients {
-		d.Clients = d.Clients[:maxClients]
-	}
+	d.Clients = m.clientRows(maxClients, clientTop)
 	for i, n := range m.sizes {
 		if n == 0 {
 			continue
@@ -370,6 +369,68 @@ func (m *minute) bucket(top, maxClients int) wire.Dnstap {
 		d.Sizes = append(d.Sizes, wire.Size{UpTo: upTo, Count: n})
 	}
 	return d
+}
+
+// clientRows keeps the rows of the busiest maxClients subnets, the top clientTop
+// of them by count, folding the rest into per-subnet Other rows.
+func (m *minute) clientRows(maxClients, clientTop int) []wire.Client {
+	if len(m.subnets) == 0 {
+		return nil
+	}
+	ranked := make([]string, 0, len(m.subnets))
+	for s := range m.subnets {
+		ranked = append(ranked, s)
+	}
+	sort.Slice(ranked, func(i, j int) bool {
+		a, b := m.subnets[ranked[i]], m.subnets[ranked[j]]
+		if a != b {
+			return a > b
+		}
+		return ranked[i] < ranked[j]
+	})
+	if len(ranked) > maxClients {
+		ranked = ranked[:maxClients]
+	}
+	keep := make(map[string]bool, len(ranked))
+	for _, s := range ranked {
+		keep[s] = true
+	}
+	rows := make([]wire.Client, 0, len(m.clients))
+	other := map[clientKey]uint64{}
+	for k, n := range m.clients {
+		if !keep[k.subnet] {
+			continue
+		}
+		if k.qname == wire.Other {
+			other[k] += n
+			continue
+		}
+		rows = append(rows, wire.Client{Subnet: k.subnet, Zone: k.zone, QName: k.qname, QType: k.qtype, RCode: k.rcode, Count: n})
+	}
+	sort.Slice(rows, func(i, j int) bool {
+		if rows[i].Count != rows[j].Count {
+			return rows[i].Count > rows[j].Count
+		}
+		return lessClient(rows[i], rows[j])
+	})
+	if len(rows) > clientTop {
+		for _, r := range rows[clientTop:] {
+			other[clientKey{r.Subnet, r.Zone, wire.Other, r.QType, r.RCode}] += r.Count
+		}
+		rows = rows[:clientTop]
+	}
+	for k, n := range other {
+		rows = append(rows, wire.Client{Subnet: k.subnet, Zone: k.zone, QName: wire.Other, QType: k.qtype, RCode: k.rcode, Count: n})
+	}
+	return rows
+}
+
+func lessClient(a, b wire.Client) bool {
+	if a.Subnet != b.Subnet {
+		return a.Subnet < b.Subnet
+	}
+	return lessName(wire.Name{Zone: a.Zone, QName: a.QName, QType: a.QType, RCode: a.RCode},
+		wire.Name{Zone: b.Zone, QName: b.QName, QType: b.QType, RCode: b.RCode})
 }
 
 func lessTotal(a, b wire.Total) bool {
@@ -396,18 +457,15 @@ func lessName(a, b wire.Name) bool {
 }
 
 // split cuts a bucket into parts that each encode within budget bytes. Rows are
-// disjoint across parts; sizes and clients ride in the first part.
+// disjoint across parts; sizes ride in the first part.
 func split(d wire.Dnstap, budget int) []wire.Dnstap {
 	const rowOverhead = 24
-	first := wire.Dnstap{MinuteMs: d.MinuteMs, QueriesOnly: d.QueriesOnly, Clients: d.Clients, Sizes: d.Sizes}
+	first := wire.Dnstap{MinuteMs: d.MinuteMs, QueriesOnly: d.QueriesOnly, Sizes: d.Sizes}
 	used := 64
-	for _, c := range d.Clients {
-		used += len(c.Subnet) + rowOverhead
-	}
 	parts := []wire.Dnstap{first}
 	cur := &parts[0]
 	next := func(n int) {
-		if used+n > budget && (len(cur.Totals) > 0 || len(cur.Names) > 0) {
+		if used+n > budget && (len(cur.Totals) > 0 || len(cur.Names) > 0 || len(cur.Clients) > 0) {
 			parts = append(parts, wire.Dnstap{MinuteMs: d.MinuteMs, QueriesOnly: d.QueriesOnly})
 			cur = &parts[len(parts)-1]
 			used = 64
@@ -421,6 +479,10 @@ func split(d wire.Dnstap, budget int) []wire.Dnstap {
 	for _, n := range d.Names {
 		next(len(n.Zone) + len(n.QName) + len(n.QType) + len(n.RCode) + rowOverhead)
 		cur.Names = append(cur.Names, n)
+	}
+	for _, c := range d.Clients {
+		next(len(c.Subnet) + len(c.Zone) + len(c.QName) + len(c.QType) + len(c.RCode) + rowOverhead)
+		cur.Clients = append(cur.Clients, c)
 	}
 	if len(parts) > 1 {
 		for i := range parts {

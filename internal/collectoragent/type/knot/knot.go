@@ -33,6 +33,7 @@ const (
 	defaultZoneStatsMax = 200
 	defaultTop          = 1000
 	defaultClients      = 50
+	defaultClientTop    = 1000
 
 	// startGrace is how long after start an unreachable Knot counts as still starting.
 	startGrace = 2 * time.Minute
@@ -106,10 +107,11 @@ func New(getenv func(string) string, version string) *Module {
 			path = DefaultDnstapSocket
 		}
 		m.tap = &tap{
-			path: path,
-			top:  envInt(getenv, "KNOT_DNSTAP_TOP", defaultTop, 10, wire.MaxTop),
-			agg:  &aggregator{clients: envOn(getenv, "KNOT_DNSTAP_CLIENTS"), zones: zoneSet{}},
-			now:  func() time.Time { return m.Now() },
+			path:      path,
+			top:       envInt(getenv, "KNOT_DNSTAP_TOP", defaultTop, 10, wire.MaxTop),
+			clientTop: envInt(getenv, "KNOT_DNSTAP_CLIENT_TOP", defaultClientTop, 10, wire.MaxClientRows),
+			agg:       &aggregator{clients: envOn(getenv, "KNOT_DNSTAP_CLIENTS"), zones: zoneSet{}},
+			now:       func() time.Time { return m.Now() },
 		}
 	}
 	return m
@@ -403,7 +405,7 @@ func (r *runner) flushPass() {
 	t := r.m.tap
 	r.m.mu.Lock()
 	for _, mn := range t.agg.take(now) {
-		for _, p := range split(mn.bucket(t.top, defaultClients), frameBudget) {
+		for _, p := range split(mn.bucket(t.top, defaultClients, t.clientTop), frameBudget) {
 			r.m.pending = append(r.m.pending, pendingPart{d: p})
 		}
 	}
@@ -457,8 +459,10 @@ func trimPending(p []pendingPart) []pendingPart {
 type tap struct {
 	path string
 	top  int
-	agg  *aggregator
-	now  func() time.Time
+	// clientTop caps the subnet-by-name rows sent per minute.
+	clientTop int
+	agg       *aggregator
+	now       func() time.Time
 
 	once      sync.Once
 	mu        sync.Mutex

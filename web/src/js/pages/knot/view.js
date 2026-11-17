@@ -4,7 +4,7 @@
 // API takes one value per filter too.
 import { TIME_RANGES } from '../../lib/time_ranges.js';
 
-export const FILTERS = ['zone', 'qname', 'qtype', 'rcode'];
+export const FILTERS = ['zone', 'qname', 'qtype', 'rcode', 'client'];
 
 // The traffic chart shows one counter group, the dnstap list one dimension;
 // both are page choices, kept in the URL but never sent to the API as filters.
@@ -25,7 +25,7 @@ function int(value) {
 
 export function parseView(search, fallbackHours = 24) {
   const q = new URLSearchParams(search || '');
-  const v = {server: q.get('server') || '', hours: quick(fallbackHours) ? fallbackHours : 24, start: null, end: null, zone: '', qname: '', qtype: '', rcode: '',
+  const v = {server: q.get('server') || '', hours: quick(fallbackHours) ? fallbackHours : 24, start: null, end: null, zone: '', qname: '', qtype: '', rcode: '', client: '',
     chart: CHART_GROUPS.includes(q.get('chart')) ? q.get('chart') : CHART_GROUPS[0],
     top: TOP_DIMS.includes(q.get('top')) ? q.get('top') : TOP_DIMS[0]};
   const hours = int(q.get('hours')) || LEGACY_RANGES[q.get('range')] || 0;
@@ -84,10 +84,12 @@ export function counterParams(v, extra) {
   return apiParams({server: v.server, hours: v.hours, start: v.start, end: v.end, zone: v.zone}, extra);
 }
 
-// normalize writes names as Knot does: lowercase with a final dot; types and codes upper case.
+// normalize writes names as Knot does: lowercase with a final dot; types and codes
+// upper case; client networks (an address or CIDR) lowercase.
 export function normalize(field, value) {
   let s = String(value || '').trim();
   if (!s) return '';
+  if (field === 'client') return s.toLowerCase();
   if (field === 'zone' || field === 'qname') {
     s = s.toLowerCase();
     if (s !== '(none)' && s !== '(other)' && !s.endsWith('.')) s += '.';
@@ -109,5 +111,5 @@ export function removeFilter(v, field) {
 
 // dnstapOnly reports whether the view filters on something only dnstap can answer.
 export function dnstapOnly(v) {
-  return Boolean(v.qname || v.qtype || v.rcode);
+  return Boolean(v.qname || v.qtype || v.rcode || v.client);
 }
