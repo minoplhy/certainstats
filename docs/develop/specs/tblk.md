@@ -392,7 +392,9 @@ These checks are for **structural safety**: a block that passes them cannot make
 2. Reserve 32 bytes for the header. Then write the dictionary section, each group's columns in group order, and the index section last.
 3. Fill in the header. Then append the trailer with the index reference and the CRC of the finished header.
 4. Write the bytes to `<name>.tmp`, flush them to stable storage (fsync), rename to `<name>`, and sync the directory.
-5. When the block replaces others (a merge), only after step 4 delete the blocks it supersedes.
+5. When the block replaces others (a merge), only after step 4 delete the blocks it supersedes. That deletion needs no directory sync: if a deleted input comes back after a power cut, the merged block still supersedes it (Section 8.2).
+
+A block deleted with **no** replacement (retention, the size cap, or removing an owner whose rows were all a block held) has nothing to supersede it if its directory entry comes back. The writer MUST sync the block's grain directory after such deletions and before the operation reports success; one sync per directory after all deletions of a pass is enough.
 
 Given the same rows, header and compression level, certainstats' writer produces the same bytes. This holds for one writer and one version of its Zstandard library with the same options: another implementation, or another library version, may compress the same raw bytes into a different but equally valid frame. Tests in `internal/tblk` check it.
 

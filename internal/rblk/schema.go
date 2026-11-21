@@ -4,15 +4,22 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"hash/fnv"
 	"math"
 	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 )
 
 // Kind is how a column is stored.
+// ErrShapeChanged: the store was written with a schema whose stored bytes
+// read differently (a column added, removed, renamed or retyped, a SameAs or
+// template added or removed). Old blocks and head rows would read wrong.
+var ErrShapeChanged = errors.New("rblk: schema shape changed since the store was written")
+
 type Kind int
 
 const (
@@ -159,9 +166,15 @@ type engine interface {
 
 // Store is a record store in one directory.
 type Store struct {
-	sch *schemaInfo
-	eng engine
+	sch  *schemaInfo
+	eng  engine
+	lock *os.File
 }
+
+// ErrLocked: another process has the store open. A store has one owner at a
+// time; it covers recovery on open, inserts, sealing, retention, owner
+// removal and sequence numbers.
+var ErrLocked = errors.New("rblk: store is open in another process")
 
 // Open opens or creates a store in dir.
 func Open(dir string, s Schema, e Engine) (*Store, error) {
@@ -172,22 +185,35 @@ func Open(dir string, s Schema, e Engine) (*Store, error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, err
 	}
-	var eng engine
-	switch e {
-	case Slim:
-		eng, err = openSlim(filepath.Join(dir, "records.db"), si, false)
-	case Blocks:
-		eng, err = openBlocks(dir, si)
-	default:
+	if e != Slim && e != Blocks {
 		return nil, fmt.Errorf("rblk: unknown engine %q", e)
 	}
+	lock, err := lockDir(dir)
 	if err != nil {
 		return nil, err
 	}
-	return &Store{sch: si, eng: eng}, nil
+	var eng engine
+	if e == Slim {
+		eng, err = openSlim(filepath.Join(dir, "records.db"), si, false)
+	} else {
+		eng, err = openBlocks(dir, si)
+	}
+	if err != nil {
+		if lock != nil {
+			lock.Close()
+		}
+		return nil, err
+	}
+	return &Store{sch: si, eng: eng, lock: lock}, nil
 }
 
-func (s *Store) Close() error { return s.eng.close() }
+func (s *Store) Close() error {
+	err := s.eng.close()
+	if s.lock != nil {
+		s.lock.Close()
+	}
+	return err
+}
 
 // Col returns a column's index in Record.S and Record.N, or -1.
 func (s *Store) Col(name string) int { return s.sch.col(name) }
@@ -197,6 +223,9 @@ func (s *Store) ChildCol(name string) int { return s.sch.child(name) }
 
 // Insert stores records for an owner; IDs come back in order, 0 for duplicates.
 func (s *Store) Insert(ctx context.Context, owner string, recs []Record) ([]int64, error) {
+	if owner == "" {
+		return nil, errors.New("rblk: empty owner")
+	}
 	for i := range recs {
 		if err := s.sch.check(&recs[i]); err != nil {
 			return nil, err
@@ -290,9 +319,22 @@ func compile(s Schema) (*schemaInfo, error) {
 			return nil, fmt.Errorf("rblk: only Dict columns can be indexed (%q)", c.Name)
 		}
 	}
+	// SameAs chains must end: a cycle would never resolve.
+	for i := range s.Columns {
+		j, steps := i, 0
+		for si.same[j] >= 0 {
+			j = si.same[j]
+			if steps++; steps > len(s.Columns) {
+				return nil, fmt.Errorf("rblk: SameAs of %q forms a cycle", s.Columns[i].Name)
+			}
+		}
+	}
 	for i, c := range s.Children {
 		if !nameRe.MatchString(c.Name) {
 			return nil, fmt.Errorf("rblk: child column name %q", c.Name)
+		}
+		if _, dup := si.cidx[c.Name]; dup {
+			return nil, fmt.Errorf("rblk: child column %q declared twice", c.Name)
 		}
 		si.cidx[c.Name] = i
 		si.csame = append(si.csame, -1)
@@ -323,6 +365,30 @@ func compile(s Schema) (*schemaInfo, error) {
 		}
 	}
 	return si, nil
+}
+
+// shape is a fingerprint of everything in the schema that decides how block
+// and head bytes read: column and child names, kinds, SameAs, which Text
+// columns have a template, the Active child and the dedupe column. Indexes
+// are left out; they change no stored byte. A template's output is not
+// covered: changing it is the program's job (Section 12 of the spec).
+func (si *schemaInfo) shape() int64 {
+	h := fnv.New64a()
+	w := func(parts ...string) {
+		for _, p := range parts {
+			h.Write([]byte(p))
+			h.Write([]byte{0})
+		}
+		h.Write([]byte{1})
+	}
+	for _, c := range si.Columns {
+		w("c", c.Name, strconv.Itoa(int(c.Kind)), c.SameAs, strconv.FormatBool(si.Templates[c.Name] != nil))
+	}
+	for _, c := range si.Children {
+		w("k", c.Name, strconv.Itoa(int(c.Kind)), c.SameAs, strconv.FormatBool(c.Active))
+	}
+	w("d", si.Dedupe)
+	return int64(h.Sum64())
 }
 
 func (si *schemaInfo) col(name string) int {

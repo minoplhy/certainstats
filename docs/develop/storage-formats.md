@@ -70,6 +70,8 @@ The byte-level specification is [specs/tblk.md](specs/tblk.md), revision 2. The 
   - Pages keep only the rows that could make the page.
   - A time-sorted page counts days it can't reach from their headers without reading them.
   - Decoded sections stay cached across queries, up to 64 MB.
+- **Store rules:** one process owns a store at a time, through a `flock` on `<store>/lock` (`ErrLocked`), as in `tblk`. The head records the schema's shape on first open and refuses a schema that would read stored bytes differently (`ErrShapeChanged`). Adding an index is fine; changing a template's output is not detected and must not be done for stored rows. SameAs cycles and repeated child names are refused when the schema compiles.
+- **Reader checks:** header ranges, owner ranges, section placement and the file name are checked when the store opens; a block that fails goes to `.bad`. Each section is checked when first read: one zstd frame with a window of at most 128 MiB, at most 2^31 bytes decoded, values in range with nothing after them, `nchild` summing to `children`, and valid Dict codes, Text codes and ID forms. A rewrite syncs the `blocks` directory after the rename, before the old block is deleted and the head forgets the rows.
 - **Two engines:** `Blocks` is the format described here. `Slim` is a single SQLite file with strings as integer ids. It is the head of `Blocks`, and the alternative the study measured.
 
 The byte-level specification is [specs/rblk.md](specs/rblk.md). The package overview is in its `doc.go`.
@@ -88,6 +90,7 @@ These apply to any SQLite schema that stores strings as integer ids:
   - inserts, duplicates and sealing
   - late rows, retention and owner removal
   - a crash during sealing, and a damaged block
+  - damaged headers and sections, schema rules and shape changes (`validate_test.go`)
 - `go test -run Rblk ./internal/collector/type/crowdsec/` checks the CrowdSec `Store` on rblk against the same `Store` on `crowdsec.db`, on every screen with coverage, through sealing, duplicates, late alerts, retention and a removed account.
 - The 30-day study (`go test -tags rblkreport -run TestRecordsReport …`) measures size, write cost, memory and every screen's time; see below.
 - The 30-day measurements, their method and results are in `artifacts/crowdsec-records-2026-11-20/` for `rblk`. For `tblk`, see [Knot internals](collectors/knot.md#tests).

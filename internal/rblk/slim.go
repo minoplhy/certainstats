@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/url"
 	"strconv"
@@ -68,6 +69,27 @@ func openSlim(path string, si *schemaInfo, head bool) (*slimEngine, error) {
 	kids := []string{"rec INTEGER NOT NULL", "seq INTEGER NOT NULL"}
 	for _, c := range si.Children {
 		kids = append(kids, kidName(c)+" "+sqlType(c.Kind))
+	}
+	// Checked before the tables, whose indexes name the schema's columns.
+	if _, err := w.Exec(`CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value INTEGER NOT NULL)`); err != nil {
+		w.Close()
+		return nil, fmt.Errorf("rblk schema: %w", err)
+	}
+	// The first open records the schema's shape; later opens must match it.
+	// A store from before shapes were recorded trusts the schema it is given.
+	var shape int64
+	switch err := w.QueryRow(`SELECT value FROM meta WHERE key = 'shape'`).Scan(&shape); {
+	case errors.Is(err, sql.ErrNoRows):
+		if _, err := w.Exec(`INSERT INTO meta (key, value) VALUES ('shape', ?)`, si.shape()); err != nil {
+			w.Close()
+			return nil, err
+		}
+	case err != nil:
+		w.Close()
+		return nil, err
+	case shape != si.shape():
+		w.Close()
+		return nil, ErrShapeChanged
 	}
 	stmts := []string{
 		`CREATE TABLE IF NOT EXISTS strs (id INTEGER PRIMARY KEY, s TEXT NOT NULL UNIQUE)`,
@@ -185,6 +207,21 @@ func encodeID(s string) []byte {
 		return append([]byte{2, 0}, s...)
 	}
 	return append([]byte{0}, s...)
+}
+
+// validID reports whether b is one of the three stored forms of Section 8.4.
+func validID(b []byte) bool {
+	switch {
+	case len(b) == 16:
+		return true
+	case len(b) == 0:
+		return false
+	case b[0] == 0:
+		return len(b) != 16
+	case b[0] == 2:
+		return len(b) == 17 && b[1] == 0
+	}
+	return false
 }
 
 func decodeID(b []byte) string {

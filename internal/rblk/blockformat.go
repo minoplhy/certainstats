@@ -8,9 +8,13 @@ import (
 	"fmt"
 	"hash/crc32"
 	"io"
+	"math"
 	"os"
+	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
+	"unicode/utf8"
 
 	"github.com/klauspost/compress/zstd"
 )
@@ -30,6 +34,15 @@ const (
 	blockMagic   = "RBK1"
 	trailerLen   = 20
 	blockVersion = 1
+	// maxSection bounds a section's compressed and decoded size, so a
+	// damaged block cannot make a reader allocate without bound.
+	maxSection = 1 << 31
+	// maxWindow bounds a frame's window, the decoder's history buffer, which
+	// it allocates whatever the output size. The writer's frames use 8 MiB
+	// or less.
+	maxWindow = 1 << 27
+	// maxHeader bounds the JSON header.
+	maxHeader = 64 << 20
 )
 
 var errBadBlock = errors.New("rblk: damaged block")
@@ -91,7 +104,7 @@ type codec struct {
 
 var codecs = sync.OnceValue(func() *codec {
 	enc, _ := zstd.NewWriter(nil, zstd.WithEncoderLevel(zstd.SpeedBetterCompression), zstd.WithEncoderConcurrency(1), zstd.WithLowerEncoderMem(true))
-	dec, _ := zstd.NewReader(nil, zstd.WithDecoderConcurrency(4), zstd.WithDecoderLowmem(true))
+	dec, _ := zstd.NewReader(nil, zstd.WithDecoderConcurrency(4), zstd.WithDecoderLowmem(true), zstd.WithDecoderMaxMemory(maxSection), zstd.WithDecoderMaxWindow(maxWindow))
 	return &codec{enc: enc, dec: dec}
 })
 
@@ -270,10 +283,24 @@ func writeBlock(si *schemaInfo, path string, start, end, upto, seq int64, byOwne
 	if err := os.Rename(tmp, path); err != nil {
 		return nil, err
 	}
+	// The rename must be on disk before the caller deletes the previous
+	// block and the head forgets the sealed rows.
+	if err := syncDir(filepath.Dir(path)); err != nil {
+		return nil, err
+	}
 	return &blockFile{path: path, h: h}, nil
 }
 
-func openBlockFile(path string) (*blockFile, error) {
+func syncDir(dir string) error {
+	d, err := os.Open(dir)
+	if err != nil {
+		return err
+	}
+	defer d.Close()
+	return d.Sync()
+}
+
+func openBlockFile(si *schemaInfo, path string) (*blockFile, error) {
 	fh, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -293,22 +320,286 @@ func openBlockFile(path string) (*blockFile, error) {
 	if string(tr[16:]) != blockMagic {
 		return nil, errBadBlock
 	}
-	hoff, hlen := int64(binary.LittleEndian.Uint64(tr[0:])), int64(binary.LittleEndian.Uint32(tr[8:]))
-	if hoff+hlen+trailerLen != st.Size() {
+	hoff, hlen := binary.LittleEndian.Uint64(tr[0:]), int64(binary.LittleEndian.Uint32(tr[8:]))
+	if hlen < 2 || hlen > maxHeader || hoff > uint64(st.Size()) || int64(hoff)+hlen+trailerLen != st.Size() {
 		return nil, errBadBlock
 	}
 	hdr := make([]byte, hlen)
-	if _, err := fh.ReadAt(hdr, hoff); err != nil {
+	if _, err := fh.ReadAt(hdr, int64(hoff)); err != nil {
 		return nil, err
 	}
 	if crc32.ChecksumIEEE(hdr) != binary.LittleEndian.Uint32(tr[12:]) {
 		return nil, errBadBlock
 	}
 	b := &blockFile{path: path}
-	if err := json.Unmarshal(hdr, &b.h); err != nil || b.h.Version != blockVersion {
+	// Go's JSON decoder would replace invalid UTF-8 and unpaired surrogate
+	// escapes with U+FFFD instead of failing, changing an owner's name.
+	if !utf8.Valid(hdr) || loneSurrogate(hdr) || dupKeys(hdr) || json.Unmarshal(hdr, &b.h) != nil || b.h.Version != blockVersion {
 		return nil, errBadBlock
 	}
+	if err := checkHeader(si, &b.h, int64(hoff)); err != nil {
+		return nil, err
+	}
+	if filepath.Base(path) != fmt.Sprintf("%d-%d.rblk", b.h.Start, b.h.Seq) {
+		return nil, fmt.Errorf("%w: name does not match start and seq", errBadBlock)
+	}
 	return b, nil
+}
+
+// checkHeader applies Section 6 and the section rules of Section 10.
+func checkHeader(si *schemaInfo, h *blockHeader, hoff int64) error {
+	bad := func(why string) error { return fmt.Errorf("%w: %s", errBadBlock, why) }
+	if h.Start < 0 || h.Start%dayMs != 0 || h.Start > math.MaxInt64-dayMs || h.End != h.Start+dayMs {
+		return bad("not one UTC day")
+	}
+	if h.Seq < 1 || h.Rows < 1 || h.Children < 0 || h.Rows > maxSection || h.Children > maxSection {
+		return bad("counts out of range")
+	}
+	if h.Upto != 0 && (h.Upto <= h.Start || h.Upto >= h.End) {
+		return bad("upto outside the day")
+	}
+	next := 0
+	for i, o := range h.Owners {
+		if o.Owner == "" || o.Lo != next || o.Hi <= o.Lo || o.MinID > o.MaxID || (i > 0 && h.Owners[i-1].Owner >= o.Owner) {
+			return bad("owner ranges")
+		}
+		next = o.Hi
+	}
+	if next != h.Rows {
+		return bad("owner ranges do not cover the rows")
+	}
+	need := []string{"dict", "id", "t", "nchild"}
+	for _, c := range si.Columns {
+		need = append(need, "c."+c.Name)
+	}
+	for _, c := range si.Children {
+		need = append(need, "k."+c.Name)
+	}
+	for _, name := range need {
+		if _, ok := h.Secs[name]; !ok {
+			return bad("no section " + name)
+		}
+	}
+	refs := make([]secRef, 0, len(h.Secs))
+	for _, ref := range h.Secs {
+		if ref.Off < 0 || ref.N < 1 || ref.N > maxSection || ref.Off > hoff-ref.N {
+			return bad("section outside the data")
+		}
+		refs = append(refs, ref)
+	}
+	sort.Slice(refs, func(i, j int) bool { return refs[i].Off < refs[j].Off })
+	for i := 1; i < len(refs); i++ {
+		if refs[i].Off < refs[i-1].Off+refs[i-1].N {
+			return bad("sections overlap")
+		}
+	}
+	return nil
+}
+
+// loneSurrogate reports whether a JSON string in b holds a \u escape of a
+// UTF-16 surrogate that is not a high surrogate followed by a \u escape of
+// a low one.
+func loneSurrogate(b []byte) bool {
+	hex4 := func(i int) (rune, bool) {
+		if i+6 > len(b) || b[i] != '\\' || b[i+1] != 'u' {
+			return 0, false
+		}
+		var r rune
+		for _, c := range b[i+2 : i+6] {
+			switch {
+			case c >= '0' && c <= '9':
+				r = r<<4 | rune(c-'0')
+			case c >= 'a' && c <= 'f':
+				r = r<<4 | rune(c-'a'+10)
+			case c >= 'A' && c <= 'F':
+				r = r<<4 | rune(c-'A'+10)
+			default:
+				return 0, false
+			}
+		}
+		return r, true
+	}
+	in := false
+	for i := 0; i < len(b); i++ {
+		switch {
+		case !in:
+			in = b[i] == '"'
+		case b[i] == '"':
+			in = false
+		case b[i] == '\\':
+			r, ok := hex4(i)
+			if !ok {
+				i++ // a one-character escape: skip the escaped byte
+				continue
+			}
+			switch {
+			case r >= 0xDC00 && r <= 0xDFFF:
+				return true
+			case r >= 0xD800 && r <= 0xDBFF:
+				lo, ok := hex4(i + 6)
+				if !ok || lo < 0xDC00 || lo > 0xDFFF {
+					return true
+				}
+				i += 6
+			}
+			i += 5
+		}
+	}
+	return false
+}
+
+// The member names Section 6 defines, per object. Go's decoder matches
+// struct fields without regard to case (Unicode folding, as
+// strings.EqualFold), so in these objects a name that differs from a
+// defined one only by case would be read as it; such names are refused.
+var (
+	headerNames = []string{"v", "start", "end", "seq", "rows", "children", "max_active", "upto", "owners", "secs"}
+	ownerNames  = []string{"owner", "lo", "hi", "min_id", "max_id"}
+	secRefNames = []string{"o", "n", "c"}
+)
+
+func caseVariant(k string, names []string) bool {
+	for _, n := range names {
+		if k != n && strings.EqualFold(k, n) {
+			return true
+		}
+	}
+	return false
+}
+
+// dupKeys reports whether any JSON object in b repeats a member name (as
+// decoded, so escapes count as their characters), or whether the header,
+// an owner entry or a section reference holds a case variant of one of its
+// defined names. Values inside unknown members are only checked for repeats.
+func dupKeys(b []byte) bool {
+	dec := json.NewDecoder(bytes.NewReader(b))
+	// kind says which defined object (or array of them) a container is.
+	const (
+		other = iota
+		header
+		owners // the owners array
+		owner
+		secs // the secs object: its names are section names
+		secRef
+	)
+	type frame struct {
+		obj   bool
+		kind  int
+		key   bool   // the next string token is a member name
+		last  string // the member whose value comes next
+		seen  map[string]bool
+		names []string
+	}
+	var stack []*frame
+	// child is the kind of a container opened as the next value in top.
+	child := func(top *frame, obj bool) int {
+		switch {
+		case top == nil:
+			if obj {
+				return header
+			}
+		case top.kind == header && top.last == "owners" && !obj:
+			return owners
+		case top.kind == header && top.last == "secs" && obj:
+			return secs
+		case top.kind == owners && obj:
+			return owner
+		case top.kind == secs && obj:
+			return secRef
+		}
+		return other
+	}
+	valueEnded := func() {
+		if len(stack) > 0 && stack[len(stack)-1].obj {
+			stack[len(stack)-1].key = true
+		}
+	}
+	for {
+		tok, err := dec.Token()
+		if err == io.EOF {
+			return false
+		}
+		if err != nil {
+			return true
+		}
+		var top *frame
+		if len(stack) > 0 {
+			top = stack[len(stack)-1]
+		}
+		if top != nil && top.obj && top.key {
+			k, ok := tok.(string)
+			if !ok { // the closing brace
+				stack = stack[:len(stack)-1]
+				valueEnded()
+				continue
+			}
+			if top.seen[k] || caseVariant(k, top.names) {
+				return true
+			}
+			top.seen[k] = true
+			top.key, top.last = false, k
+			continue
+		}
+		switch tok {
+		case json.Delim('{'):
+			f := &frame{obj: true, kind: child(top, true), key: true, seen: map[string]bool{}}
+			switch f.kind {
+			case header:
+				f.names = headerNames
+			case owner:
+				f.names = ownerNames
+			case secRef:
+				f.names = secRefNames
+			}
+			stack = append(stack, f)
+			continue
+		case json.Delim('['):
+			stack = append(stack, &frame{kind: child(top, false)})
+			continue
+		case json.Delim(']'):
+			stack = stack[:len(stack)-1]
+		}
+		valueEnded()
+	}
+}
+
+// oneFrame reports whether b is exactly one Zstandard frame (RFC 8878
+// section 3.1.1): its header, its blocks up to the last, and the checksum
+// when the header asks for one.
+func oneFrame(b []byte) bool {
+	var h zstd.Header
+	// A frame that names a compression dictionary cannot be decoded: rblk
+	// has no way to ship one (Section 4.6).
+	if h.Decode(b) != nil || h.Skippable || h.HeaderSize <= 0 || h.DictionaryID != 0 {
+		return false
+	}
+	i := h.HeaderSize
+	for {
+		if len(b)-i < 3 {
+			return false
+		}
+		bh := uint32(b[i]) | uint32(b[i+1])<<8 | uint32(b[i+2])<<16
+		i += 3
+		last, typ, size := bh&1 == 1, (bh>>1)&3, int(bh>>3)
+		switch typ {
+		case 0, 2: // raw, compressed: size bytes follow
+		case 1: // RLE: one byte repeated size times
+			size = 1
+		default: // reserved
+			return false
+		}
+		if size > len(b)-i {
+			return false
+		}
+		i += size
+		if last {
+			break
+		}
+	}
+	if h.HasCheckSum {
+		i += 4
+	}
+	return i == len(b)
 }
 
 // reader decodes a block's sections on demand, each at most once.
@@ -440,10 +731,14 @@ func (r *reader) raw(name string) ([]byte, error) {
 	if _, err := r.fh.ReadAt(comp, ref.Off); err != nil && err != io.EOF {
 		return nil, err
 	}
-	if crc32.ChecksumIEEE(comp) != ref.CRC {
+	if crc32.ChecksumIEEE(comp) != ref.CRC || !oneFrame(comp) {
 		return nil, errBadBlock
 	}
-	return codecs().dec.DecodeAll(comp, nil)
+	out, err := codecs().dec.DecodeAll(comp, nil)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", errBadBlock, err)
+	}
+	return out, nil
 }
 
 func readDict(raw []byte) ([]string, error) {
@@ -452,14 +747,24 @@ func readDict(raw []byte) ([]string, error) {
 		return nil, errBadBlock
 	}
 	raw = raw[k:]
+	if n > uint64(len(raw)) { // every string takes at least its length byte
+		return nil, errBadBlock
+	}
 	out := make([]string, 0, n)
 	for range n {
 		l, k := binary.Uvarint(raw)
 		if k <= 0 || uint64(len(raw)-k) < l {
 			return nil, errBadBlock
 		}
-		out = append(out, string(raw[k:k+int(l)]))
+		s := string(raw[k : k+int(l)])
+		if len(out) > 0 && out[len(out)-1] >= s {
+			return nil, fmt.Errorf("%w: dictionary not sorted or repeats", errBadBlock)
+		}
+		out = append(out, s)
 		raw = raw[k+int(l):]
+	}
+	if len(raw) != 0 {
+		return nil, errBadBlock
 	}
 	return out, nil
 }
@@ -473,6 +778,9 @@ func (r *reader) ints(name string, n int) ([]int64, error) {
 	if err != nil {
 		return nil, err
 	}
+	if n > len(raw) {
+		return nil, errBadBlock
+	}
 	out := make([]int64, n)
 	var prev int64
 	for i := range out {
@@ -480,16 +788,20 @@ func (r *reader) ints(name string, n int) ([]int64, error) {
 		if k <= 0 {
 			return nil, errBadBlock
 		}
-		prev += unzz(u)
+		prev += unzz(u) // two's complement: wraps at 64 bits, as written
 		out[i] = prev
 		raw = raw[k:]
+	}
+	if len(raw) != 0 {
+		return nil, errBadBlock
 	}
 	r.keep(name, out, int64(n)*8)
 	return out, nil
 }
 
-// uvarints decodes a plain uvarint section of n values (Dict codes, child counts).
-func (r *reader) uvarints(name string, n int) ([]uint32, error) {
+// uvarints decodes a plain uvarint section of n values (Dict codes, child
+// counts), each at most limit, and 0 only when zero is true.
+func (r *reader) uvarints(name string, n int, limit uint64, zero bool) ([]uint32, error) {
 	if v, ok := r.cached(name); ok {
 		return v.([]uint32), nil
 	}
@@ -497,21 +809,61 @@ func (r *reader) uvarints(name string, n int) ([]uint32, error) {
 	if err != nil {
 		return nil, err
 	}
+	if n > len(raw) {
+		return nil, errBadBlock
+	}
 	out := make([]uint32, n)
 	for i := range out {
 		u, k := binary.Uvarint(raw)
-		if k <= 0 {
-			return nil, errBadBlock
+		if k <= 0 || u > limit || (u == 0 && !zero) {
+			return nil, fmt.Errorf("%w: %s value out of range", errBadBlock, name)
 		}
 		out[i] = uint32(u)
 		raw = raw[k:]
+	}
+	if len(raw) != 0 {
+		return nil, errBadBlock
 	}
 	r.keep(name, out, int64(n)*4)
 	return out, nil
 }
 
-// blobs decodes a length-prefixed section; text says 0 means "template".
-func (r *reader) blobs(name string, n int, text bool) ([][]byte, error) {
+// codesOf decodes a Dict section: codes up to the dictionary size, and 0
+// only for a column with SameAs.
+func (r *reader) codesOf(name string, n int, same bool) ([]uint32, error) {
+	return r.uvarints(name, n, uint64(len(r.dict)), same)
+}
+
+// nchild decodes the child counts, which must sum to the header's children.
+func (r *reader) nchild() ([]uint32, error) {
+	n, err := r.uvarints("nchild", r.bf.h.Rows, uint64(r.bf.h.Children), true)
+	if err != nil {
+		return nil, err
+	}
+	// Each count is checked against what is left before it is added, so
+	// the running sum never passes children and cannot overflow.
+	left := r.bf.h.Children
+	for _, c := range n {
+		if int(c) > left {
+			return nil, fmt.Errorf("%w: child counts exceed children", errBadBlock)
+		}
+		left -= int(c)
+	}
+	if left != 0 {
+		return nil, fmt.Errorf("%w: child counts do not sum to children", errBadBlock)
+	}
+	return n, nil
+}
+
+// Blob section kinds.
+const (
+	blobID       = iota // ID values (Section 8.4)
+	blobText            // Text without a template: always length plus one
+	blobTemplate        // Text with a template: 0 means "the template"
+)
+
+// blobs decodes a length-prefixed section of n values of one kind.
+func (r *reader) blobs(name string, n int, kind int) ([][]byte, error) {
 	if v, ok := r.cached(name); ok {
 		return v.([][]byte), nil
 	}
@@ -520,6 +872,9 @@ func (r *reader) blobs(name string, n int, text bool) ([][]byte, error) {
 		return nil, err
 	}
 	full := int64(len(raw))
+	if n > len(raw) {
+		return nil, errBadBlock
+	}
 	out := make([][]byte, n)
 	for i := range out {
 		l, k := binary.Uvarint(raw)
@@ -527,8 +882,11 @@ func (r *reader) blobs(name string, n int, text bool) ([][]byte, error) {
 			return nil, errBadBlock
 		}
 		raw = raw[k:]
-		if text {
+		if kind != blobID {
 			if l == 0 {
+				if kind == blobText {
+					return nil, fmt.Errorf("%w: %s has no template", errBadBlock, name)
+				}
 				continue // nil: rebuilt by the template
 			}
 			l--
@@ -540,7 +898,13 @@ func (r *reader) blobs(name string, n int, text bool) ([][]byte, error) {
 		if out[i] == nil {
 			out[i] = []byte{}
 		}
+		if kind == blobID && !validID(out[i]) {
+			return nil, fmt.Errorf("%w: %s holds a malformed id", errBadBlock, name)
+		}
 		raw = raw[l:]
+	}
+	if len(raw) != 0 {
+		return nil, errBadBlock
 	}
 	r.keep(name, out, full+int64(n)*24)
 	return out, nil
@@ -550,7 +914,7 @@ func (r *reader) childStarts() ([]int, error) {
 	if r.kids != nil {
 		return r.kids, nil
 	}
-	n, err := r.uvarints("nchild", r.bf.h.Rows)
+	n, err := r.nchild()
 	if err != nil {
 		return nil, err
 	}
@@ -576,7 +940,7 @@ func (r *reader) dictCodes(j int) ([]uint32, error) {
 		r.codes[j] = v.([]uint32)
 		return r.codes[j], nil
 	}
-	codes, err := r.uvarints("c."+r.si.Columns[j].Name, n)
+	codes, err := r.codesOf("c."+r.si.Columns[j].Name, n, r.si.same[j] >= 0)
 	if err != nil {
 		return nil, err
 	}
@@ -654,7 +1018,7 @@ func (r *reader) record(i int, cols map[int]bool, children bool, keep func(*Chil
 			}
 			rec.N[j] = v[i]
 		case ID:
-			v, err := r.blobs("c."+c.Name, n, false)
+			v, err := r.blobs("c."+c.Name, n, blobID)
 			if err != nil {
 				return rec, err
 			}
@@ -665,7 +1029,11 @@ func (r *reader) record(i int, cols map[int]bool, children bool, keep func(*Chil
 		if c.Kind != Text || !want(j) {
 			continue
 		}
-		v, err := r.blobs("c."+c.Name, n, true)
+		kind := blobText
+		if si.Templates[c.Name] != nil {
+			kind = blobTemplate
+		}
+		v, err := r.blobs("c."+c.Name, n, kind)
 		if err != nil {
 			return rec, err
 		}
@@ -686,7 +1054,7 @@ func (r *reader) record(i int, cols map[int]bool, children bool, keep func(*Chil
 			for j, c := range si.Children {
 				switch c.Kind {
 				case Dict:
-					codes, err := r.uvarints("k."+c.Name, total)
+					codes, err := r.codesOf("k."+c.Name, total, si.csame[j] >= 0)
 					if err != nil {
 						return rec, err
 					}
@@ -706,13 +1074,13 @@ func (r *reader) record(i int, cols map[int]bool, children bool, keep func(*Chil
 					}
 					ch.N[j] = v[k]
 				case Text:
-					v, err := r.blobs("k."+c.Name, total, true)
+					v, err := r.blobs("k."+c.Name, total, blobText)
 					if err != nil {
 						return rec, err
 					}
 					ch.S[j] = string(v[k])
 				case ID:
-					v, err := r.blobs("k."+c.Name, total, false)
+					v, err := r.blobs("k."+c.Name, total, blobID)
 					if err != nil {
 						return rec, err
 					}

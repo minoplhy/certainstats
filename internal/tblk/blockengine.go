@@ -223,6 +223,24 @@ func (e *blockEngine) swap(add, drop []*blockFile) error {
 	return nil
 }
 
+// syncDeleted makes deletions with no replacement durable: such a block has
+// no newer block to supersede it if its directory entry came back after a
+// power cut. One sync per grain directory covers a whole pass. err is the
+// pass's error; a sync failure is returned only when the pass succeeded.
+func (e *blockEngine) syncDeleted(grains map[Grain]bool, err error) error {
+	for g := range grains {
+		d, oerr := os.Open(filepath.Join(e.dir, "blocks", g.String()))
+		if oerr == nil {
+			oerr = d.Sync()
+			d.Close()
+		}
+		if err == nil {
+			err = oerr
+		}
+	}
+	return err
+}
+
 func (e *blockEngine) removeBlock(bf *blockFile) error {
 	if err := os.Remove(bf.path); err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return err
@@ -937,12 +955,16 @@ func (e *blockEngine) usedBytes() int64 {
 	return n
 }
 
-func (e *blockEngine) prune(ctx context.Context, now int64, keep map[Grain]time.Duration) (PruneResult, error) {
-	res := PruneResult{Rows: map[Grain]int64{}, Files: map[Grain]int{}}
+func (e *blockEngine) prune(ctx context.Context, now int64, keep map[Grain]time.Duration) (res PruneResult, err error) {
+	res = PruneResult{Rows: map[Grain]int64{}, Files: map[Grain]int{}}
 	e.wmu.Lock()
 	defer e.wmu.Unlock()
+	// Retention and the size cap delete blocks with no replacement.
+	deleted := map[Grain]bool{}
+	defer func() { err = e.syncDeleted(deleted, err) }()
 	drop := func(bf *blockFile) error {
 		n, _ := bf.rows()
+		deleted[bf.h.grain] = true
 		if err := e.removeBlock(bf); err != nil {
 			return err
 		}
@@ -1024,12 +1046,15 @@ func (e *blockEngine) ownerList(ctx context.Context) ([]string, error) {
 	return list, nil
 }
 
-func (e *blockEngine) dropOwner(ctx context.Context, owner string) error {
+func (e *blockEngine) dropOwner(ctx context.Context, owner string) (err error) {
 	if err := e.head.dropOwner(ctx, owner); err != nil {
 		return err
 	}
 	e.wmu.Lock()
 	defer e.wmu.Unlock()
+	// A block that held only this owner is deleted with no replacement.
+	deleted := map[Grain]bool{}
+	defer func() { err = e.syncDeleted(deleted, err) }()
 	for _, g := range grains {
 		for _, bf := range e.snapshot(g) {
 			has := false
@@ -1068,6 +1093,8 @@ func (e *blockEngine) dropOwner(ctx context.Context, owner string) error {
 					return err
 				}
 				add = append(add, nb)
+			} else {
+				deleted[g] = true
 			}
 			if err := e.swap(add, []*blockFile{bf}); err != nil {
 				return err

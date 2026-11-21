@@ -68,7 +68,7 @@ func openBlocks(dir string, si *schemaInfo) (*blockEngine, error) {
 		case strings.HasSuffix(ent.Name(), ".tmp"):
 			os.Remove(p)
 		case strings.HasSuffix(ent.Name(), ".rblk"):
-			bf, err := openBlockFile(p)
+			bf, err := openBlockFile(si, p)
 			if err != nil {
 				os.Rename(p, p+".bad")
 				continue
@@ -204,6 +204,16 @@ func (e *blockEngine) readAll(bf *blockFile) (map[string][]Record, error) {
 	return out, nil
 }
 
+// nextSeq takes the next block sequence number. It never wraps: a wrapped
+// number would lose to every older block (Section 9.2 of the spec).
+func (e *blockEngine) nextSeq() (int64, error) {
+	if e.seq == math.MaxInt64 {
+		return 0, errors.New("rblk: block sequence numbers used up")
+	}
+	e.seq++
+	return e.seq, nil
+}
+
 func (e *blockEngine) path(start, seq int64) string {
 	return filepath.Join(e.dir, "blocks", fmt.Sprintf("%d-%d.rblk", start, seq))
 }
@@ -240,8 +250,11 @@ func (e *blockEngine) reseal(ctx context.Context, d, upto int64) error {
 	if old != nil {
 		sealed = max(sealed, old.sealed())
 	}
-	e.seq++
-	bf, err := writeBlock(e.si, e.path(d, e.seq), d, d+dayMs, sealed, e.seq, merged)
+	seq, err := e.nextSeq()
+	if err != nil {
+		return err
+	}
+	bf, err := writeBlock(e.si, e.path(d, seq), d, d+dayMs, sealed, seq, merged)
 	if err != nil {
 		return err
 	}
@@ -727,7 +740,7 @@ func (e *blockEngine) aggregate(ctx context.Context, q Query, a Agg) ([]Group, e
 		var nch []uint32
 		for i, sname := range a.Sum {
 			if sname == "#children" {
-				if nch, err = r.uvarints("nchild", n); err != nil {
+				if nch, err = r.nchild(); err != nil {
 					r.close()
 					return nil, err
 				}
@@ -883,9 +896,20 @@ func (e *blockEngine) active(ctx context.Context, q Query, now int64) ([]Record,
 	return out, nil
 }
 
-func (e *blockEngine) prune(ctx context.Context, before int64, owners []string) error {
+func (e *blockEngine) prune(ctx context.Context, before int64, owners []string) (err error) {
 	e.wmu.Lock()
 	defer e.wmu.Unlock()
+	// A block deleted with no replacement must stay deleted after a power
+	// cut: no higher seq would hide it if its directory entry came back. One
+	// directory sync covers every deletion of the pass.
+	deleted := false
+	defer func() {
+		if deleted {
+			if serr := syncDir(filepath.Join(e.dir, "blocks")); err == nil {
+				err = serr
+			}
+		}
+	}()
 	if err := e.head.prune(ctx, before, owners); err != nil {
 		return err
 	}
@@ -899,6 +923,7 @@ func (e *blockEngine) prune(ctx context.Context, before int64, owners []string) 
 	for _, bf := range e.snapshot() {
 		if before > 0 && bf.h.End <= before {
 			e.swap(nil, bf)
+			deleted = true
 			continue
 		}
 		rewrite := before > bf.h.Start && before > 0
@@ -927,10 +952,14 @@ func (e *blockEngine) prune(ctx context.Context, before int64, owners []string) 
 		}
 		if rows == 0 {
 			e.swap(nil, bf)
+			deleted = true
 			continue
 		}
-		e.seq++
-		nb, err := writeBlock(e.si, e.path(bf.h.Start, e.seq), bf.h.Start, bf.h.End, bf.h.Upto, e.seq, kept)
+		seq, err := e.nextSeq()
+		if err != nil {
+			return err
+		}
+		nb, err := writeBlock(e.si, e.path(bf.h.Start, seq), bf.h.Start, bf.h.End, bf.h.Upto, seq, kept)
 		if err != nil {
 			return err
 		}
