@@ -44,7 +44,10 @@ The low-level pieces exist twice for now: zstd encoders and decoders, the CRC ch
   - **Bounded folding** (`Family.Bound`): the cap keeps only rows strictly above the first row past it, so ties fold together. Each cut is added to a bound row (every key "other"). Summing the bound measure over a range gives how far any key's sum can be below the truth. Knot's name and client families use it; a network key can fold too. See the [tblk spec](specs/tblk.md#721-bounded-folding).
 - **Reference engine:** an SQL engine in one SQLite file holds the same data. The tests check the block engine against it.
 
-The byte-level specification is [specs/tblk.md](specs/tblk.md). The package overview is in its `doc.go`.
+- **Store rules:** a store records each family's shape and refuses to open if a family's keys, measures or folding changed (`ErrShapeChanged`). Give a new shape a new family name. A store has one writer, held by a `flock` on its `lock` file (`ErrLocked`). Rows the writer refuses (the wrong number of keys or measures, a bad network or number, `(other)` in a key that doesn't fold, a negative count in a bounded family) are counted per family in `Stats.Dropped`.
+- **Reader checks:** a block is set aside as damaged unless every section is one zstd frame within bounds, no sections overlap, the dictionary is sorted, and every index and bucket is in range. See [Reading a Block](specs/tblk.md#9-reading-a-block).
+
+The byte-level specification is [specs/tblk.md](specs/tblk.md), revision 2. The package overview is in its `doc.go`.
 
 ## `rblk`: records
 

@@ -44,6 +44,10 @@ const (
 
 var errBadBlock = errors.New("tblk: block failed its checks")
 
+// maxSection bounds a section's compressed and decoded size, so a damaged
+// or hostile frame cannot size an allocation.
+const maxSection = 1 << 31
+
 type blockHeader struct {
 	grain               Grain
 	start, end, covered int64
@@ -101,7 +105,7 @@ func newCodec() (*codec, error) {
 	if err != nil {
 		return nil, err
 	}
-	dec, err := zstd.NewReader(nil, zstd.WithDecoderConcurrency(4), zstd.WithDecoderLowmem(true))
+	dec, err := zstd.NewReader(nil, zstd.WithDecoderConcurrency(4), zstd.WithDecoderLowmem(true), zstd.WithDecoderMaxMemory(maxSection))
 	if err != nil {
 		enc.Close()
 		return nil, err
@@ -142,7 +146,7 @@ func sortMerge(list []rec) []rec {
 				a.vals, owned = append([]int64(nil), a.vals...), true
 			}
 			for j, v := range b.vals {
-				a.vals[j] += v
+				a.vals[j] = satAdd(a.vals[j], v)
 			}
 			continue
 		}
@@ -436,28 +440,69 @@ func openBlock(c *codec, path string) (*blockFile, error) {
 		end:     int64(binary.LittleEndian.Uint64(hd[16:])),
 		covered: int64(binary.LittleEndian.Uint64(hd[24:])),
 	}}
-	ix := secRef{off: int64(binary.LittleEndian.Uint64(tr[0:])), n: int64(binary.LittleEndian.Uint32(tr[8:])), crc: binary.LittleEndian.Uint32(tr[12:])}
+	h := bf.h
+	if h.grain > Day || h.start >= h.end || h.start%h.grain.Ms() != 0 || h.end%h.grain.Ms() != 0 ||
+		h.covered <= h.start || h.covered > h.end || (h.end-h.start)/h.grain.Ms() > 1<<32 {
+		return nil, errBadBlock
+	}
+	dataEnd := st.Size() - trailerLen
+	ixOff := binary.LittleEndian.Uint64(tr[0:])
+	ix := secRef{off: int64(ixOff), n: int64(binary.LittleEndian.Uint32(tr[8:])), crc: binary.LittleEndian.Uint32(tr[12:])}
+	if ixOff < headerLen || ixOff > uint64(dataEnd) || ix.n < 1 || ix.n > dataEnd-ix.off {
+		return nil, errBadBlock
+	}
 	raw, err := readSection(c, fh, ix)
 	if err != nil {
 		return nil, err
 	}
 	r := &reader{b: raw}
+	// Every data section lies between the header and the index, and no two
+	// overlap; counts are checked against what the file can hold before
+	// they size anything.
+	var refs []secRef
 	getRef := func() secRef {
-		return secRef{off: int64(r.uvarint()), n: int64(r.uvarint()), crc: r.u32()}
+		off, n, crc := r.uvarint(), r.uvarint(), r.u32()
+		if off < headerLen || n < 1 || off > ixOff || n > ixOff-off {
+			r.err = errBadBlock
+		}
+		ref := secRef{off: int64(off), n: int64(n), crc: crc}
+		refs = append(refs, ref)
+		return ref
 	}
 	bf.dict = getRef()
-	bf.ndict = int(r.uvarint())
-	ng := int(r.uvarint())
-	for i := 0; i < ng && r.err == nil; i++ {
+	ndict := r.uvarint()
+	ng := r.uvarint()
+	if ndict > uint64(st.Size()) || ng > uint64(st.Size()) {
+		return nil, errBadBlock
+	}
+	bf.ndict = int(ndict)
+	for i := uint64(0); i < ng && r.err == nil; i++ {
 		g := groupRef{owner: r.str(), family: r.str(), rows: int64(r.uvarint()), folded: int64(r.uvarint())}
-		nc := int(r.uvarint())
-		for j := 0; j < nc && r.err == nil; j++ {
+		nc := r.uvarint()
+		if g.rows < 1 || g.folded < 0 || g.folded > g.rows || g.rows > maxSection || nc < 2 || nc > uint64(st.Size()) {
+			r.err = errBadBlock
+			break
+		}
+		if n := len(bf.group); n > 0 {
+			p := bf.group[n-1]
+			if p.owner > g.owner || (p.owner == g.owner && p.family >= g.family) {
+				r.err = errBadBlock
+				break
+			}
+		}
+		for j := uint64(0); j < nc && r.err == nil; j++ {
 			g.cols = append(g.cols, getRef())
 		}
 		bf.group = append(bf.group, g)
 	}
-	if r.err != nil {
+	if r.err != nil || len(r.b) != 0 {
 		return nil, errBadBlock
+	}
+	sort.Slice(refs, func(i, j int) bool { return refs[i].off < refs[j].off })
+	for i := 1; i < len(refs); i++ {
+		if refs[i-1].off+refs[i-1].n > refs[i].off {
+			return nil, errBadBlock
+		}
 	}
 	return bf, nil
 }
@@ -501,7 +546,7 @@ func putBuf(b *[]byte) {
 // withSection decodes a section into a pooled buffer and passes it to fn; the
 // bytes are only valid during fn.
 func withSection(c *codec, fh io.ReaderAt, ref secRef, fn func(raw []byte) error) error {
-	if ref.n < 0 || ref.n > 1<<31 {
+	if ref.n < 1 || ref.n > maxSection {
 		return errBadBlock
 	}
 	cb, db := getBuf(), getBuf()
@@ -517,12 +562,53 @@ func withSection(c *codec, fh io.ReaderAt, ref secRef, fn func(raw []byte) error
 	if crc32.ChecksumIEEE(comp) != ref.crc {
 		return errBadBlock
 	}
+	// Exactly one frame, filling the section: nothing after it.
+	if !oneFrame(comp) {
+		return errBadBlock
+	}
 	out, err := c.dec.DecodeAll(comp, (*db)[:0])
 	if err != nil {
 		return errBadBlock
 	}
 	*db = out
 	return fn(out)
+}
+
+// oneFrame reports whether b is exactly one Zstandard frame (RFC 8878
+// section 3.1.1): its header, its blocks up to the last, and the checksum
+// when the header asks for one.
+func oneFrame(b []byte) bool {
+	var h zstd.Header
+	if h.Decode(b) != nil || h.Skippable || h.HeaderSize <= 0 {
+		return false
+	}
+	i := h.HeaderSize
+	for {
+		if len(b)-i < 3 {
+			return false
+		}
+		bh := uint32(b[i]) | uint32(b[i+1])<<8 | uint32(b[i+2])<<16
+		i += 3
+		last, typ, size := bh&1 == 1, (bh>>1)&3, int(bh>>3)
+		switch typ {
+		case 0, 2: // raw, compressed: size bytes follow
+		case 1: // RLE: one byte repeated size times
+			size = 1
+		default: // reserved
+			return false
+		}
+		if size > len(b)-i {
+			return false
+		}
+		i += size
+		if last {
+			break
+		}
+	}
+	if h.HasCheckSum {
+		i += 4
+	}
+	return i == len(b)
 }
 
 func readSection(c *codec, fh io.ReaderAt, ref secRef) ([]byte, error) {
@@ -534,17 +620,19 @@ func readSection(c *codec, fh io.ReaderAt, ref secRef) ([]byte, error) {
 	return out, err
 }
 
-func readRLE(c *codec, fh io.ReaderAt, ref secRef, rows int64) (out []uint32, err error) {
+// readRLE and readUvarints decode index columns; every value must be below
+// limit (the dictionary size, or the block's buckets for the bucket column).
+func readRLE(c *codec, fh io.ReaderAt, ref secRef, rows int64, limit uint64) (out []uint32, err error) {
 	err = withSection(c, fh, ref, func(raw []byte) error {
-		out, err = decodeRLE(raw, rows)
+		out, err = decodeRLE(raw, rows, limit)
 		return err
 	})
 	return out, err
 }
 
-func readUvarints(c *codec, fh io.ReaderAt, ref secRef, rows int64) (out []uint32, err error) {
+func readUvarints(c *codec, fh io.ReaderAt, ref secRef, rows int64, limit uint64) (out []uint32, err error) {
 	err = withSection(c, fh, ref, func(raw []byte) error {
-		out, err = decodeUvarints(raw, rows)
+		out, err = decodeUvarints(raw, rows, limit)
 		return err
 	})
 	return out, err
@@ -569,14 +657,18 @@ func readDict(c *codec, fh io.ReaderAt, bf *blockFile) (out []string, err error)
 func parseDict(raw []byte, bf *blockFile) ([]string, error) {
 	r := &reader{b: raw}
 	n := int(r.uvarint())
-	if n != bf.ndict {
+	if n != bf.ndict || n > len(raw) {
 		return nil, errBadBlock
 	}
 	out := make([]string, n)
 	for i := range out {
 		out[i] = r.str()
+		// Sorted and distinct: comparing indexes compares strings.
+		if i > 0 && r.err == nil && out[i-1] >= out[i] {
+			return nil, errBadBlock
+		}
 	}
-	if r.err != nil {
+	if r.err != nil || len(r.b) != 0 {
 		return nil, errBadBlock
 	}
 	return out, nil
@@ -635,42 +727,60 @@ func (r *reader) str() string {
 	return s
 }
 
-// column decoders: each returns exactly rows values or errBadBlock.
+// column decoders: each returns exactly rows values, with nothing after
+// them, or errBadBlock.
 
-func decodeRLE(raw []byte, rows int64) ([]uint32, error) {
+// blockSpan is how many buckets a block's span holds: the bound on its
+// bucket column.
+func blockSpan(h blockHeader) uint64 { return uint64((h.end - h.start) / h.grain.Ms()) }
+
+func decodeRLE(raw []byte, rows int64, limit uint64) ([]uint32, error) {
 	out := make([]uint32, 0, rows)
 	r := &reader{b: raw}
 	for int64(len(out)) < rows && r.err == nil {
 		v, run := r.uvarint(), r.uvarint()
-		for k := uint64(0); k < run && int64(len(out)) < rows; k++ {
+		if r.err != nil || v >= limit || run < 1 || run > uint64(rows-int64(len(out))) {
+			return nil, errBadBlock
+		}
+		for k := uint64(0); k < run; k++ {
 			out = append(out, uint32(v))
 		}
 	}
-	if r.err != nil || int64(len(out)) != rows {
+	if r.err != nil || int64(len(out)) != rows || len(r.b) != 0 {
 		return nil, errBadBlock
 	}
 	return out, nil
 }
 
-func decodeUvarints(raw []byte, rows int64) ([]uint32, error) {
+func decodeUvarints(raw []byte, rows int64, limit uint64) ([]uint32, error) {
+	if int64(len(raw)) < rows {
+		return nil, errBadBlock // every value takes at least a byte
+	}
 	out := make([]uint32, rows)
 	r := &reader{b: raw}
 	for i := range out {
-		out[i] = uint32(r.uvarint())
+		v := r.uvarint()
+		if v >= limit {
+			return nil, errBadBlock
+		}
+		out[i] = uint32(v)
 	}
-	if r.err != nil {
+	if r.err != nil || len(r.b) != 0 {
 		return nil, errBadBlock
 	}
 	return out, nil
 }
 
 func decodeVarints(raw []byte, rows int64) ([]int64, error) {
+	if int64(len(raw)) < rows {
+		return nil, errBadBlock
+	}
 	out := make([]int64, rows)
 	r := &reader{b: raw}
 	for i := range out {
 		out[i] = r.varint()
 	}
-	if r.err != nil {
+	if r.err != nil || len(r.b) != 0 {
 		return nil, errBadBlock
 	}
 	return out, nil

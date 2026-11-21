@@ -2,12 +2,14 @@ package tblk
 
 import (
 	"context"
+	"encoding/binary"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"sort"
 	"strconv"
-	"strings"
+	"sync"
 	"time"
 )
 
@@ -91,6 +93,9 @@ type Stats struct {
 	FoldedRows map[string]map[Grain]int64
 	// First and Last bucket per tier (Last is exclusive).
 	First, Last map[Grain]int64
+	// Dropped counts, per family, the rows Append, AppendTier and Add
+	// refused since the store opened (see toRecs). Not kept across restarts.
+	Dropped map[string]int64
 	// BadBlocks lists block files that failed their checks and are skipped.
 	BadBlocks []string
 }
@@ -117,6 +122,9 @@ type engine interface {
 type Store struct {
 	sch       *schemaInfo
 	eng       engine
+	lock      *os.File
+	dropMu    sync.Mutex
+	dropped   map[string]int64
 	slots     chan struct{}
 	queueWait time.Duration
 }
@@ -128,6 +136,10 @@ func Open(dir string, s Schema, o Options) (*Store, error) {
 		return nil, err
 	}
 	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return nil, err
+	}
+	lock, err := lockDir(dir)
+	if err != nil {
 		return nil, err
 	}
 	if o.Driver == "" {
@@ -146,15 +158,28 @@ func Open(dir string, s Schema, o Options) (*Store, error) {
 	case Blocks:
 		eng, err = openBlocks(dir, si, o.Driver)
 	default:
-		return nil, fmt.Errorf("tblk: unknown engine %q", o.Engine)
+		err = fmt.Errorf("tblk: unknown engine %q", o.Engine)
 	}
 	if err != nil {
+		if lock != nil {
+			lock.Close()
+		}
 		return nil, err
 	}
-	return &Store{sch: si, eng: eng, slots: make(chan struct{}, o.QuerySlots), queueWait: o.QueueWait}, nil
+	return &Store{sch: si, eng: eng, lock: lock, slots: make(chan struct{}, o.QuerySlots), queueWait: o.QueueWait}, nil
 }
 
-func (s *Store) Close() error { return s.eng.close() }
+// ErrLocked is returned by Open when another process (or another open
+// Store in this one) holds the store: a store has one writer.
+var ErrLocked = errors.New("tblk: the store is open elsewhere")
+
+func (s *Store) Close() error {
+	err := s.eng.close()
+	if s.lock != nil {
+		s.lock.Close()
+	}
+	return err
+}
 
 // acquire takes a query slot, waiting at most the queue wait.
 func (s *Store) acquire(ctx context.Context) (func(), error) {
@@ -179,8 +204,11 @@ func (s *Store) family(name string) (*famInfo, error) {
 	return f, nil
 }
 
-// toRecs checks rows and turns them into stored form; rows with a bad network
-// or number are skipped, as a collector's bad row should not fail the minute.
+// toRecs checks rows and turns them into stored form. A row is skipped (a
+// collector's bad row should not fail the minute) when it has a bad network
+// or number, holds Other in a key that does not fold (only a bounded
+// family's bound row may), or, in a bounded family, has a negative rank or
+// bound measure, which would void the bound.
 func toRecs(f *famInfo, collector string, bucket int64, rows []Row) []rec {
 	out := make([]rec, 0, len(rows))
 	for _, r := range rows {
@@ -204,6 +232,14 @@ func toRecs(f *famInfo, collector string, bucket int64, rows []Row) []rec {
 			}
 			keys[i] = v
 		}
+		if ok && !f.isBound(keys) {
+			for i, k := range f.Keys {
+				ok = ok && (k.Fold || keys[i] != Other)
+			}
+		}
+		if ok && f.bound >= 0 && (r.Values[0] < 0 || r.Values[f.bound] < 0) {
+			ok = false
+		}
 		if ok {
 			out = append(out, rec{collector: collector, bucket: bucket, keys: keys, vals: append([]int64(nil), r.Values...)})
 		}
@@ -219,7 +255,7 @@ func (s *Store) Append(ctx context.Context, owner, collector, family string, buc
 		return err
 	}
 	bucket := bucketMs - bucketMs%minuteMs
-	return s.eng.append(ctx, owner, collector, f, Minute, bucket, toRecs(f, collector, bucket, rows))
+	return s.eng.append(ctx, owner, collector, f, Minute, bucket, s.recs(f, collector, bucket, rows))
 }
 
 // Add sums one minute of one family onto what is stored, for sources whose
@@ -234,7 +270,7 @@ func (s *Store) Add(ctx context.Context, owner, collector, family string, bucket
 		return err
 	}
 	bucket := bucketMs - bucketMs%minuteMs
-	return s.eng.add(ctx, owner, collector, f, bucket, toRecs(f, collector, bucket, rows))
+	return s.eng.add(ctx, owner, collector, f, bucket, s.recs(f, collector, bucket, rows))
 }
 
 // AppendTier writes rows straight into the hour or day tier, for imports and
@@ -248,7 +284,7 @@ func (s *Store) AppendTier(ctx context.Context, g Grain, owner, collector, famil
 		return err
 	}
 	bucket := bucketMs - bucketMs%g.Ms()
-	return s.eng.append(ctx, owner, collector, f, g, bucket, toRecs(f, collector, bucket, rows))
+	return s.eng.append(ctx, owner, collector, f, g, bucket, s.recs(f, collector, bucket, rows))
 }
 
 // FlushTier writes out AppendTier rows still buffered.
@@ -281,7 +317,30 @@ func (s *Store) DropOwner(ctx context.Context, owner string) error {
 func (s *Store) Owners(ctx context.Context) ([]string, error) { return s.eng.ownerList(ctx) }
 
 // Stats measure the store.
-func (s *Store) Stats(ctx context.Context) (Stats, error) { return s.eng.stats(ctx) }
+func (s *Store) Stats(ctx context.Context) (Stats, error) {
+	st, err := s.eng.stats(ctx)
+	s.dropMu.Lock()
+	st.Dropped = make(map[string]int64, len(s.dropped))
+	for k, v := range s.dropped {
+		st.Dropped[k] = v
+	}
+	s.dropMu.Unlock()
+	return st, err
+}
+
+// recs is toRecs, counting the rows it refused.
+func (s *Store) recs(f *famInfo, collector string, bucket int64, rows []Row) []rec {
+	out := toRecs(f, collector, bucket, rows)
+	if n := len(rows) - len(out); n > 0 {
+		s.dropMu.Lock()
+		if s.dropped == nil {
+			s.dropped = map[string]int64{}
+		}
+		s.dropped[f.Name] += int64(n)
+		s.dropMu.Unlock()
+	}
+	return out
+}
 
 // foldTop applies a tier's cap to the summed rows of one owner and bucket,
 // per collector and one fold level at a time: the top n rows by the first
@@ -317,7 +376,7 @@ func foldTop(f *famInfo, rows []rec, n int) []rec {
 			if stage[i] == nil {
 				stage[i] = map[string]*rec{}
 			}
-			id := strings.Join(r.keys, "\x00")
+			id := keyID(r.keys)
 			o := stage[i][id]
 			if o == nil {
 				o = &rec{collector: r.collector, bucket: r.bucket, keys: r.keys, vals: make([]int64, len(r.vals))}
@@ -325,7 +384,7 @@ func foldTop(f *famInfo, rows []rec, n int) []rec {
 				order[i] = append(order[i], id)
 			}
 			for j, v := range r.vals {
-				o.vals[j] += v
+				o.vals[j] = satAdd(o.vals[j], v)
 			}
 		}
 		for _, r := range byCol[c] {
@@ -340,7 +399,7 @@ func foldTop(f *famInfo, rows []rec, n int) []rec {
 				if list[a].vals[0] != list[b].vals[0] {
 					return list[a].vals[0] > list[b].vals[0]
 				}
-				return strings.Join(list[a].keys, "\x00") < strings.Join(list[b].keys, "\x00")
+				return lessKeys(list[a].keys, list[b].keys)
 			})
 			keep := min(n, len(list))
 			out = append(out, list[:keep]...)
@@ -384,7 +443,7 @@ func boundTop(f *famInfo, rows []rec, n int) []rec {
 				bound = &rec{collector: r.collector, bucket: r.bucket, keys: BoundKeys(f.Family), vals: make([]int64, len(r.vals))}
 			}
 			for j, v := range r.vals {
-				bound.vals[j] += v
+				bound.vals[j] = satAdd(bound.vals[j], v)
 			}
 		}
 		add := func(r rec) {
@@ -394,7 +453,7 @@ func boundTop(f *famInfo, rows []rec, n int) []rec {
 				toBound(r)
 				return
 			}
-			id := strings.Join(r.keys, "\x00")
+			id := keyID(r.keys)
 			o := folded[id]
 			if o == nil {
 				o = &rec{collector: r.collector, bucket: r.bucket, keys: r.keys, vals: make([]int64, len(r.vals))}
@@ -402,7 +461,7 @@ func boundTop(f *famInfo, rows []rec, n int) []rec {
 				order = append(order, id)
 			}
 			for j, v := range r.vals {
-				o.vals[j] += v
+				o.vals[j] = satAdd(o.vals[j], v)
 			}
 		}
 		for _, r := range byCol[c] {
@@ -433,23 +492,55 @@ func boundTop(f *famInfo, rows []rec, n int) []rec {
 			if live[a].vals[0] != live[b].vals[0] {
 				return live[a].vals[0] > live[b].vals[0]
 			}
-			return strings.Join(live[a].keys, "\x00") < strings.Join(live[b].keys, "\x00")
+			return lessKeys(live[a].keys, live[b].keys)
 		})
 		out = append(out, live...)
-		sort.Strings(order)
+		fold := make([]rec, 0, len(order))
 		for _, id := range order {
-			out = append(out, *folded[id])
+			fold = append(fold, *folded[id])
 		}
+		sort.Slice(fold, func(a, b int) bool { return lessKeys(fold[a].keys, fold[b].keys) })
+		out = append(out, fold...)
 		if cut > 0 && bound == nil {
 			r0 := byCol[c][0]
 			bound = &rec{collector: c, bucket: r0.bucket, keys: BoundKeys(f.Family), vals: make([]int64, len(f.Measures))}
 		}
 		if bound != nil {
-			bound.vals[f.bound] += cut
+			bound.vals[f.bound] = satAdd(bound.vals[f.bound], cut)
 			out = append(out, *bound)
 		}
 	}
 	return out
+}
+
+// satAdd adds measures, stopping at the int64 limits instead of wrapping:
+// counts that large are far outside what tblk stores, but a wrapped sum
+// would turn into a wrong count of the other sign.
+func satAdd(a, b int64) int64 {
+	c := a + b
+	switch {
+	case b > 0 && c < a:
+		return math.MaxInt64
+	case b < 0 && c > a:
+		return math.MinInt64
+	}
+	return c
+}
+
+// keyID is a row identity for maps: each key length-prefixed, so no two key
+// lists share one, whatever bytes the keys hold (joining them with a
+// separator would merge ("a\x00b", "c") with ("a", "b\x00c")).
+func keyID(keys []string) string {
+	n := 0
+	for _, k := range keys {
+		n += len(k) + binary.MaxVarintLen64
+	}
+	b := make([]byte, 0, n)
+	for _, k := range keys {
+		b = binary.AppendUvarint(b, uint64(len(k)))
+		b = append(b, k...)
+	}
+	return string(b)
 }
 
 // sumRecs adds rows with the same collector and keys, setting every bucket to
@@ -458,10 +549,10 @@ func sumRecs(rows []rec, bucket int64) []rec {
 	idx := map[string]int{}
 	var out []rec
 	for _, r := range rows {
-		id := r.collector + "\x00" + strings.Join(r.keys, "\x00")
+		id := keyID(append([]string{r.collector}, r.keys...))
 		if i, ok := idx[id]; ok {
 			for j, v := range r.vals {
-				out[i].vals[j] += v
+				out[i].vals[j] = satAdd(out[i].vals[j], v)
 			}
 			continue
 		}

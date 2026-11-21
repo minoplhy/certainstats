@@ -3,7 +3,9 @@ package knot
 import (
 	"context"
 	"database/sql"
+	"encoding/binary"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -137,20 +139,27 @@ func (s *Store) rollTop(ctx context.Context, tx *sql.Tx, h int64, dim string, ke
 		return err
 	}
 	defer stmt.Close()
-	// foldKey is the row's key with the fold keys set to Other, joined for map use.
-	foldKey := func(k []string) string {
-		f := append([]string{}, k...)
-		for _, i := range fold {
-			f[i] = wire.Other
-		}
-		return strings.Join(f, "\x00")
-	}
 	for g, list := range groups {
 		named := list[:0:0]
-		other := map[string]int64{}
+		// other sums the folded rows by their key with the fold keys set to
+		// Other. Map keys are length-prefixed (a 0x00 separator would merge
+		// ("a\x00b", "c") with ("a", "b\x00c")).
+		other := map[string]*row{}
+		addOther := func(k []string, n int64) {
+			f := append([]string{}, k...)
+			for _, i := range fold {
+				f[i] = wire.Other
+			}
+			id := keyID(f)
+			if o := other[id]; o != nil {
+				o.n += n
+				return
+			}
+			other[id] = &row{key: f, n: n}
+		}
 		for _, r := range list {
 			if r.key[fold[0]] == wire.Other {
-				other[foldKey(r.key)] += r.n
+				addOther(r.key, r.n)
 				continue
 			}
 			named = append(named, r)
@@ -159,7 +168,7 @@ func (s *Store) rollTop(ctx context.Context, tx *sql.Tx, h int64, dim string, ke
 			if named[i].n != named[j].n {
 				return named[i].n > named[j].n
 			}
-			return strings.Join(named[i].key, "\x00") < strings.Join(named[j].key, "\x00")
+			return slices.Compare(named[i].key, named[j].key) < 0
 		})
 		{
 			counts := make([]uint64, len(named))
@@ -173,7 +182,7 @@ func (s *Store) rollTop(ctx context.Context, tx *sql.Tx, h int64, dim string, ke
 					kept = append(kept, r)
 					continue
 				}
-				other[foldKey(r.key)] += r.n
+				addOther(r.key, r.n)
 			}
 			named = kept
 			if cut > 0 {
@@ -196,11 +205,22 @@ func (s *Store) rollTop(ctx context.Context, tx *sql.Tx, h int64, dim string, ke
 				return err
 			}
 		}
-		for k, n := range other {
-			if err := put(strings.Split(k, "\x00"), n); err != nil {
+		for _, o := range other {
+			if err := put(o.key, o.n); err != nil {
 				return err
 			}
 		}
 	}
 	return nil
+}
+
+// keyID is a map key for a key list: each key length-prefixed, so no two
+// different lists share one.
+func keyID(keys []string) string {
+	var b []byte
+	for _, k := range keys {
+		b = binary.AppendUvarint(b, uint64(len(k)))
+		b = append(b, k...)
+	}
+	return string(b)
 }

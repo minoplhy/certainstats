@@ -116,7 +116,7 @@ func (p *partial) addGroup(label string, vals []int64) {
 		p.groups[label] = g
 	}
 	for i, v := range vals {
-		g[i] += v
+		g[i] = satAdd(g[i], v)
 	}
 }
 
@@ -330,7 +330,7 @@ func (s *Store) Query(ctx context.Context, q Query) (Result, error) {
 	for label, vals := range p.groups {
 		if foldBy && label == Other && !q.KeepOther {
 			for i, v := range vals {
-				res.Other[i] += v
+				res.Other[i] = satAdd(res.Other[i], v)
 			}
 			continue
 		}
@@ -349,7 +349,7 @@ func (s *Store) Query(ctx context.Context, q Query) (Result, error) {
 	if q.Limit > 0 && len(res.Rows) > q.Limit {
 		for _, r := range res.Rows[q.Limit:] {
 			for i, v := range r.Values {
-				res.Other[i] += v
+				res.Other[i] = satAdd(res.Other[i], v)
 			}
 		}
 		res.Rows = res.Rows[:q.Limit]

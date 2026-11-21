@@ -340,14 +340,15 @@ func (e *blockEngine) readGroup(r *blockReader, g *groupRef) (*groupData, error)
 	gd := &groupData{f: f, dict: r.dict, start: r.bf.h.start, gms: r.bf.h.grain.Ms(),
 		keys: make([][]uint32, len(f.Keys)), vals: make([][]int64, len(f.Measures))}
 	var err error
-	if gd.col, err = readRLE(e.c, r.fh, g.cols[0], g.rows); err != nil {
+	nd := uint64(len(r.dict))
+	if gd.col, err = readRLE(e.c, r.fh, g.cols[0], g.rows, nd); err != nil {
 		return nil, err
 	}
-	if gd.bk, err = readUvarints(e.c, r.fh, g.cols[1], g.rows); err != nil {
+	if gd.bk, err = readUvarints(e.c, r.fh, g.cols[1], g.rows, blockSpan(r.bf.h)); err != nil {
 		return nil, err
 	}
 	for k := range gd.keys {
-		if gd.keys[k], err = readUvarints(e.c, r.fh, g.cols[2+k], g.rows); err != nil {
+		if gd.keys[k], err = readUvarints(e.c, r.fh, g.cols[2+k], g.rows, nd); err != nil {
 			return nil, err
 		}
 	}
@@ -1182,17 +1183,17 @@ func (e *blockEngine) scanBlock(bf *blockFile, sp scanSpec, out *partial) error 
 		if c, ok := keyCache[k]; ok {
 			return c, nil
 		}
-		c, err := readUvarints(e.c, fh, g.cols[2+k], g.rows)
+		c, err := readUvarints(e.c, fh, g.cols[2+k], g.rows, uint64(len(dict)))
 		keyCache[k] = c
 		return c, err
 	}
 	var colIdx []uint32
 	if needCol {
-		if colIdx, err = readRLE(e.c, fh, g.cols[0], g.rows); err != nil {
+		if colIdx, err = readRLE(e.c, fh, g.cols[0], g.rows, uint64(len(dict))); err != nil {
 			return err
 		}
 	}
-	bk, err := readUvarints(e.c, fh, g.cols[1], g.rows)
+	bk, err := readUvarints(e.c, fh, g.cols[1], g.rows, blockSpan(bf.h))
 	if err != nil {
 		return err
 	}
@@ -1258,10 +1259,10 @@ rows:
 		}
 		for j := range msr {
 			vals[j] = msr[j][i]
-			out.total[j] += vals[j]
+			out.total[j] = satAdd(out.total[j], vals[j])
 		}
 		if sp.step > 0 {
-			out.series[(b/sp.step)*sp.step] += vals[0]
+			out.series[(b/sp.step)*sp.step] = satAdd(out.series[(b/sp.step)*sp.step], vals[0])
 		}
 		if byCol != nil {
 			acc := groups[byCol[i]]
@@ -1270,7 +1271,7 @@ rows:
 				groups[byCol[i]] = acc
 			}
 			for j, v := range vals {
-				acc[j] += v
+				acc[j] = satAdd(acc[j], v)
 			}
 		}
 	}

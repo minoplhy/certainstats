@@ -9,9 +9,11 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -184,26 +186,72 @@ func dnsQueries(owner string) []Query {
 	return out
 }
 
+// compareEngines runs every query on both stores and fails on the first
+// (in list order) whose answers differ. Reads run on a few workers, since
+// both engines serve concurrent queries; the full DNS set is thousands of
+// reads per checkpoint.
 func compareEngines(t *testing.T, label string, a, b *Store, qs []Query) (withRows, folded int) {
 	t.Helper()
-	ctx := context.Background()
-	for _, q := range qs {
-		ra, err := a.Query(ctx, q)
-		if err != nil {
-			t.Fatalf("%s sql %+v: %v", label, q, err)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	fails := make([]string, len(qs))
+	rows := make([]bool, len(qs))
+	fold := make([]bool, len(qs))
+	next := make(chan int)
+	var wg sync.WaitGroup
+	for w := 0; w < min(4, runtime.GOMAXPROCS(0)); w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := range next {
+				q := qs[i]
+				ra, err := a.Query(ctx, q)
+				if err != nil {
+					fails[i] = fmt.Sprintf("%s sql %+v: %v", label, q, err)
+					cancel()
+					continue
+				}
+				rb, err := b.Query(ctx, q)
+				if err != nil {
+					fails[i] = fmt.Sprintf("%s blocks %+v: %v", label, q, err)
+					cancel()
+					continue
+				}
+				if !reflect.DeepEqual(ra, rb) {
+					fails[i] = fmt.Sprintf("%s: %s by %q filters %v window %dh differ:\nsql    total %v other %v rows %v folded %v\nblocks total %v other %v rows %v folded %v",
+						label, q.Family, q.By, q.Filters, (q.End-q.Start)/hourMs, ra.Total, ra.Other, ra.Rows, ra.Folded, rb.Total, rb.Other, rb.Rows, rb.Folded)
+					cancel()
+					continue
+				}
+				rows[i], fold[i] = len(ra.Rows) > 0, ra.Folded
+			}
+		}()
+	}
+feed:
+	for i := range qs {
+		select {
+		case next <- i:
+		case <-ctx.Done():
+			break feed
 		}
-		rb, err := b.Query(ctx, q)
-		if err != nil {
-			t.Fatalf("%s blocks %+v: %v", label, q, err)
+	}
+	close(next)
+	wg.Wait()
+	for i := range qs {
+		// A query cut short by another's failure reports context.Canceled;
+		// the first real failure in list order is the one to show.
+		if fails[i] != "" && !strings.Contains(fails[i], context.Canceled.Error()) {
+			t.Fatal(fails[i])
 		}
-		if !reflect.DeepEqual(ra, rb) {
-			t.Fatalf("%s: %s by %q filters %v window %dh differ:\nsql    total %v other %v rows %v folded %v\nblocks total %v other %v rows %v folded %v",
-				label, q.Family, q.By, q.Filters, (q.End-q.Start)/hourMs, ra.Total, ra.Other, ra.Rows, ra.Folded, rb.Total, rb.Other, rb.Rows, rb.Folded)
+	}
+	for i := range qs {
+		if fails[i] != "" {
+			t.Fatal(fails[i])
 		}
-		if len(ra.Rows) > 0 {
+		if rows[i] {
 			withRows++
 		}
-		if ra.Folded {
+		if fold[i] {
 			folded++
 		}
 	}

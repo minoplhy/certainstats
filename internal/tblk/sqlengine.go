@@ -3,7 +3,9 @@ package tblk
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
+	"hash/fnv"
 	"net/url"
 	"os"
 	"sort"
@@ -119,11 +121,58 @@ func openSQL(path string, si *schemaInfo, driver string, gs []Grain) (*sqlEngine
 		e.close()
 		return nil, err
 	}
+	if err := checkShapes(ctx, tx.tx, si); err != nil {
+		tx.rollback()
+		e.close()
+		return nil, err
+	}
 	if err := tx.commit(); err != nil {
 		e.close()
 		return nil, err
 	}
 	return e, nil
+}
+
+// ErrShapeChanged is returned by Open when a family's declared keys,
+// measures or folding differ from what the store was written with: blocks
+// do not carry the schema, so old rows would be read under the new shape.
+var ErrShapeChanged = errors.New("tblk: a family changed shape since the store was written; declare the new shape under a new family name")
+
+// shapeOf is a family's fingerprint: everything that decides how its stored
+// rows read (key names, kinds and folding in order, measures in order, the
+// bound measure). Caps may change freely and are left out.
+func shapeOf(f *famInfo) int64 {
+	h := fnv.New64a()
+	fmt.Fprintf(h, "%s|", f.Name)
+	for _, k := range f.Keys {
+		fmt.Fprintf(h, "k:%s:%d:%t:%d|", k.Name, k.Kind, k.Fold, k.Level)
+	}
+	for _, m := range f.Measures {
+		fmt.Fprintf(h, "m:%s|", m)
+	}
+	fmt.Fprintf(h, "b:%s", f.Bound)
+	return int64(h.Sum64())
+}
+
+// checkShapes records each family's fingerprint the first time and refuses
+// a store whose recorded fingerprint differs. Families no longer declared
+// are left alone.
+func checkShapes(ctx context.Context, tx *sql.Tx, si *schemaInfo) error {
+	for _, f := range si.fams {
+		key, want := "shape:"+f.Name, shapeOf(f)
+		var got int64
+		switch err := tx.QueryRowContext(ctx, `SELECT value FROM meta WHERE key = ?`, key).Scan(&got); {
+		case err == sql.ErrNoRows:
+			if err := metaSet(ctx, tx, key, want); err != nil {
+				return err
+			}
+		case err != nil:
+			return err
+		case got != want:
+			return fmt.Errorf("%w (family %q)", ErrShapeChanged, f.Name)
+		}
+	}
+	return nil
 }
 
 func (e *sqlEngine) close() error {
@@ -962,7 +1011,7 @@ func (e *sqlEngine) scan(ctx context.Context, sp scanSpec, out *partial) error {
 			}
 			out.addGroup(label, vals)
 			for i, v := range vals {
-				out.total[i] += v
+				out.total[i] = satAdd(out.total[i], v)
 			}
 		}
 		rows.Close()
@@ -982,10 +1031,10 @@ func (e *sqlEngine) scan(ctx context.Context, sp scanSpec, out *partial) error {
 				rows.Close()
 				return err
 			}
-			out.series[b] += vals[0]
+			out.series[b] = satAdd(out.series[b], vals[0])
 			if sp.by == -1 {
 				for i, v := range vals {
-					out.total[i] += v
+					out.total[i] = satAdd(out.total[i], v)
 				}
 			}
 		}
@@ -1002,7 +1051,7 @@ func (e *sqlEngine) scan(ctx context.Context, sp scanSpec, out *partial) error {
 				return err
 			}
 			for i, v := range vals {
-				out.total[i] += v
+				out.total[i] = satAdd(out.total[i], v)
 			}
 		}
 		return rows.Err()

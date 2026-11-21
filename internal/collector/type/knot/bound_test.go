@@ -159,7 +159,11 @@ func netMinute(at int64, netErr uint64, nets []wire.Net, names []wire.NetName, c
 	d := wire.Dnstap{MinuteMs: at, Bounded: true, Nets: nets, NetNames: names, NetCodes: codes, NetErr: netErr, NetNameErr: netErr, NetCodeErr: netErr}
 	sum := map[[2]string]uint64{}
 	for _, c := range codes {
-		sum[[2]string{c.QType, c.RCode}] += c.Count
+		k := [2]string{c.QType, c.RCode}
+		if c.QType == wire.Other {
+			k = [2]string{"A", "NOERROR"} // totals never fold; a collector counts these exactly
+		}
+		sum[k] += c.Count
 	}
 	for k, n := range sum {
 		d.Totals = append(d.Totals, wire.Total{Zone: "example.com.", QType: k[0], RCode: k[1], Count: n})
@@ -253,6 +257,45 @@ func TestNetListsAddUp(t *testing.T) {
 		b, err := s.Dnstap(ctx, with(mins, func(q *Query) { q.Client = ten; q.QName = "a." + z }), "qtype", 10)
 		if err != nil || !reflect.DeepEqual(b.Ignored, []string{"qname"}) {
 			t.Errorf("%s crossed filters: ignored %v (%v)", name, b.Ignored, err)
+		}
+	}
+}
+
+// TestRollupKeysWithNUL: a key holding 0x00 survives the hour cut. The sql
+// rollup once joined keys with 0x00 and split them back, so a zone holding
+// one came back as too many columns.
+func TestRollupKeysWithNUL(t *testing.T) {
+	ctx := context.Background()
+	sqlStore := openStore(t)
+	sqlStore.TopHourly = 1
+	blocks, _ := openTopNStore(t, 1)
+	h := time.Date(2026, 11, 16, 10, 0, 0, 0, time.UTC).UnixMilli()
+	zone := "ex\x00ample."
+	d := wire.Dnstap{MinuteMs: h, Bounded: true}
+	for n, c := range map[string]uint64{"a.\x00x.": 9, "b.": 3, "c.": 2} {
+		d.QNames = append(d.QNames, wire.QName{Zone: zone, QName: n, Count: c})
+		d.Names = append(d.Names, wire.Name{Zone: zone, QName: n, QType: "A", RCode: "NOERROR", Count: c})
+	}
+	d.Totals = []wire.Total{{Zone: zone, QType: "A", RCode: "NOERROR", Count: 14}}
+	for name, s := range map[string]nameStore{"sql": sqlStore, "blocks": blocks} {
+		if err := s.SaveDnstap(ctx, "u1", "c1", d, h); err != nil {
+			t.Fatal(err)
+		}
+		for {
+			n, err := s.Rollup(ctx, h+4*hourMs)
+			if err != nil {
+				t.Fatalf("%s rollup: %v", name, err)
+			}
+			if n == 0 {
+				break
+			}
+		}
+		b, err := s.Dnstap(ctx, Query{UserID: "u1", Zone: zone, Start: h, End: h + hourMs, MinuteFrom: h + hourMs}, "qname", 10)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(b.Rows) != 1 || b.Rows[0] != (Row{"a.\x00x.", 9}) || b.Other != 5 || b.Total != 14 || b.ErrBound != 3 {
+			t.Fatalf("%s hours: %+v", name, b)
 		}
 	}
 }
