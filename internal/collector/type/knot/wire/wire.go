@@ -31,14 +31,18 @@ const (
 	MaxZoneStats = 1000
 	// MaxTop caps name rows in one dnstap bucket.
 	MaxTop = 5000
-	// MaxClients caps the client subnets in one dnstap bucket.
+	// MaxClients caps the client subnets in one dnstap bucket from an older
+	// collector (Clients rows).
 	MaxClients = 200
-	// MaxClientRows caps the subnet-by-name rows in one dnstap bucket.
+	// MaxNets caps the networks in one dnstap bucket (Nets).
+	MaxNets = 5000
+	// MaxClientRows caps the subnet-by-name rows in one dnstap bucket, and
+	// each of NetNames and NetCodes.
 	MaxClientRows = 5000
 	// MaxPending is how many unacknowledged dnstap minutes a collector keeps.
 	MaxPending = 60
 
-	// Other is the qname of the row that folds every name below the cap.
+	// Other is the qname of the row that folds every name below the cut.
 	Other = "(other)"
 	// NoZone is the zone of names outside every zone Knot serves.
 	NoZone = "(none)"
@@ -134,6 +138,25 @@ type Name struct {
 	Count uint64 `cbor:"n"`
 }
 
+// QName is one name's count over every qtype and rcode within a minute; names
+// below the cut fold into one Other row per zone.
+type QName struct {
+	Zone  string `cbor:"z"`
+	QName string `cbor:"q"`
+	Count uint64 `cbor:"n"`
+}
+
+// Cut is the bound rule's cut for counts sorted largest first: the count of
+// the first entry past top, or 0 when none is past it. Entries with a count
+// above the cut are kept; the rest, ties at the cut included, fold to Other,
+// and the cut is how far a kept or dropped count can be off.
+func Cut(sorted []uint64, top int) uint64 {
+	if top < 0 || len(sorted) <= top {
+		return 0
+	}
+	return sorted[top]
+}
+
 // Client is one client subnet's count for one zone, name, qtype and rcode, only
 // when the host allows it. Names below the cap fold into one Other row per
 // subnet, zone, qtype and rcode, so a subnet's rows add up to its traffic.
@@ -141,6 +164,32 @@ type Client struct {
 	Subnet string `cbor:"s"`
 	Zone   string `cbor:"z"`
 	QName  string `cbor:"q"`
+	QType  string `cbor:"t"`
+	RCode  string `cbor:"r"`
+	Count  uint64 `cbor:"n"`
+}
+
+// Net is one client network's count over everything it asked within a
+// minute. Networks below the cut fold into one Other network.
+type Net struct {
+	Subnet string `cbor:"s"`
+	Count  uint64 `cbor:"n"`
+}
+
+// NetName is one network's count for one zone and name. Rows below the cut
+// fold into one row per zone with network and name Other.
+type NetName struct {
+	Subnet string `cbor:"s"`
+	Zone   string `cbor:"z"`
+	QName  string `cbor:"q"`
+	Count  uint64 `cbor:"n"`
+}
+
+// NetCode is one network's count for one zone, qtype and rcode. Rows below
+// the cut fold into one row per zone with network, qtype and rcode Other.
+type NetCode struct {
+	Subnet string `cbor:"s"`
+	Zone   string `cbor:"z"`
 	QType  string `cbor:"t"`
 	RCode  string `cbor:"r"`
 	Count  uint64 `cbor:"n"`
@@ -165,6 +214,24 @@ type Dnstap struct {
 	Sizes    []Size   `cbor:"sizes,omitempty"`
 	// QueriesOnly is set when Knot logged queries but no responses, so rcodes are unknown.
 	QueriesOnly bool `cbor:"queries_only,omitempty"`
+	// QNames counts each name over every qtype and rcode, cut by name.
+	QNames []QName `cbor:"qnames,omitempty"`
+	// Bounded is set by collectors that cut with the bound rule (see Cut);
+	// QNameErr and NameErr are then this minute's cuts for QNames and Names,
+	// and ride in every part.
+	Bounded  bool   `cbor:"bounded,omitempty"`
+	QNameErr uint64 `cbor:"qname_err,omitempty"`
+	NameErr  uint64 `cbor:"name_err,omitempty"`
+	// Nets, NetNames and NetCodes replace Clients in bounded collectors:
+	// per network, network by name, and network by qtype and rcode, each cut
+	// with the bound rule. NetErr, NetNameErr and NetCodeErr are their cuts,
+	// and ride in every part.
+	Nets       []Net     `cbor:"nets,omitempty"`
+	NetNames   []NetName `cbor:"net_names,omitempty"`
+	NetCodes   []NetCode `cbor:"net_codes,omitempty"`
+	NetErr     uint64    `cbor:"net_err,omitempty"`
+	NetNameErr uint64    `cbor:"net_name_err,omitempty"`
+	NetCodeErr uint64    `cbor:"net_code_err,omitempty"`
 }
 
 // Ack confirms a stored dnstap minute; Error asks the collector to resend later.

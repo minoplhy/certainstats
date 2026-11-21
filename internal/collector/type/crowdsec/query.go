@@ -15,6 +15,11 @@ type Coverage struct {
 
 func (s *Store) coverage(ctx context.Context, userID string) (raw, rollup int64, err error) {
 	var r, h sql.NullInt64
+	if s.rec != nil {
+		// The record engine keeps no rollup: every range reads records.
+		raw, err = s.rec.oldest(ctx, userID)
+		return raw, 0, err
+	}
 	if err = s.read.QueryRowContext(ctx, `SELECT MIN(started_at) FROM alerts WHERE user_id = ?`, userID).Scan(&r); err != nil {
 		return
 	}
@@ -27,12 +32,17 @@ func (s *Store) coverage(ctx context.Context, userID string) (raw, rollup int64,
 // plan picks raw alerts or the rollup. Anything the rollup lacks reads raw alerts;
 // otherwise long ranges, or ranges older than raw retention, read the rollup. When
 // raw detail is needed for a period whose raw alerts were pruned, it says so.
+// The record engine has no rollup, so it always reads raw: screens show what
+// raw retention keeps.
 func (s *Store) plan(ctx context.Context, userID string, f Filter, needRaw bool) (Coverage, error) {
 	raw, rollup, err := s.coverage(ctx, userID)
 	if err != nil {
 		return Coverage{}, err
 	}
 	c := Coverage{Source: "raw", RawSince: raw, RollupSince: rollup}
+	if s.rec != nil {
+		return c, nil
+	}
 	pruned := rollup > 0 && (raw == 0 || rollup < hourOf(raw))
 	need := needRaw || f.NeedsRaw()
 	if !need && (f.End-f.Start > rollupAfterMs || (pruned && f.Start < raw)) {
@@ -67,6 +77,10 @@ func (s *Store) Summary(ctx context.Context, userID string, f Filter, now int64)
 		if err := s.read.QueryRowContext(ctx, `SELECT COALESCE(SUM(alerts), 0), COALESCE(SUM(events), 0) FROM rollup_hourly WHERE `+where, args...).Scan(&out.Alerts, &out.Events); err != nil {
 			return nil, err
 		}
+	} else if s.rec != nil {
+		if err := s.rec.summary(ctx, userID, f, out); err != nil {
+			return nil, err
+		}
 	} else {
 		var ips int64
 		where, args := f.where(userID, false, true, "")
@@ -76,6 +90,9 @@ func (s *Store) Summary(ctx context.Context, userID string, f Filter, now int64)
 		out.UniqueIPs = &ips
 	}
 	// Active decisions are a "now" figure: filters apply, the time range does not.
+	if s.rec != nil {
+		return out, s.rec.active(ctx, userID, f, now, out.Active)
+	}
 	where, args := f.where(userID, false, false, "alerts.")
 	rows, err := s.read.QueryContext(ctx, `SELECT d.type, COUNT(DISTINCT d.value) FROM decisions d JOIN alerts ON alerts.id = d.alert_id
 		WHERE d.until_ms > ? AND `+where+` GROUP BY d.type`, append([]any{now}, args...)...)
@@ -124,6 +141,13 @@ func (s *Store) Timeline(ctx context.Context, userID string, f Filter) (*Timelin
 	rollup := cov.Source == "rollup"
 	w := bucketWidth(f.End-f.Start, rollup)
 	off := f.TZOffset * 60_000
+	counts := map[int64][2]int64{}
+	if !rollup && s.rec != nil {
+		if err := s.rec.timeline(ctx, userID, f, w, off, counts); err != nil {
+			return nil, err
+		}
+		return timelinePoints(cov, f, w, off, counts), nil
+	}
 	where, args := f.where(userID, rollup, true, "")
 	query := `SELECT ((started_at + ?) / ?) * ? - ?, COUNT(*), COALESCE(SUM((SELECT COUNT(*) FROM decisions WHERE decisions.alert_id = alerts.id)), 0)
 		FROM alerts WHERE ` + where + ` GROUP BY 1`
@@ -135,7 +159,6 @@ func (s *Store) Timeline(ctx context.Context, userID string, f Filter) (*Timelin
 		return nil, err
 	}
 	defer rows.Close()
-	counts := map[int64][2]int64{}
 	for rows.Next() {
 		var b, n, d int64
 		if err := rows.Scan(&b, &n, &d); err != nil {
@@ -146,13 +169,18 @@ func (s *Store) Timeline(ctx context.Context, userID string, f Filter) (*Timelin
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
+	return timelinePoints(cov, f, w, off, counts), nil
+}
+
+// timelinePoints lays bucket counts on every bucket of the range, empty ones as 0.
+func timelinePoints(cov Coverage, f Filter, w, off int64, counts map[int64][2]int64) *Timeline {
 	out := &Timeline{Coverage: cov, WidthMs: w, Points: [][3]int64{}}
 	first := ((f.Start+off)/w)*w - off
 	for b := first; b < f.End && len(out.Points) < 1000; b += w {
 		c := counts[b]
 		out.Points = append(out.Points, [3]int64{b, c[0], c[1]})
 	}
-	return out, nil
+	return out
 }
 
 type Group struct {
@@ -177,6 +205,9 @@ func (s *Store) Groups(ctx context.Context, userID string, f Filter, fd field, l
 	out := &Groups{Coverage: cov, Field: fd.Param, Items: []Group{}}
 	var query string
 	rollup := cov.Source == "rollup"
+	if !rollup && s.rec != nil {
+		return out, s.rec.groups(ctx, userID, f, fd, limit, out)
+	}
 	where, args := f.where(userID, rollup, true, "")
 	label := "''"
 	if fd.Param == "asn" {

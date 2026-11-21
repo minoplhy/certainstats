@@ -28,9 +28,26 @@ var dims = []struct {
 	keys []string
 }{
 	{"totals", []string{"zone", "qtype", "rcode"}},
+	// names held rows by qname, qtype and rcode, cut by rows. It is no longer
+	// written; older rows stay until retention. Name lists read qnames and qtypes.
 	{"names", []string{"zone", "qname", "qtype", "rcode"}},
-	// clients keys each client network (see netkey.go) by zone, name, qtype and rcode.
+	// qnames counts each name over every qtype and rcode; qtypes splits names
+	// by qtype and rcode. Both are cut with the bound rule (wire.Cut).
+	{"qnames", []string{"zone", "qname"}},
+	{"qtypes", []string{"zone", "qname", "qtype", "rcode"}},
+	// bounds holds, per family (qnames, qtypes, nets, netnames, netcodes), each bucket's err (how far
+	// any count can be off, summed over every cut so far) and unbounded
+	// (minutes from collectors that do not report their cut).
+	{"bounds", []string{"family", "kind"}},
+	// clients held rows by network (see netkey.go), zone, name, qtype and
+	// rcode, cut by rows. It is no longer written; client lists read nets,
+	// netnames and netcodes, cut with the bound rule. A folded network is
+	// stored as "(other)", which sorts before every network key, so no CIDR
+	// range matches it.
 	{"clients", []string{"net", "zone", "qname", "qtype", "rcode"}},
+	{"nets", []string{"net"}},
+	{"netnames", []string{"net", "zone", "qname"}},
+	{"netcodes", []string{"net", "zone", "qtype", "rcode"}},
 	{"sizes", []string{"up_to"}},
 }
 
@@ -52,13 +69,13 @@ func dimSchema() []string {
 				fmt.Sprintf(`CREATE TABLE IF NOT EXISTS %s (user_id TEXT NOT NULL, collector_id TEXT NOT NULL, bucket INTEGER NOT NULL, %scount INTEGER NOT NULL, PRIMARY KEY (%s)) WITHOUT ROWID`, table, cols, pk),
 				fmt.Sprintf(`CREATE INDEX IF NOT EXISTS %s_bucket ON %s(bucket)`, table, table),
 				fmt.Sprintf(`CREATE INDEX IF NOT EXISTS %s_user ON %s(user_id, bucket)`, table, table))
-			if d.name == "totals" || d.name == "names" {
+			if d.name == "totals" || d.name == "names" || d.name == "qnames" || d.name == "qtypes" {
 				out = append(out, fmt.Sprintf(`CREATE INDEX IF NOT EXISTS %s_zone ON %s(user_id, zone, bucket)`, table, table))
 			}
-			if d.name == "names" || d.name == "clients" {
+			if d.name == "names" || d.name == "qnames" || d.name == "qtypes" || d.name == "clients" || d.name == "netnames" {
 				out = append(out, fmt.Sprintf(`CREATE INDEX IF NOT EXISTS %s_qname ON %s(user_id, qname, bucket)`, table, table))
 			}
-			if d.name == "clients" {
+			if d.name == "clients" || isNetTable(d.name) {
 				out = append(out, fmt.Sprintf(`CREATE INDEX IF NOT EXISTS %s_net ON %s(user_id, net, bucket)`, table, table))
 			}
 		}
@@ -97,8 +114,13 @@ var schema = append([]string{
 	`CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value INTEGER NOT NULL) WITHOUT ROWID`,
 }, dimSchema()...)
 
-// schemaVersion 2 keys client rows by network, zone, name, qtype and rcode.
-const schemaVersion = 2
+// schemaVersion 2 keys client rows by network, zone, name, qtype and rcode;
+// 3 adds the qnames, qtypes and bounds tables; 4 adds nets, netnames and
+// netcodes (each created as new tables, nothing is dropped).
+const schemaVersion = 4
+
+// resetBefore is the oldest version whose dnstap history is kept.
+const resetBefore = 2
 
 // migrate brings an older knot.db up to schemaVersion. Version 1 counted client
 // networks alone, which cannot be split by name, so its dnstap history is
@@ -108,7 +130,7 @@ func migrate(db *sql.DB) error {
 	if err := db.QueryRow(`PRAGMA user_version`).Scan(&v); err != nil {
 		return err
 	}
-	if v == 0 || v >= schemaVersion {
+	if v == 0 || v >= resetBefore {
 		return nil
 	}
 	rows, err := db.Query(`SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE 'dnstap\_%' ESCAPE '\'`)
@@ -301,6 +323,16 @@ func (s *Store) Zones(ctx context.Context, userID, zone string) ([]ZoneRow, erro
 	return out, rows.Err()
 }
 
+const saveMinuteSQL = `INSERT INTO dnstap_minutes (user_id, collector_id, bucket, queries_only, received_at) VALUES (?, ?, ?, ?, ?)
+	ON CONFLICT (user_id, collector_id, bucket) DO UPDATE SET queries_only = excluded.queries_only, received_at = excluded.received_at`
+
+// SaveMinute records that a collector sent a dnstap minute; TopN calls it
+// after storing the minute's rows.
+func (s *Store) SaveMinute(ctx context.Context, userID, collectorID string, bucket int64, queriesOnly bool, now int64) error {
+	_, err := s.write.ExecContext(ctx, saveMinuteSQL, userID, collectorID, bucket, b2i(queriesOnly), now)
+	return err
+}
+
 // SaveDnstap stores one dnstap part, replacing rows by key, so a resent part changes nothing.
 func (s *Store) SaveDnstap(ctx context.Context, userID, collectorID string, d wire.Dnstap, now int64) error {
 	bucket := d.MinuteMs - d.MinuteMs%minuteMs
@@ -309,9 +341,7 @@ func (s *Store) SaveDnstap(ctx context.Context, userID, collectorID string, d wi
 		return err
 	}
 	defer tx.Rollback()
-	if _, err := tx.ExecContext(ctx, `INSERT INTO dnstap_minutes (user_id, collector_id, bucket, queries_only, received_at) VALUES (?, ?, ?, ?, ?)
-		ON CONFLICT (user_id, collector_id, bucket) DO UPDATE SET queries_only = excluded.queries_only, received_at = excluded.received_at`,
-		userID, collectorID, bucket, b2i(d.QueriesOnly), now); err != nil {
+	if _, err := tx.ExecContext(ctx, saveMinuteSQL, userID, collectorID, bucket, b2i(d.QueriesOnly), now); err != nil {
 		return err
 	}
 	put := func(table string, keys []string, rows [][]any) error {
@@ -337,25 +367,48 @@ func (s *Store) SaveDnstap(ctx context.Context, userID, collectorID string, d wi
 		}
 		return nil
 	}
-	var totals, names, clients, sizes [][]any
-	// Client rows of an older collector carry no name; they cannot be split, so they are skipped.
-	for _, c := range d.Clients {
-		key, ok := netKeyOf(c.Subnet)
-		if !ok || c.QName == "" {
-			continue
+	var totals, qtypes, qnames, nets, netnames, netcodes, sizes [][]any
+	nl := netsOf(d)
+	netKey := func(s string) string {
+		if k, ok := netKeyOf(s); ok {
+			return k
 		}
-		clients = append(clients, []any{key, c.Zone, c.QName, c.QType, c.RCode, int64(c.Count)})
+		return wire.Other
+	}
+	for _, r := range nl.nets {
+		nets = append(nets, []any{netKey(r.Subnet), int64(r.Count)})
+	}
+	for _, r := range nl.names {
+		netnames = append(netnames, []any{netKey(r.Subnet), r.Zone, r.QName, int64(r.Count)})
+	}
+	for _, r := range nl.codes {
+		netcodes = append(netcodes, []any{netKey(r.Subnet), r.Zone, r.QType, r.RCode, int64(r.Count)})
 	}
 	for _, t := range d.Totals {
 		totals = append(totals, []any{t.Zone, t.QType, t.RCode, int64(t.Count)})
 	}
 	for _, n := range d.Names {
-		names = append(names, []any{n.Zone, n.QName, n.QType, n.RCode, int64(n.Count)})
+		qtypes = append(qtypes, []any{n.Zone, n.QName, n.QType, n.RCode, int64(n.Count)})
+	}
+	for _, n := range qnamesOf(d) {
+		qnames = append(qnames, []any{n.Zone, n.QName, int64(n.Count)})
+	}
+	unbounded := int64(b2i(!d.Bounded))
+	bounds := [][]any{
+		{"qnames", "err", int64(d.QNameErr)}, {"qnames", "unbounded", unbounded},
+		{"qtypes", "err", int64(d.NameErr)}, {"qtypes", "unbounded", unbounded},
+	}
+	if len(nl.nets)+len(nl.names)+len(nl.codes) > 0 {
+		netUnbounded := int64(b2i(!nl.bounded))
+		bounds = append(bounds,
+			[]any{"nets", "err", int64(nl.netErr)}, []any{"nets", "unbounded", netUnbounded},
+			[]any{"netnames", "err", int64(nl.nameErr)}, []any{"netnames", "unbounded", netUnbounded},
+			[]any{"netcodes", "err", int64(nl.codeErr)}, []any{"netcodes", "unbounded", netUnbounded})
 	}
 	for _, z := range d.Sizes {
 		sizes = append(sizes, []any{z.UpTo, int64(z.Count)})
 	}
-	byDim := map[string][][]any{"totals": totals, "names": names, "clients": clients, "sizes": sizes}
+	byDim := map[string][][]any{"totals": totals, "qtypes": qtypes, "qnames": qnames, "bounds": bounds, "nets": nets, "netnames": netnames, "netcodes": netcodes, "sizes": sizes}
 	for _, d := range dims {
 		if err := put("dnstap_"+d.name+"_minute", d.keys, byDim[d.name]); err != nil {
 			return err
@@ -364,9 +417,10 @@ func (s *Store) SaveDnstap(ctx context.Context, userID, collectorID string, d wi
 	return tx.Commit()
 }
 
-// LastDnstap returns the newest stored minute with traffic per collector of the owner.
+// LastDnstap returns the newest stored dnstap minute per collector of the
+// owner. It reads dnstap_minutes, which both engines write.
 func (s *Store) LastDnstap(ctx context.Context, userID string) (map[string]int64, error) {
-	rows, err := s.read.QueryContext(ctx, `SELECT collector_id, MAX(bucket) FROM dnstap_totals_minute WHERE user_id = ? GROUP BY collector_id`, userID)
+	rows, err := s.read.QueryContext(ctx, `SELECT collector_id, MAX(bucket) FROM dnstap_minutes WHERE user_id = ? GROUP BY collector_id`, userID)
 	if err != nil {
 		return nil, err
 	}

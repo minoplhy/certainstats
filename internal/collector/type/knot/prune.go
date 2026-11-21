@@ -18,15 +18,17 @@ const (
 type Retention struct {
 	MinuteMs int64
 	HourlyMs int64
+	// DailyMs is the day tier, kept only with KNOT_ENGINE=topn.
+	DailyMs int64
 }
 
 // PruneResult counts deleted rows.
 type PruneResult struct {
-	Minute, Hourly, Zones int64
+	Minute, Hourly, Daily, Zones int64
 }
 
 func (r PruneResult) String() string {
-	return fmt.Sprintf("knot_pruned_minute=%d knot_pruned_hourly=%d knot_pruned_zones=%d", r.Minute, r.Hourly, r.Zones)
+	return fmt.Sprintf("knot_pruned_minute=%d knot_pruned_hourly=%d knot_pruned_daily=%d knot_pruned_zones=%d", r.Minute, r.Hourly, r.Daily, r.Zones)
 }
 
 // deleteBatches repeats a bounded DELETE so the writer is never held for long.

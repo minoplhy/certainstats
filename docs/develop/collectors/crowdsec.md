@@ -64,9 +64,24 @@ Alerts live in their own SQLite file, `DATA_DIR/crowdsec.db`, so long queries ne
 - Removing a collector removes its `components` and `collector_health` rows.
 - Alert rules keep their machines and bouncers in the main database (`alert_subjects`, source `crowdsec`, scopes `all`, `machine`, `bouncer` and `group`). Incidents are `alert_history` rows with `subject_kind` `crowdsec`, as for [every collector type](README.md#alert-rules-and-incidents). Evaluation runs through the shared `collector.Round`.
 
+### Record engine (`CROWDSEC_ENGINE=rblk`)
+
+`Store.UseRecords(dir)` moves `alerts` and `decisions` into an [rblk](../storage-formats.md) store and stops using `rollup_hourly`; only `components` and `collector_health` are still used in crowdsec.db. `cmd/certainstats` calls it with `DATA_DIR/crowdsec-rblk` when `CROWDSEC_ENGINE=rblk`.
+
+- **Declaration.** `rblkstore.go` declares the schema (`rbSchema`):
+  - repeated strings are Dict columns, and `value` is stored as 0 when it equals `ip`
+  - the message is kept only when the template `alertMessage` ("Ip X performed 'S' (N events over T)") doesn't rebuild it
+  - `uuid` is the dedupe column
+  - decisions are child rows, with `until` as the active column and `value` stored as 0 when it equals the alert's
+
+  `ip` and `scenario` are indexed in the head, the same columns crowdsec.db indexes.
+- **Reads.** Each `Store` method keeps its signature and branches only where it reads raw alerts: `Alerts`, `Alert`, `IP`, the raw branch of `Summary`, `Timeline` and `Groups`, active decisions, and the oldest alert for coverage (`rblk.Store.Oldest`). `coverage()` reports no rollup and `plan()` always returns `raw`, with no `detail_expired_before`, so every range reads the records. History lasts as long as raw retention; that is the intended trade for having one store.
+- **Writes.** `Insert` stores the batch in rblk, which reports duplicates by uuid. It is the only write, so a resend after a crash just reports duplicates.
+- **Maintenance.** `Type.Maintain` calls `Store.Seal`, which seals settled hours into blocks, before `Prune`. `Prune` applies raw retention and account removal to rblk too, and the kept-row count in the log adds both stores.
+
 ### Which table answers
 
-Every read needs a time range.
+Every read needs a time range. This section describes the `sql` engine; the record engine always reads records.
 - A filter on IP, range, ASN or collector, or a search, reads raw alerts.
 - Otherwise, ranges longer than seven days, or older than the retained raw alerts, read `rollup_hourly`.
 - When detail is asked for a period whose raw alerts were pruned, responses carry `detail_expired_before`.
@@ -114,6 +129,7 @@ Paths are relative to the panel's `/api`.
 
 - `go test ./internal/collector/type/crowdsec/...` covers:
   - decoding, de-duplication, the rollup, late alerts, filters, raw and rollup agreement, owner isolation and pruning;
+  - the record engine: `TestRblkMatchesSQL` feeds the same alerts to a crowdsec.db store and an rblk store and compares every screen, coverage included, through sealing, duplicates, late alerts, retention and a removed account (about 10 s). Ranges over seven days are compared too: crowdsec.db answers them from `rollup_hourly`, rblk from its records, and on fully kept data they must agree. `TestRblkIndependent` checks that switching an existing crowdsec.db shows none of its history, even on long ranges, and that rblk writes no rollup rows;
   - for health: each check, including siblings on a shared key; what is not judged; Alerts page rules firing and recovering once with their webhook; incidents closing quietly (muted, removed, rule disabled); and the routes.
 - `go test ./internal/collectoragent/...` runs the collector:
   - against a fake Local API: backfill, JWT reuse and renewal, restarts without duplicates, window splitting, an unreachable Local API, `--check` and resync;

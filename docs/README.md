@@ -61,6 +61,8 @@ For people changing the code.
 | [Browser protocol](develop/browser-protocol.md) | The live feed in JSON and Protobuf, schema rules, regeneration |
 | [Agent internals](develop/agents.md) | Provisioning, Beszel/LTstats/HetrixTools wire formats, parsing, normalisation, ingestion, API, adding a driver |
 | [Collector internals](develop/collectors/README.md) | Collector protocol, API, storage, adding a type |
+| [Custom storage formats](develop/storage-formats.md) | `tblk` (counts) and `rblk` (records): what each stores, the shared block pattern, testing |
+| [tblk specification](develop/specs/tblk.md), [rblk specification](develop/specs/rblk.md) | The two block file formats byte for byte, in RFC style: layout, encodings, file names, reading and writing rules |
 | [CrowdSec internals](develop/collectors/crowdsec.md) | Local API reads, health reads, messages, storage, check registry, API |
 | [Knot DNS internals](develop/collectors/knot.md) | Control socket, messages, storage, API |
 | [Network monitoring internals](develop/network-monitoring.md) | Capabilities, sync, ingestion, API, live feed, caching |

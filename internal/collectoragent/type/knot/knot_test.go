@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"os"
@@ -333,7 +334,7 @@ func TestDnstapStreamAndAggregation(t *testing.T) {
 	if len(mins) != 1 {
 		t.Fatalf("minutes: %d", len(mins))
 	}
-	d := mins[0].bucket(1, 10, 1000)
+	d := mins[0].bucket(1, 1000)
 	if d.MinuteMs != time.Date(2026, 11, 16, 12, 0, 0, 0, time.UTC).UnixMilli() || !d.QueriesOnly {
 		t.Fatalf("bucket head: %+v", d)
 	}
@@ -361,22 +362,33 @@ func TestDnstapStreamAndAggregation(t *testing.T) {
 	if names != sum || other != 3 || top != "www.example.com." {
 		t.Fatalf("names: %+v", d.Names)
 	}
-	clients := map[clientKey]uint64{}
-	var csum uint64
-	for _, c := range d.Clients {
-		if c.Subnet != "192.0.2.0/24" {
-			t.Fatalf("client subnet: %+v", c)
-		}
-		clients[clientKey{c.Subnet, c.Zone, c.QName, c.QType, c.RCode}] = c.Count
+	if len(d.Nets) != 1 || d.Nets[0] != (wire.Net{Subnet: "192.0.2.0/24", Count: 6}) {
+		t.Fatalf("nets: %+v", d.Nets)
+	}
+	var nsum, csum uint64
+	byName := map[netNameKey]uint64{}
+	for _, c := range d.NetNames {
+		byName[netNameKey{c.Subnet, c.Zone, c.QName}] = c.Count
+		nsum += c.Count
+	}
+	byCode := map[netCodeKey]uint64{}
+	for _, c := range d.NetCodes {
+		byCode[netCodeKey{c.Subnet, c.Zone, c.QType, c.RCode}] = c.Count
 		csum += c.Count
 	}
-	if csum != 6 || clients[clientKey{"192.0.2.0/24", "example.com.", "www.example.com.", "AAAA", "NOERROR"}] != 3 ||
-		clients[clientKey{"192.0.2.0/24", wire.NoZone, "nothere.org.", "TXT", "REFUSED"}] != 1 {
-		t.Fatalf("clients: %+v", d.Clients)
+	if nsum != 6 || byName[netNameKey{"192.0.2.0/24", wire.NoZone, "nothere.org."}] != 1 {
+		t.Fatalf("net names: %+v", d.NetNames)
+	}
+	if csum != 6 || byCode[netCodeKey{"192.0.2.0/24", wire.NoZone, "TXT", "REFUSED"}] != 1 || byCode[netCodeKey{"192.0.2.0/24", "example.com.", "AAAA", "NOERROR"}] != 3 {
+		t.Fatalf("net codes: %+v", d.NetCodes)
 	}
 }
 
-func TestClientRowsTrimSubnetsAndFoldNames(t *testing.T) {
+// TestNetListsCutWithBound: networks, network by name and network by type
+// are each cut strictly above the first entry past the cap; ties at the cut
+// drop together into Other rows that keep the sums, and the cuts plus map
+// overflow are sent as errors.
+func TestNetListsCutWithBound(t *testing.T) {
 	agg := &aggregator{zones: zoneSet{"example.com.": true}, clients: true}
 	now := time.Date(2026, 11, 16, 12, 0, 30, 0, time.UTC)
 	add := func(ip, name string, n int) {
@@ -384,27 +396,48 @@ func TestClientRowsTrimSubnetsAndFoldNames(t *testing.T) {
 			agg.add(event{response: true, qname: name, qtype: "A", rcode: "NOERROR", client: net.ParseIP(ip)}, now)
 		}
 	}
-	// Three subnets; the quietest is trimmed away with all of its rows.
 	add("10.0.0.1", "a.example.com.", 5)
 	add("10.0.0.2", "b.example.com.", 2)
 	add("10.0.0.3", "c.example.com.", 1)
 	add("10.0.1.1", "a.example.com.", 4)
+	add("10.0.3.1", "y.example.com.", 4)
 	add("10.0.2.1", "z.example.com.", 1)
-	d := agg.take(now.Add(time.Minute))[0].bucket(10, 2, 2)
-	per := map[string]uint64{}
-	var other uint64
-	for _, c := range d.Clients {
-		per[c.Subnet] += c.Count
-		if c.QName == wire.Other {
-			other += c.Count
-		}
+	m := agg.take(now.Add(time.Minute))[0]
+	d := m.bucket(2, 2)
+	// Networks 8, 4, 4, 1: the cut is 4, so only 10.0.0.0/24 stays.
+	if len(d.Nets) != 2 || d.Nets[0] != (wire.Net{Subnet: "10.0.0.0/24", Count: 8}) || d.Nets[1] != (wire.Net{Subnet: wire.Other, Count: 9}) || d.NetErr != 4 {
+		t.Fatalf("nets: %+v err %d", d.Nets, d.NetErr)
 	}
-	if len(per) != 2 || per["10.0.0.0/24"] != 8 || per["10.0.1.0/24"] != 4 || per["10.0.2.0/24"] != 0 {
-		t.Fatalf("subnet sums: %+v", per)
+	// Names 5, 4, 4, 2, 1, 1: the cut is 4; the rest fold into one row per zone.
+	names := map[netNameKey]uint64{}
+	var sum uint64
+	for _, r := range d.NetNames {
+		names[netNameKey{r.Subnet, r.Zone, r.QName}] = r.Count
+		sum += r.Count
 	}
-	// Two named rows stay (5 and 4); 2 and 1 fold into 10.0.0.0/24's Other row.
-	if other != 3 || len(d.Clients) != 3 {
-		t.Fatalf("fold: %+v", d.Clients)
+	if sum != 17 || d.NetNameErr != 4 || len(names) != 2 || names[netNameKey{"10.0.0.0/24", "example.com.", "a.example.com."}] != 5 ||
+		names[netNameKey{wire.Other, "example.com.", wire.Other}] != 12 {
+		t.Fatalf("net names: %+v err %d", d.NetNames, d.NetNameErr)
+	}
+	// Types: one row per network (8, 4, 4, 1); the cut is 4.
+	codes := map[netCodeKey]uint64{}
+	sum = 0
+	for _, r := range d.NetCodes {
+		codes[netCodeKey{r.Subnet, r.Zone, r.QType, r.RCode}] = r.Count
+		sum += r.Count
+	}
+	if sum != 17 || d.NetCodeErr != 4 || codes[netCodeKey{"10.0.0.0/24", "example.com.", "A", "NOERROR"}] != 8 ||
+		codes[netCodeKey{wire.Other, "example.com.", wire.Other, wire.Other}] != 9 || len(codes) != 2 {
+		t.Fatalf("net codes: %+v err %d", d.NetCodes, d.NetCodeErr)
+	}
+	// Networks past the map's cap count as Other and add to every error.
+	m.netOverflow, m.netNameOverflow = 2, 1
+	if d = m.bucket(2, 2); d.NetErr != 6 || d.NetNameErr != 7 || d.NetCodeErr != 6 {
+		t.Fatalf("overflow errors: %d, %d, %d", d.NetErr, d.NetNameErr, d.NetCodeErr)
+	}
+	// Under the caps nothing is cut.
+	if d = m.bucket(10, 100); d.NetNameErr != 3 || len(d.NetNames) != 6 {
+		t.Fatalf("uncut: %+v err %d", d.NetNames, d.NetNameErr)
 	}
 }
 
@@ -413,7 +446,7 @@ func TestSplitKeepsRowsDisjointAndComplete(t *testing.T) {
 	for i := 0; i < 300; i++ {
 		d.Totals = append(d.Totals, wire.Total{Zone: strings.Repeat("z", 50) + string(rune('a'+i%26)), QType: "A", RCode: "NOERROR", Count: 1})
 		d.Names = append(d.Names, wire.Name{Zone: "z.", QName: strings.Repeat("n", 100) + string(rune('a'+i%26)), QType: "A", RCode: "NOERROR", Count: 2})
-		d.Clients = append(d.Clients, wire.Client{Subnet: "192.0.2.0/24", Zone: "z.", QName: strings.Repeat("c", 100) + string(rune('a'+i%26)), QType: "A", RCode: "NOERROR", Count: 3})
+		d.NetNames = append(d.NetNames, wire.NetName{Subnet: "192.0.2.0/24", Zone: "z.", QName: strings.Repeat("c", 100) + string(rune('a'+i%26)), Count: 3})
 	}
 	parts := split(d, 4096)
 	if len(parts) < 2 {
@@ -426,13 +459,90 @@ func TestSplitKeepsRowsDisjointAndComplete(t *testing.T) {
 		}
 		totals += len(p.Totals)
 		names += len(p.Names)
-		clients += len(p.Clients)
+		clients += len(p.NetNames)
 	}
 	if totals != 300 || names != 300 || clients != 300 {
 		t.Fatalf("rows lost: %d totals, %d names, %d clients", totals, names, clients)
 	}
 	if one := split(wire.Dnstap{MinuteMs: 1, Totals: d.Totals[:2]}, 1<<20); len(one) != 1 || one[0].Parts != 0 {
 		t.Fatalf("small bucket split: %+v", one)
+	}
+}
+
+// TestBucketCutsWithBound: name rows and per-name counts are each cut
+// strictly above the first entry past the cap, ties at the cut drop together,
+// sums still match, and the cuts plus map overflow are sent as errors.
+func TestBucketCutsWithBound(t *testing.T) {
+	m := newMinute(60000)
+	put := func(name, qtype string, n uint64) {
+		m.names[nameKey{"example.com.", name, qtype, "NOERROR"}] += n
+		m.totals[totalKey{"example.com.", qtype, "NOERROR"}] += n
+	}
+	put("a.example.com.", "A", 5)
+	put("a.example.com.", "AAAA", 4)
+	put("b.example.com.", "A", 6)
+	put("c.example.com.", "A", 3)
+	put("c.example.com.", "AAAA", 3)
+	put("d.example.com.", "A", 2)
+	d := m.bucket(2, 0)
+	if !d.Bounded || d.NameErr != 4 || d.QNameErr != 6 {
+		t.Fatalf("errors: bounded %v, name rows %d, names %d", d.Bounded, d.NameErr, d.QNameErr)
+	}
+	rows := map[string]uint64{}
+	var sum uint64
+	for _, r := range d.Names {
+		rows[r.QName+" "+r.QType] += r.Count
+		sum += r.Count
+	}
+	// Rows 6 and 5 stay; 4 is the cut, so it and everything below fold.
+	if sum != 23 || len(rows) != 4 || rows["b.example.com. A"] != 6 || rows["a.example.com. A"] != 5 ||
+		rows[wire.Other+" A"] != 5 || rows[wire.Other+" AAAA"] != 7 {
+		t.Fatalf("name rows: %+v", d.Names)
+	}
+	// By name: a (9) stays; b and c tie at the cut (6) and drop together.
+	names := map[string]uint64{}
+	sum = 0
+	for _, q := range d.QNames {
+		names[q.QName] += q.Count
+		sum += q.Count
+	}
+	if sum != 23 || len(names) != 2 || names["a.example.com."] != 9 || names[wire.Other] != 14 {
+		t.Fatalf("names: %+v", d.QNames)
+	}
+	// Queries folded early by a full map add to both errors.
+	m.overflow = 5
+	if d = m.bucket(2, 0); d.NameErr != 9 || d.QNameErr != 11 {
+		t.Fatalf("overflow errors: %d, %d", d.NameErr, d.QNameErr)
+	}
+	// Under the cap nothing is cut.
+	if d = m.bucket(100, 0); d.NameErr != 5 || d.QNameErr != 5 || len(d.QNames) != 4 {
+		t.Fatalf("uncut: %d, %d, %+v", d.NameErr, d.QNameErr, d.QNames)
+	}
+}
+
+func TestSplitCarriesBoundsAndNames(t *testing.T) {
+	d := wire.Dnstap{MinuteMs: 60000, Bounded: true, QNameErr: 7, NameErr: 3, NetErr: 2, NetNameErr: 4, NetCodeErr: 5}
+	for i := 0; i < 300; i++ {
+		d.QNames = append(d.QNames, wire.QName{Zone: "z.", QName: strings.Repeat("q", 100) + string(rune('a'+i%26)), Count: 1})
+		d.Names = append(d.Names, wire.Name{Zone: "z.", QName: strings.Repeat("n", 100) + string(rune('a'+i%26)), QType: "A", RCode: "NOERROR", Count: 1})
+		d.Nets = append(d.Nets, wire.Net{Subnet: fmt.Sprintf("10.0.%d.0/24", i), Count: 1})
+		d.NetCodes = append(d.NetCodes, wire.NetCode{Subnet: fmt.Sprintf("10.0.%d.0/24", i), Zone: "z.", QType: "A", RCode: "NOERROR", Count: 1})
+	}
+	parts := split(d, 4096)
+	if len(parts) < 2 {
+		t.Fatalf("expected several parts, got %d", len(parts))
+	}
+	n, nets, codes := 0, 0, 0
+	for i, p := range parts {
+		if !p.Bounded || p.QNameErr != 7 || p.NameErr != 3 || p.NetErr != 2 || p.NetNameErr != 4 || p.NetCodeErr != 5 {
+			t.Fatalf("part %d lost the bound: %+v", i, p)
+		}
+		n += len(p.QNames)
+		nets += len(p.Nets)
+		codes += len(p.NetCodes)
+	}
+	if n != 300 || nets != 300 || codes != 300 {
+		t.Fatalf("rows lost: %d names, %d nets, %d codes of 300", n, nets, codes)
 	}
 }
 

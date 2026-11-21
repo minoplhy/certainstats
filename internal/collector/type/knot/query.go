@@ -44,6 +44,12 @@ type Breakdown struct {
 	Approximate bool `json:"approximate"`
 	// Exact names the source of Total: true when it comes from uncapped totals.
 	Exact bool `json:"exact"`
+	// ErrBound is how far any count by name can be below the truth, summing
+	// every cut made on the way (collector, hour, day); it is set for answers
+	// read from the name tables. Bounded is false when part of the range came
+	// from collectors that do not report their cuts, so ErrBound is incomplete.
+	ErrBound int64 `json:"err_bound"`
+	Bounded  bool  `json:"bounded"`
 	// Ignored lists filters this dimension cannot apply (sizes carry no zone, name or client).
 	Ignored []string   `json:"ignored,omitempty"`
 	Series  [][2]int64 `json:"series"`
@@ -153,29 +159,13 @@ func (s *Store) Dnstap(ctx context.Context, q Query, dim string, limit int) (Bre
 	b := Breakdown{Dim: dim, Rows: []Row{}, Series: [][2]int64{}}
 	// The total and series come from exact totals unless a filter forces finer rows:
 	// a client filter needs client rows, a name filter name rows.
-	source := "totals"
-	switch {
-	case q.Client.IsValid():
-		source = "clients"
-	case q.QName != "":
-		source = "names"
-	}
+	source := sourceOf(q, dim)
 	b.Exact = source == "totals"
 	col := map[string]string{"qname": "qname", "zone": "zone", "qtype": "qtype", "rcode": "rcode", "client": "net", "size": "up_to"}[dim]
 	if col == "" {
 		return b, fmt.Errorf("unknown dimension %q", dim)
 	}
-	table := source
-	switch dim {
-	case "qname":
-		if source != "clients" {
-			table = "names"
-		}
-	case "client":
-		table = "clients"
-	case "size":
-		table = "sizes"
-	}
+	table := nameTable(q, dim, source)
 	rows, ignored, err := s.union(ctx, q, table, col+" AS k, count AS n", "")
 	if err != nil {
 		return b, err
@@ -190,7 +180,7 @@ func (s *Store) Dnstap(ctx context.Context, q Query, dim string, limit int) (Bre
 			key = netLabel(key)
 		}
 		n := r[1].(int64)
-		if (table == "names" || table == "clients") && dim == "qname" && key == wire.Other {
+		if foldsOther(table, dim) && key == wire.Other {
 			b.Other += n
 			continue
 		}
@@ -211,12 +201,9 @@ func (s *Store) Dnstap(ctx context.Context, q Query, dim string, limit int) (Bre
 		}
 		b.Rows = b.Rows[:limit]
 	}
-	if dim == "qname" || source != "totals" {
+	ft := foldTable(table, source)
+	if (dim == "qname" || source != "totals") && !isNetTable(ft) {
 		// Any folded name row in range means names below the cap are missing from the list.
-		ft := "names"
-		if source == "clients" {
-			ft = "clients"
-		}
 		fq := q
 		fq.QName, fq.QType, fq.RCode = wire.Other, "", ""
 		folded, _, err := s.union(ctx, fq, ft, "1 AS k, count AS n", "")
@@ -224,6 +211,31 @@ func (s *Store) Dnstap(ctx context.Context, q Query, dim string, limit int) (Bre
 			return b, err
 		}
 		b.Approximate = len(folded) > 0 && folded[0][1].(int64) > 0
+	}
+	if ft == "qnames" || ft == "qtypes" || isNetTable(ft) {
+		bq := Query{UserID: q.UserID, CollectorID: q.CollectorID, Start: q.Start, End: q.End, MinuteFrom: q.MinuteFrom}
+		brows, _, err := s.union(ctx, bq, "bounds", "family || '/' || kind AS k, count AS n", "")
+		if err != nil {
+			return b, err
+		}
+		b.Bounded = true
+		for _, r := range brows {
+			key := fmt.Sprint(r[0])
+			if v, ok := r[0].([]byte); ok {
+				key = string(v)
+			}
+			switch key {
+			case ft + "/err":
+				b.ErrBound = r[1].(int64)
+			case ft + "/unbounded":
+				b.Bounded = r[1].(int64) == 0
+			}
+		}
+		if isNetTable(ft) {
+			// A client list is short of nothing unless a cut or an older
+			// collector left an error.
+			b.Approximate = b.ErrBound > 0 || !b.Bounded
+		}
 	}
 	// Total and series over time, from the source table.
 	step := max(q.Step, minuteMs)
@@ -238,6 +250,7 @@ func (s *Store) Dnstap(ctx context.Context, q Query, dim string, limit int) (Bre
 		b.Series = append(b.Series, [2]int64{t, n})
 	}
 	b.Series = zeroFill(b.Series, q.Start, q.End, step)
+	shortOther(&b, table, source)
 	where := "user_id = ? AND queries_only = 1 AND bucket >= ? AND bucket < ?"
 	args := []any{q.UserID, q.Start, q.End}
 	if q.CollectorID != "" {
@@ -250,6 +263,122 @@ func (s *Store) Dnstap(ctx context.Context, q Query, dim string, limit int) (Bre
 	}
 	b.QueriesOnly = qo > 0
 	return b, nil
+}
+
+// sourceOf is the table an answer's total and series come from: exact
+// totals unless a filter forces finer rows. A client filter reads the client
+// list that applies the most filters (the per-network counts when there is
+// no other filter, since rows below the cut lose their network in the split
+// lists); a name filter reads the split name rows.
+func sourceOf(q Query, dim string) string {
+	switch {
+	case q.Client.IsValid():
+		return clientSource(q)
+	case q.QName != "":
+		return "qtypes"
+	}
+	return "totals"
+}
+
+// nameTable is the table a breakdown by dim reads, given the source of its
+// total: names by qname read qnames unless a qtype or rcode filter needs the
+// split rows (qtypes); client answers read one of the client lists (see
+// clientTable). Both engines route the same way.
+func nameTable(q Query, dim, source string) string {
+	if isNetTable(source) {
+		if t := clientTable(q, dim); t != "" {
+			return t
+		}
+		if dim == "size" {
+			return "sizes"
+		}
+		return source
+	}
+	switch dim {
+	case "qname":
+		if q.QType == "" && q.RCode == "" {
+			return "qnames"
+		}
+		return "qtypes"
+	case "client":
+		return clientSource(q)
+	case "size":
+		return "sizes"
+	}
+	return source
+}
+
+// isNetTable reports whether t is one of the client lists.
+func isNetTable(t string) bool { return t == "nets" || t == "netnames" || t == "netcodes" }
+
+// clientSource is the client list that applies the most of q's filters: a
+// name filter needs netnames, a zone, qtype or rcode filter netcodes, and no
+// filter the per-network counts.
+func clientSource(q Query) string {
+	switch {
+	case q.QName != "":
+		return "netnames"
+	case q.Zone != "" || q.QType != "" || q.RCode != "":
+		return "netcodes"
+	}
+	return "nets"
+}
+
+// clientTable is the client list a breakdown by dim reads: networks from the
+// list that applies the most filters, names from netnames, qtypes and
+// rcodes from netcodes, zones from either. A filter the list lacks (a qtype
+// with names, a name with qtypes) is reported as ignored. Sizes are not
+// split by network ("").
+func clientTable(q Query, dim string) string {
+	switch dim {
+	case "client":
+		return clientSource(q)
+	case "qname":
+		return "netnames"
+	case "qtype", "rcode":
+		return "netcodes"
+	case "zone":
+		if q.QName != "" {
+			return "netnames"
+		}
+		return "netcodes"
+	}
+	return ""
+}
+
+// foldTable is the table whose folded rows and cut errors describe an answer:
+// a client list read; else the source when a filter forced finer rows, else
+// the table read.
+func foldTable(table, source string) string {
+	switch {
+	case isNetTable(table):
+		return table
+	case source != "totals":
+		return source
+	}
+	return table
+}
+
+// shortOther adds to Other what a client answer's rows leave out of its
+// total: the total comes from the per-network counts, while rows below the
+// cut in the split lists lost their network.
+func shortOther(b *Breakdown, table, source string) {
+	if !isNetTable(table) || table == source {
+		return
+	}
+	listed := b.Other
+	for _, r := range b.Rows {
+		listed += r.Count
+	}
+	if b.Total > listed {
+		b.Other += b.Total - listed
+	}
+}
+
+// foldsOther reports whether a table's Other rows count as Other rather than
+// as a row of their own: names by qname, and every client list.
+func foldsOther(table, dim string) bool {
+	return isNetTable(table) || (dim == "qname" && (table == "qnames" || table == "qtypes"))
 }
 
 // maxFill bounds how many buckets zeroFill writes; the page's windows stay

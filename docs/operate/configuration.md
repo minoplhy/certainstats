@@ -64,10 +64,14 @@ Without these settings, the agent TSDB keeps data forever. Other stores have the
 | `STORAGE_MAX_BYTES` | `0` (unlimited) | Agent TSDB size limit, in bytes. When set, blocks merge up to 7 days at most, so reaching the limit deletes about a week of the oldest history at a time. |
 | `COLLECTOR_RETENTION_DURATION` | `2160h` (90 days) | Retention of the collectors' own TSDB, `collector_tsdb`, separate from the agent TSDB. `0` keeps data forever. Knot DNS counters live here. Blocks merge up to a tenth of retention (31 days when unlimited). |
 | `COLLECTOR_STORAGE_MAX_BYTES` | `0` (unlimited) | Size limit of `collector_tsdb`, in bytes, independent of `STORAGE_MAX_BYTES`. When set, blocks merge up to 7 days at most. |
-| `CROWDSEC_RAW_RETENTION` | `0` (unlimited) | How long CrowdSec alerts and decisions are kept in `crowdsec.db`, e.g. `4320h`. At least `1h`. See [CrowdSec](collectors/crowdsec.md#retention). |
-| `CROWDSEC_ROLLUP_RETENTION` | `0` (unlimited) | How long CrowdSec hourly counts are kept. At least `1h`. |
+| `CROWDSEC_ENGINE` | `sql` | Where CrowdSec alerts and decisions are stored. `sql` keeps them in `crowdsec.db`. `rblk` keeps them in the record block store `crowdsec-rblk/`, which is much smaller and faster on large histories, and counts every range from those alerts, so history lasts as long as `CROWDSEC_RAW_RETENTION`. Health stays in `crowdsec.db` either way. Switching starts with no history. Any other value stops the server at startup. See [CrowdSec](collectors/crowdsec.md#storage-engine). |
+| `CROWDSEC_RAW_RETENTION` | `0` (unlimited) | How long CrowdSec alerts and decisions are kept, with either engine, e.g. `4320h`. At least `1h`. See [CrowdSec](collectors/crowdsec.md#retention). |
+| `CROWDSEC_ROLLUP_RETENTION` | `0` (unlimited) | How long CrowdSec hourly counts are kept. At least `1h`. Only the `sql` engine keeps hourly counts. |
 | `KNOT_DNSTAP_RAW_RETENTION` | `168h` (7 days) | How long Knot DNS dnstap minute buckets are kept in `knot.db`. `0` keeps them forever. At least `1h`. See [Knot DNS](collectors/knot.md#storage-and-retention). |
 | `KNOT_DNSTAP_ROLLUP_RETENTION` | `2160h` (90 days) | How long Knot DNS dnstap hourly buckets are kept. `0` keeps them forever. At least `1h`. |
+| `KNOT_ENGINE` | `sql` | Where Knot DNS dnstap rows are stored. `sql` keeps them in `knot.db`. `topn` keeps them in the block store `knot-topn/`, which is much smaller and faster for long ranges. Switching starts an empty dnstap history. Any other value stops the server at startup. See [Knot DNS](collectors/knot.md#storage-engine). |
+| `KNOT_DNSTAP_DAILY_RETENTION` | `9600h` (400 days) | With `KNOT_ENGINE=topn` only: how long daily dnstap rows are kept. `0` keeps them forever. At least `1h`. |
+| `KNOT_DNSTAP_MAX_BYTES` | `0` (unlimited) | With `KNOT_ENGINE=topn` only: size limit of `knot-topn/`, in bytes. Over the limit, the most detailed and oldest data goes first: minutes whose hour is kept, then hours whose day is kept, then the oldest days. |
 | `INGESTION_JOURNAL_RETENTION` | `24h` | How long completed agent ingestion batches stay in the main database, so a resent batch is recognised and skipped. Pending batches are always kept. `0` keeps them forever. At least `1h`. The hourly cleanup returns freed space to the filesystem (SQLite incremental vacuum). |
 
 ## Browser live feeds

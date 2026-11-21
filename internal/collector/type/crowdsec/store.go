@@ -75,6 +75,9 @@ var schema = []string{
 type Store struct {
 	write *sql.DB
 	read  *sql.DB
+	// rec, when set (UseRecords), holds alerts and decisions instead of the
+	// alerts and decisions tables; nil keeps them in crowdsec.db.
+	rec *recStore
 }
 
 func dsn(path string) string {
@@ -152,7 +155,13 @@ func migrate(db *sql.DB) error {
 }
 
 func (s *Store) Close() error {
-	err := s.read.Close()
+	var err error
+	if s.rec != nil {
+		err = s.rec.s.Close()
+	}
+	if e := s.read.Close(); err == nil {
+		err = e
+	}
 	if e := s.write.Close(); err == nil {
 		err = e
 	}
@@ -164,6 +173,9 @@ func (s *Store) Close() error {
 // hourly rollup are written in the same transaction, only for new rows.
 // It returns the newest alert start time in the batch.
 func (s *Store) Insert(ctx context.Context, userID, collectorID string, alerts []wire.Alert, receivedAt int64) (stored, duplicates int, newest int64, err error) {
+	if s.rec != nil {
+		return s.insertRec(ctx, userID, collectorID, alerts, receivedAt)
+	}
 	tx, err := s.write.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, 0, 0, err
@@ -198,14 +210,20 @@ func (s *Store) Insert(ctx context.Context, userID, collectorID string, alerts [
 				return 0, 0, 0, err
 			}
 		}
-		if _, err := tx.ExecContext(ctx, `INSERT INTO rollup_hourly (user_id, hour, scenario, country, machine_id, action, alerts, events, decisions) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)
-			ON CONFLICT(user_id, hour, scenario, country, machine_id, action) DO UPDATE SET alerts = alerts + 1, events = events + excluded.events, decisions = decisions + excluded.decisions`,
-			userID, hourOf(row.StartedAt), row.Scenario, row.Country, row.Machine, row.Action, row.Events, len(row.Decisions)); err != nil {
+		if err := rollupAdd(ctx, tx, userID, &row); err != nil {
 			return 0, 0, 0, err
 		}
 		stored++
 	}
 	return stored, duplicates, newest, tx.Commit()
+}
+
+// rollupAdd counts one new alert into its hourly rollup row.
+func rollupAdd(ctx context.Context, tx *sql.Tx, userID string, row *alertRow) error {
+	_, err := tx.ExecContext(ctx, `INSERT INTO rollup_hourly (user_id, hour, scenario, country, machine_id, action, alerts, events, decisions) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)
+		ON CONFLICT(user_id, hour, scenario, country, machine_id, action) DO UPDATE SET alerts = alerts + 1, events = events + excluded.events, decisions = decisions + excluded.decisions`,
+		userID, hourOf(row.StartedAt), row.Scenario, row.Country, row.Machine, row.Action, row.Events, len(row.Decisions))
+	return err
 }
 
 const hourMs = int64(3_600_000)

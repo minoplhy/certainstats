@@ -141,7 +141,7 @@ function page(url, fixtures = {}) {
     else if (path === 'series') body = {group: u.searchParams.get('group'), start: now - 86400000, end: now, step: 600000, collecting: false,
       series: [{name: 'udp4', total: 400000, points: [[now - 600000, 5]]}, {name: 'other', total: 1, points: [[now - 600000, 0]]}]};
     else if (path === 'queries') body = {start: now - 86400000, end: now, step: 600000, breakdown: {dim: u.searchParams.get('dim'), total: 90, exact: true,
-      rows: [{key: {qname: 'www.example.com.', client: '203.0.113.0/24'}[u.searchParams.get('dim')] || 'AAAA', count: 60}], other: 30, approximate: true, series: [[now - 600000, 90]]}};
+      rows: [{key: {qname: 'www.example.com.', client: '203.0.113.0/24'}[u.searchParams.get('dim')] || 'AAAA', count: 60}], other: 30, approximate: true, series: [[now - 600000, 90]], ...(fixtures.breakdown || {})}};
     else if (path === 'zones') body = {zones: [{zone: 'example.com.', primary_serial: 7, drift: true, expire_at: now + 3600000,
       servers: [{collector_id: 'col_a', server: 'ns1', role: 'primary', serial: 7, has_serial: true}, {collector_id: 'col_b', server: 'ns2', role: 'secondary', serial: 6, has_serial: true, behind: true, expire_at: now + 3600000}]}]};
     else if (path.startsWith('zones/')) body = {zone_stats: false, zone: {zone: 'example.com.', primary_serial: 7, drift: true,
@@ -193,6 +193,21 @@ test('the page loads counters, dnstap and zones, one resource per request', asyn
   const row = p.q('.kn-zones-row');
   assert.match(row.textContent, /example\.com/);
   assert.match(row.textContent, /1 behind/);
+});
+
+test('a name list with a known error says how far counts can be off', async () => {
+  const p = page('http://x/panel/knot?hours=24', {breakdown: {bounded: true, err_bound: 1234}});
+  await settle();
+  assert.match(p.q('[data-kn-top-foot]').textContent, /each count may be up to 1\.2k low/);
+  assert.doesNotMatch(p.q('[data-kn-top-foot]').textContent, /lower bounds/);
+});
+
+test('a client list with a known error says how far network counts can be off', async () => {
+  const p = page('http://x/panel/knot?top=client', {breakdown: {bounded: true, err_bound: 56}, servers: [{collector_id: 'col_a', name: 'ns1', enabled: true, connected: true, reported_on: true, status: 'ok', mod_stats: true,
+    dnstap: {socket: '/s', listening: true, clients: true}, last_dnstap_ms: Date.now()}]});
+  await settle();
+  assert.match(p.q('[data-kn-top-foot]').textContent, /each count may be up to 56 low, since quieter networks are folded/);
+  assert.doesNotMatch(p.q('[data-kn-top-foot]').textContent, /lower bounds/);
 });
 
 test('the traffic and top tabs each read one resource, without reloading the page', async () => {

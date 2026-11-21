@@ -172,7 +172,11 @@ func (t *Type) Maintain(ctx context.Context) {
 		log.Printf("[CrowdSec] maintenance: %v", err)
 		return
 	}
-	res, err := t.Store.Prune(ctx, t.Retention, time.Now().UnixMilli(), users)
+	now := time.Now().UnixMilli()
+	if err := t.Store.Seal(ctx, now); err != nil {
+		log.Printf("[CrowdSec] maintenance: seal records: %v", err)
+	}
+	res, err := t.Store.Prune(ctx, t.Retention, now, users)
 	if err != nil {
 		log.Printf("[CrowdSec] maintenance: %v", err)
 		return

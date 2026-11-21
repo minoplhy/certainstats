@@ -17,7 +17,10 @@ import (
 
 // Type is the Knot DNS collector type, registered with the collector parent.
 type Type struct {
-	Store      *Store
+	// Store is knot.db: zones, dnstap minutes and, by default, dnstap rows.
+	Store *Store
+	// TopN, when set (KNOT_ENGINE=topn), holds dnstap rows instead of Store.
+	TopN       *TopN
 	TSDB       *ctsdb.DB
 	Collectors *collector.Service
 	Retention  Retention
@@ -195,7 +198,8 @@ func (t *Type) zones(ctx context.Context, c *collector.Conn, m wire.Zones) error
 // dnstap stores one bucket part and acknowledges it. A store failure is
 // answered, so the collector keeps the part and sends it again.
 func (t *Type) dnstap(ctx context.Context, c *collector.Conn, m wire.Dnstap) error {
-	if len(m.Names) > wire.MaxTop*4 || len(m.Clients) > wire.MaxClientRows*4 {
+	if len(m.Names) > wire.MaxTop*4 || len(m.QNames) > wire.MaxTop*4 || len(m.Clients) > wire.MaxClientRows*4 ||
+		len(m.Nets) > wire.MaxNets*4 || len(m.NetNames) > wire.MaxClientRows*4 || len(m.NetCodes) > wire.MaxClientRows*4 {
 		return c.Send(wire.MsgAck, wire.Ack{MinuteMs: m.MinuteMs, Part: m.Part, Error: "bucket too large"})
 	}
 	now := t.now().UnixMilli()
@@ -203,7 +207,7 @@ func (t *Type) dnstap(ctx context.Context, c *collector.Conn, m wire.Dnstap) err
 	if m.MinuteMs > now+5*minuteMs || (t.Retention.MinuteMs > 0 && m.MinuteMs < now-t.Retention.MinuteMs) {
 		return c.Send(wire.MsgAck, wire.Ack{MinuteMs: m.MinuteMs, Part: m.Part})
 	}
-	if err := t.Store.SaveDnstap(ctx, c.Collector.UserID, c.Collector.CollectorID, m, now); err != nil {
+	if err := t.dnstapRows().SaveDnstap(ctx, c.Collector.UserID, c.Collector.CollectorID, m, now); err != nil {
 		log.Printf("[Knot] %s: store dnstap: %v", c.Collector.CollectorID, err)
 		return c.Send(wire.MsgAck, wire.Ack{MinuteMs: m.MinuteMs, Part: m.Part, Error: "storage failed; resend later"})
 	}
@@ -219,12 +223,12 @@ func (t *Type) Maintain(ctx context.Context) {
 		return
 	}
 	now := t.now().UnixMilli()
-	if n, err := t.Store.Rollup(ctx, now); err != nil {
+	if n, err := t.dnstapRows().Rollup(ctx, now); err != nil {
 		log.Printf("[Knot] rollup: %v", err)
 	} else if n > 0 {
 		log.Printf("[Knot] rolled %d dnstap hours", n)
 	}
-	res, err := t.Store.Prune(ctx, t.Retention, now, users)
+	res, err := t.dnstapRows().Prune(ctx, t.Retention, now, users)
 	if err != nil {
 		log.Printf("[Knot] maintenance: %v", err)
 		return

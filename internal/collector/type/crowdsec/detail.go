@@ -76,6 +76,9 @@ func (s *Store) Alerts(ctx context.Context, userID string, f Filter, sortKey str
 		dir = " DESC"
 	}
 	out := &AlertPage{Coverage: cov, Items: []Alert{}, Page: page, Limit: limit}
+	if s.rec != nil {
+		return out, s.rec.alerts(ctx, userID, f, sortKey, desc, page, limit, out)
+	}
 	where, args := f.where(userID, false, true, "")
 	if err := s.read.QueryRowContext(ctx, `SELECT COUNT(*) FROM alerts WHERE `+where, args...).Scan(&out.Total); err != nil {
 		return nil, err
@@ -115,6 +118,9 @@ func (s *Store) decisionsOf(ctx context.Context, alertID int64) ([]Decision, err
 
 // Alert returns one alert with all its decisions, or sql.ErrNoRows.
 func (s *Store) Alert(ctx context.Context, userID string, id int64) (*Alert, error) {
+	if s.rec != nil {
+		return s.rec.alert(ctx, userID, id)
+	}
 	a, err := scanAlert(s.read.QueryRowContext(ctx, `SELECT `+alertColumns+` FROM alerts WHERE id = ? AND user_id = ?`, id, userID))
 	if err != nil {
 		return nil, err
@@ -148,9 +154,23 @@ type IPView struct {
 	RawSince  int64        `json:"raw_since"`
 }
 
+// The IP page lists at most this many scenarios and machines, and decisions.
+const (
+	ipGroupLimit    = 50
+	ipDecisionLimit = 50
+)
+
 // IP summarises one address over all retained raw alerts. The ip index keeps it cheap.
 func (s *Store) IP(ctx context.Context, userID, ip string) (*IPView, error) {
 	v := &IPView{IP: ip, Scenarios: []Group{}, Machines: []Group{}, Decisions: []IPDecision{}}
+	if s.rec != nil {
+		raw, _, err := s.coverage(ctx, userID)
+		if err != nil {
+			return nil, err
+		}
+		v.RawSince = raw
+		return v, s.rec.ip(ctx, userID, ip, v)
+	}
 	var first, last sql.NullInt64
 	if err := s.read.QueryRowContext(ctx, `SELECT MIN(started_at), MAX(started_at), COUNT(*), COALESCE(SUM(events_count), 0) FROM alerts WHERE user_id = ? AND ip = ?`,
 		userID, ip).Scan(&first, &last, &v.Alerts, &v.Events); err != nil {
@@ -173,7 +193,7 @@ func (s *Store) IP(ctx context.Context, userID, ip string) (*IPView, error) {
 		col string
 		dst *[]Group
 	}{{"scenario", &v.Scenarios}, {"machine_id", &v.Machines}} {
-		rows, err := s.read.QueryContext(ctx, `SELECT `+g.col+`, COUNT(*), SUM(events_count) FROM alerts WHERE user_id = ? AND ip = ? GROUP BY 1 ORDER BY 2 DESC LIMIT 50`, userID, ip)
+		rows, err := s.read.QueryContext(ctx, `SELECT `+g.col+`, COUNT(*), SUM(events_count) FROM alerts WHERE user_id = ? AND ip = ? GROUP BY 1 ORDER BY 2 DESC LIMIT ?`, userID, ip, ipGroupLimit)
 		if err != nil {
 			return nil, err
 		}
@@ -192,7 +212,7 @@ func (s *Store) IP(ctx context.Context, userID, ip string) (*IPView, error) {
 		}
 	}
 	rows, err := s.read.QueryContext(ctx, `SELECT d.type, d.origin, d.scope, d.value, d.duration, d.until_ms, a.id, a.scenario, a.started_at
-		FROM alerts a JOIN decisions d ON d.alert_id = a.id WHERE a.user_id = ? AND a.ip = ? ORDER BY a.started_at DESC LIMIT 50`, userID, ip)
+		FROM alerts a JOIN decisions d ON d.alert_id = a.id WHERE a.user_id = ? AND a.ip = ? ORDER BY a.started_at DESC LIMIT ?`, userID, ip, ipDecisionLimit)
 	if err != nil {
 		return nil, err
 	}

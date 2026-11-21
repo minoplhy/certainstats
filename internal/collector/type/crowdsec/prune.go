@@ -86,9 +86,33 @@ func (s *Store) Prune(ctx context.Context, keep Retention, now int64, users []st
 			}
 		}
 	}
-	if err := s.read.QueryRowContext(ctx, `SELECT COUNT(*) FROM alerts`).Scan(&out.AlertRows); err != nil {
+	if s.rec != nil {
+		// The record store applies the same retention and drops the rows of
+		// accounts that no longer exist; crowdsec.db's alert rows above are
+		// what was kept before switching, pruned as before.
+		var before int64
+		if keep.RawMs > 0 {
+			before = now - keep.RawMs
+		}
+		st, err := s.rec.s.Stats(ctx)
+		if err != nil {
+			return out, err
+		}
+		if err := s.rec.s.Prune(ctx, before, users); err != nil {
+			return out, err
+		}
+		after, err := s.rec.s.Stats(ctx)
+		if err != nil {
+			return out, err
+		}
+		out.Alerts += st.Rows - after.Rows
+		out.AlertRows += after.Rows
+	}
+	var sqlRows int64
+	if err := s.read.QueryRowContext(ctx, `SELECT COUNT(*) FROM alerts`).Scan(&sqlRows); err != nil {
 		return out, err
 	}
+	out.AlertRows += sqlRows
 	err = s.read.QueryRowContext(ctx, `SELECT COUNT(*) FROM rollup_hourly`).Scan(&out.RollupRows)
 	return out, err
 }

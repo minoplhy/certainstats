@@ -48,7 +48,10 @@ function rows(slot, spec, b, onFilter, widened) {
   slot.status.textContent = b.rows.length ? '' : 'Nothing in this range.';
   const notes = [];
   if (b.other) notes.push(formatCount(b.other) + ' more not listed');
-  if (spec.dim === 'qname' && b.approximate) notes.push('names below the per-minute cap are folded away, so counts are lower bounds');
+  const folded = spec.dim === 'qname' ? 'names' : spec.dim === 'client' ? 'networks' : 'rows';
+  if (b.bounded && b.err_bound > 0) notes.push('each count may be up to ' + formatCount(b.err_bound) + ' low, since quieter ' + folded + ' are folded');
+  else if (spec.dim === 'qname' && b.approximate && !state.view.client) notes.push('names below the per-minute cap are folded away, so counts are lower bounds');
+  else if (b.approximate && (spec.dim === 'client' || state.view.client)) notes.push('older collectors kept only each minute\'s busiest networks, so counts are lower bounds');
   if (b.ignored?.length) notes.push('not split by ' + b.ignored.join(', '));
   if (widened) notes.push('client networks are counted per /24 or /48, so the filter matched ' + widened);
   slot.foot.textContent = notes.join(' · ');
@@ -132,7 +135,8 @@ function drawSeries(data) {
   ui.dnstapTotal.textContent = formatCount(b.total);
   ui.dnstapMessage.textContent = b.total ? '' : 'No dnstap traffic matches in this range.';
   const notes = [b.exact ? 'Totals are exact'
-    : state.view.client ? 'Filtered by client network, so totals count only each minute\'s busiest networks and are lower bounds'
+    : state.view.client ? (b.bounded ? 'Filtered by client network, so totals leave out quieter networks folded into "other"'
+      : 'Filtered by client network, so totals count only each minute\'s busiest networks and are lower bounds')
     : 'Filtered by name, so totals are lower bounds'];
   if (b.queries_only) notes.push('some minutes had no responses logged, so response codes are unknown there (turn on log-responses)');
   ui.dnstapNote.textContent = notes.join(' · ');

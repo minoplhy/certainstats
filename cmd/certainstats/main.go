@@ -144,6 +144,18 @@ func main() {
 		log.Fatalf("crowdsec store: %v", err)
 	}
 	defer crowdsecStore.Close()
+	switch engine := strings.TrimSpace(os.Getenv("CROWDSEC_ENGINE")); engine {
+	case "", crowdsec.EngineSQL:
+		log.Printf("[CrowdSec] alert engine: sql (crowdsec.db)")
+	case crowdsec.EngineRblk:
+		dir := filepath.Join(dataDir, "crowdsec-rblk")
+		if err := crowdsecStore.UseRecords(dir); err != nil {
+			log.Fatalf("crowdsec store: %v", err)
+		}
+		log.Printf("[CrowdSec] alert engine: rblk (%s)", dir)
+	default:
+		log.Fatalf("config: CROWDSEC_ENGINE must be %q or %q, not %q", crowdsec.EngineSQL, crowdsec.EngineRblk, engine)
+	}
 	// Collector time series live in their own TSDB, apart from agent metrics.
 	collectorKeep, err := retentionEnvDefault("COLLECTOR_RETENTION_DURATION", ctsdb.DefaultRetention)
 	if err != nil {
@@ -170,13 +182,37 @@ func main() {
 		log.Fatalf("knot store: %v", err)
 	}
 	defer knotStore.Close()
+	knotKeep := knot.Retention{MinuteMs: knotMinuteKeep.Milliseconds(), HourlyMs: knotHourlyKeep.Milliseconds()}
+	var knotTopN *knot.TopN
+	switch engine := strings.TrimSpace(os.Getenv("KNOT_ENGINE")); engine {
+	case "", knot.EngineSQL:
+		log.Printf("[Knot] dnstap engine: sql (knot.db)")
+	case knot.EngineTopN:
+		knotDailyKeep, err := retentionEnvDefault("KNOT_DNSTAP_DAILY_RETENTION", knot.DefaultDailyRetention)
+		if err != nil {
+			log.Fatalf("config: %v", err)
+		}
+		knotMax, err := bytesEnv("KNOT_DNSTAP_MAX_BYTES")
+		if err != nil {
+			log.Fatalf("config: %v", err)
+		}
+		knotKeep.DailyMs = knotDailyKeep.Milliseconds()
+		knotTopN, err = knot.OpenTopN(filepath.Join(dataDir, "knot-topn"), knotStore, knotStore.TopHourly, knotKeep, knotMax)
+		if err != nil {
+			log.Fatalf("knot store: %v", err)
+		}
+		defer knotTopN.Close()
+		log.Printf("[Knot] dnstap engine: topn (%s)", filepath.Join(dataDir, "knot-topn"))
+	default:
+		log.Fatalf("config: KNOT_ENGINE must be %q or %q, not %q", knot.EngineSQL, knot.EngineTopN, engine)
+	}
 	collectors := collector.NewService(db, db)
 	crowdsecType := &crowdsec.Type{Store: crowdsecStore, Collectors: collectors, Rules: db, Deliver: func(eventID string) { alertdelivery.Go(db, eventID) }, Retention: crowdsec.Retention{RawMs: rawKeep.Milliseconds(), RollupMs: rollupKeep.Milliseconds()}}
 	if err := collectors.Register(crowdsecType); err != nil {
 		log.Fatalf("collectors: %v", err)
 	}
-	knotType := &knot.Type{Store: knotStore, TSDB: collectorTSDB, Collectors: collectors, Rules: db, Deliver: func(eventID string) { alertdelivery.Go(db, eventID) },
-		Retention: knot.Retention{MinuteMs: knotMinuteKeep.Milliseconds(), HourlyMs: knotHourlyKeep.Milliseconds()}}
+	knotType := &knot.Type{Store: knotStore, TopN: knotTopN, TSDB: collectorTSDB, Collectors: collectors, Rules: db, Deliver: func(eventID string) { alertdelivery.Go(db, eventID) },
+		Retention: knotKeep}
 	if err := collectors.Register(knotType); err != nil {
 		log.Fatalf("collectors: %v", err)
 	}

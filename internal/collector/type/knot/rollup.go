@@ -62,7 +62,9 @@ func (s *Store) rollHour(ctx context.Context, h int64) error {
 		if _, err := tx.ExecContext(ctx, `DELETE FROM `+hourT+` WHERE bucket = ?`, h); err != nil {
 			return err
 		}
-		if d.name == "names" || d.name == "clients" {
+		// names and clients are no longer written; the name and client lists
+		// are capped below.
+		if d.name == "names" || d.name == "clients" || d.name == "qnames" || d.name == "qtypes" || isNetTable(d.name) {
 			continue
 		}
 		keys := strings.Join(d.keys, ", ")
@@ -72,11 +74,20 @@ func (s *Store) rollHour(ctx context.Context, h int64) error {
 			return err
 		}
 	}
-	if err := s.rollTop(ctx, tx, h, "names", nil); err != nil {
-		return err
-	}
-	if err := s.rollTop(ctx, tx, h, "clients", []string{"net"}); err != nil {
-		return err
+	for _, t := range []struct {
+		dim  string
+		keys []string
+		fold []int
+	}{
+		{"qtypes", []string{"zone", "qname", "qtype", "rcode"}, []int{1}},
+		{"qnames", []string{"zone", "qname"}, []int{1}},
+		{"nets", []string{"net"}, []int{0}},
+		{"netnames", []string{"net", "zone", "qname"}, []int{0, 2}},
+		{"netcodes", []string{"net", "zone", "qtype", "rcode"}, []int{0, 2, 3}},
+	} {
+		if err := s.rollTop(ctx, tx, h, t.dim, t.keys, t.fold); err != nil {
+			return err
+		}
 	}
 	if err := s.metaSet(ctx, tx, "rolled_until", h+hourMs); err != nil {
 		return err
@@ -84,12 +95,13 @@ func (s *Store) rollHour(ctx context.Context, h int64) error {
 	return tx.Commit()
 }
 
-// rollTop sums one hour of a names-type table (zone, qname, qtype, rcode, after
-// the lead keys) and keeps the top TopHourly rows per collector; the rest fold
-// into Other rows per lead keys, zone, qtype and rcode, so they still add up.
-func (s *Store) rollTop(ctx context.Context, tx *sql.Tx, h int64, dim string, lead []string) error {
-	keys := append(append([]string{}, lead...), "zone", "qname", "qtype", "rcode")
-	qi := len(lead) + 1 // index of qname in keys
+// rollTop sums one hour of a bounded table and cuts it per collector with the
+// bound rule at TopHourly: rows above the cut stay, the rest, ties at the cut
+// included, fold into Other rows (the fold keys set to Other, the others
+// kept), so they still add up. The cut is added to the hour's err in the
+// bounds table, on top of the minutes' errors that the plain hourly sum
+// already carried over.
+func (s *Store) rollTop(ctx context.Context, tx *sql.Tx, h int64, dim string, keys []string, fold []int) error {
 	cols := strings.Join(keys, ", ")
 	rows, err := tx.QueryContext(ctx, fmt.Sprintf(`SELECT user_id, collector_id, %s, SUM(count) FROM dnstap_%s_minute
 		WHERE bucket >= ? AND bucket < ? GROUP BY user_id, collector_id, %s`, cols, dim, cols), h, h+hourMs)
@@ -125,17 +137,19 @@ func (s *Store) rollTop(ctx context.Context, tx *sql.Tx, h int64, dim string, le
 		return err
 	}
 	defer stmt.Close()
-	// foldKey is the row's key with qname set to Other, joined for map use.
+	// foldKey is the row's key with the fold keys set to Other, joined for map use.
 	foldKey := func(k []string) string {
 		f := append([]string{}, k...)
-		f[qi] = wire.Other
+		for _, i := range fold {
+			f[i] = wire.Other
+		}
 		return strings.Join(f, "\x00")
 	}
 	for g, list := range groups {
 		named := list[:0:0]
 		other := map[string]int64{}
 		for _, r := range list {
-			if r.key[qi] == wire.Other {
+			if r.key[fold[0]] == wire.Other {
 				other[foldKey(r.key)] += r.n
 				continue
 			}
@@ -147,11 +161,27 @@ func (s *Store) rollTop(ctx context.Context, tx *sql.Tx, h int64, dim string, le
 			}
 			return strings.Join(named[i].key, "\x00") < strings.Join(named[j].key, "\x00")
 		})
-		if len(named) > s.TopHourly {
-			for _, r := range named[s.TopHourly:] {
+		{
+			counts := make([]uint64, len(named))
+			for i, r := range named {
+				counts[i] = uint64(r.n)
+			}
+			cut := int64(wire.Cut(counts, s.TopHourly))
+			kept := named[:0:0]
+			for _, r := range named {
+				if r.n > cut {
+					kept = append(kept, r)
+					continue
+				}
 				other[foldKey(r.key)] += r.n
 			}
-			named = named[:s.TopHourly]
+			named = kept
+			if cut > 0 {
+				if _, err := tx.ExecContext(ctx, `INSERT INTO dnstap_bounds_hourly (user_id, collector_id, bucket, family, kind, count) VALUES (?, ?, ?, ?, 'err', ?)
+					ON CONFLICT (user_id, collector_id, bucket, family, kind) DO UPDATE SET count = count + excluded.count`, g[0], g[1], h, dim, cut); err != nil {
+					return err
+				}
+			}
 		}
 		put := func(key []string, n int64) error {
 			args := []any{g[0], g[1], h}

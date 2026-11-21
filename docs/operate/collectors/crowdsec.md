@@ -145,20 +145,40 @@ Incidents:
 - An incident closes without a notification when its rule is disabled, deleted or no longer covers the component, or when the component is muted, deleted from CrowdSec, or its collector is removed.
 - A collector that cannot be judged leaves its incidents as they are.
 
+## Storage engine
+
+`CROWDSEC_ENGINE` picks where alerts and their decisions are stored. Health and alert rules stay in `crowdsec.db` with either engine.
+
+- **`sql`** (the default) keeps alerts in `DATA_DIR/crowdsec.db`, plus hourly counts so long ranges stay fast and can outlive the alerts, as described below.
+- **`rblk`** keeps them in `DATA_DIR/crowdsec-rblk/`: a small SQLite head (`head.db`) for the last two hours or so, and one compressed, read-only block file per day under `blocks/`. Settled hours are sealed into the day's block by the hourly maintenance. Every screen and every range is counted from these alerts. There are no separate hourly counts, so each batch is a single write.
+
+Measured on generated alerts at 20,000 a day over 30 days, `rblk` used 52 MB on disk against 476 MB for alerts and decisions in `crowdsec.db`. Every screen took at most 111 ms, including 30-day counts and charts read straight from the alerts, against up to 1.7 s for `crowdsec.db`, mostly for the 30-day search, the summary and the IP view. Writing a day of alerts took 4.5 s against 6.5 s. Answers were the same on every screen. The method and full results are in `artifacts/crowdsec-records-2026-11-20/` in the repository.
+
+**History follows retention.** With `rblk`, the page shows what the kept alerts support, on every range. Alerts older than `CROWDSEC_RAW_RETENTION` are gone from every screen, counts and charts included; `CROWDSEC_ROLLUP_RETENTION` has no effect. To keep full history, leave `CROWDSEC_RAW_RETENTION` at `0`, its default. The measured size below is a stress load. A typical install sees tens of alerts a day, hundreds of times fewer, so years of alerts take little space.
+
+**Switching engines.** Nothing is copied between engines.
+- Switching to `rblk` starts with no history: the alert list, search, detail, counts and charts begin at the switch, on every range.
+- What `crowdsec.db` already holds stays there, so setting `sql` again shows it. Alerts received while `rblk` was on are not in `crowdsec.db`, neither as alerts nor as hourly counts.
+- Retention keeps pruning what is left in `crowdsec.db`.
+- Include `crowdsec-rblk/` in [backups](../install-and-upgrade.md#back-up) when you use it.
+
 ## Retention
 
-Alerts live in their own file, `DATA_DIR/crowdsec.db`. Include it in [backups](../install-and-upgrade.md#back-up).
+Alerts live in their own file, `DATA_DIR/crowdsec.db`, or in `DATA_DIR/crowdsec-rblk/` with [`CROWDSEC_ENGINE=rblk`](#storage-engine). Include them in [backups](../install-and-upgrade.md#back-up).
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `CROWDSEC_RAW_RETENTION` | `0` (unlimited) | How long alerts and their decisions are kept, in Go duration syntax such as `4320h` |
-| `CROWDSEC_ROLLUP_RETENTION` | `0` (unlimited) | How long hourly counts are kept |
+| `CROWDSEC_ROLLUP_RETENTION` | `0` (unlimited) | How long hourly counts are kept. Only the `sql` engine has them. |
 
 - Values below one hour are rejected at startup.
-- Pruning runs with the hourly maintenance in batches of 5,000 rows, removes rows of deleted accounts, and logs the table sizes.
-- **Suggested setup:** keep raw alerts for 180 days and hourly counts forever. Charts then reach back years while disk use stays bounded.
+- Pruning runs with the hourly maintenance in batches of 5,000 rows, removes rows of deleted accounts, and logs the table sizes. With `rblk`, retention deletes whole day files and rewrites the one day it cuts through.
+- **Suggested setup with `sql`:** keep raw alerts for 180 days and hourly counts forever. Charts then reach back years while disk use stays bounded.
+- **With `rblk`:** raw retention is the only limit, so leave it at `0` unless disk is tight.
 
 ### Detail and hourly counts
+
+This applies to the `sql` engine. With `rblk`, every range reads the alerts themselves.
 
 - A filter on IP, range, ASN or collector, or a search, needs raw alerts.
 - Without those, ranges longer than seven days, or older than the retained raw alerts, are answered from the hourly counts.

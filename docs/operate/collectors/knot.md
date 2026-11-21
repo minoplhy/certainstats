@@ -87,9 +87,9 @@ On the Collectors page, add a collector with Knot DNS ticked (`/collectors?add=k
 | `KNOT_ZONE_STATS_MAX` | `200` | Most zones with per-zone counters, the busiest by requests (at most 1000) |
 | `KNOT_DNSTAP` | off | `true` receives dnstap |
 | `KNOT_DNSTAP_SOCKET` | `/run/certainstats/dnstap.sock` | Socket the collector creates for Knot's dnstap sink |
-| `KNOT_DNSTAP_TOP` | `1000` | Name rows kept per minute (10 to 5000). The rest fold into one "other" row per zone, query type and response code. |
-| `KNOT_DNSTAP_CLIENTS` | off | `true` also counts client networks (/24 and /48, top 50 per minute), split by zone, name, query type and response code, so you can filter by client network |
-| `KNOT_DNSTAP_CLIENT_TOP` | `1000` | Client rows (network × name) kept per minute (10 to 5000). The rest fold into one "other" row per network, zone, query type and response code. |
+| `KNOT_DNSTAP_TOP` | `1000` | The per-minute cap for names and client networks (10 to 5000). For names it applies twice: to names counted over every query type and response code, and to name rows split by type and code. Names or networks below the cut fold into "other", and the cut is sent so the page can say how far counts can be off. |
+| `KNOT_DNSTAP_CLIENTS` | off | `true` also counts client networks (/24 and /48), so you can filter by client network. Each network is counted on its own, by zone and name, and by zone, query type and response code. |
+| `KNOT_DNSTAP_CLIENT_TOP` | `1000` | The per-minute cap for client rows (10 to 5000), applied to network × name rows and to network × type and code rows. The rest fold into one "other" row per zone. |
 
 ### 5. Docker
 
@@ -141,6 +141,7 @@ With `KNOT_DNSTAP_CLIENTS=true`, each network's counts are split by the names it
   - The tab is kept in the URL as `top` when it is not names.
   - Clicking a row filters by it. Clicking a client network shows the names, types and codes it queried; the icon beside it copies it.
   - With a name filter, the client networks tab lists the networks that asked for that name.
+  - Client networks are counted by name and, separately, by query type and response code. A view that combines a client network with both a name and a type or code uses one of the two, and the list says "not split by" the other.
 - **Zones.** A dense list with roles, serial, soonest expiry and status. Clicking a zone opens it on every server.
 
 ### Which source answers a filter
@@ -151,10 +152,26 @@ Knot's mod-stats counters are separate groups: there is "AAAA queries" and there
 | --- | --- | --- |
 | Server | Counters | Yes |
 | Zone | Counters with `KNOT_ZONE_STATS=true`, and dnstap | Yes |
-| Name, query type, response code, or any mix | dnstap only | Totals by zone, query type and response code are exact. Anything filtered by name is a lower bound, since names below the per-minute cap are folded into "other". |
-| Client network | dnstap with `KNOT_DNSTAP_CLIENTS=true` | A lower bound. Only each minute's 50 busiest networks are kept. Networks are /24 or /48, so a narrower filter (such as one address) is widened to its /24 or /48, and the page says so. |
+| Name, query type, response code, or any mix | dnstap only | Totals by zone, query type and response code are exact. Counts by name can be a little low, since quieter names are folded into "other". The page shows the most they can be off by (see [how name counts can be off](#how-name-counts-can-be-off)). |
+| Client network | dnstap with `KNOT_DNSTAP_CLIENTS=true` | Counts can be a little low, since quieter networks and rows are folded into "other", the same way as names. The page shows the most they can be off by. Networks are /24 or /48, so a narrower filter (such as one address) is widened to its /24 or /48, and the page says so. |
 
 The page says which source answers. When a filter only dnstap can apply, the counter charts keep showing all traffic and a note explains why.
+
+### How name counts can be off
+
+The busiest names are kept and quieter ones are folded into "other": by the collector each minute, again when minutes become hours, and again when hours become days. Each time, every name tied at the cut is folded together, and the cut is recorded. The page adds these up and shows them under the name list as "each count may be up to N low".
+
+- A listed name's true count is between the number shown and that number plus N.
+- A name that isn't listed had at most N more queries than the smallest listed count.
+- N is at most about 0.3% of the range's traffic, and usually much less. Busy names usually show their exact count.
+- With an older collector that doesn't report its cuts, the note says counts are lower bounds instead, without a figure.
+
+Client network lists work the same way: networks, a network's names, and a network's query types and response codes are each cut with their own recorded error, and the note reads "since quieter networks are folded". A network's total comes from the per-network list; its quieter names and types are counted in "more not listed". Three limits remain:
+
+- A network that asks many names a few times a minute each (a steady resolver, say) can show few of its names: each of its rows falls below the per-minute cut, though its total is right. Raising `KNOT_DNSTAP_CLIENT_TOP` keeps more of them.
+
+- A name asked by thousands of networks a few times each shows few or none of them: each network falls below the cut, and its queries are counted in "other".
+- Client lists from an older collector are lower bounds without a figure. With such a collector, one network's counts in a very busy minute can also come out low.
 
 ## Checks
 
@@ -209,7 +226,27 @@ Incidents appear in the Alerts incident history like any other. Notification tem
 - **Counters** go to the collector TSDB (`collector_tsdb`), never the agent TSDB. They follow `COLLECTOR_RETENTION_DURATION`. See [collectors](README.md#storage).
 - **Zones and dnstap** live in `DATA_DIR/knot.db`. Include it in [backups](../install-and-upgrade.md#back-up).
 - **dnstap minutes** are kept for `KNOT_DNSTAP_RAW_RETENTION` (default 7 days).
-- **dnstap hours** are kept for `KNOT_DNSTAP_ROLLUP_RETENTION` (default 90 days). Every hour, minutes older than two hours are summed into hours; hourly name lists keep the top 1000 names per collector and hour, and so do client rows.
+- **dnstap hours** are kept for `KNOT_DNSTAP_ROLLUP_RETENTION` (default 90 days). Every hour, minutes older than two hours are summed into hours; hourly name and client lists keep up to 1000 entries per collector and hour, cut as described in [how name counts can be off](#how-name-counts-can-be-off).
 - Retention covers every dnstap table, client rows included. Old rows are deleted on the hourly cleanup, so a row can outlive its cutoff by up to an hour. A retention of `0` keeps rows forever.
-- **Upgrading to client rows split by name** resets the dnstap history in `knot.db` once (zones are kept), because the old client counts cannot be split. Upgrade the server and its collectors together: the server skips client rows from an older collector.
+- **Upgrading to name counts with an error figure** starts name lists fresh with either engine: names before the upgrade no longer show in the lists, while totals and charts keep their history. `knot.db` gains new tables and keeps the old ones until retention removes their rows. Upgrade the server and collectors together; until a collector is upgraded, its names show as lower bounds.
+- **Upgrading to client lists with an error figure** starts client lists fresh the same way: networks before the upgrade no longer show, and `knot.db` gains new tables. Until a collector is upgraded, its client lists show as lower bounds.
+- **Upgrading from client rows counted per network only** (the first dnstap release) resets the dnstap history in `knot.db` once (zones are kept), because those counts cannot be split.
 - Data and counters of deleted accounts are dropped.
+
+### Storage engine
+
+`KNOT_ENGINE` picks where dnstap rows are stored. Zones, counters and the list of minutes received stay where they are with either engine.
+
+- **`sql`** (the default) keeps dnstap rows in `knot.db`, as described above.
+- **`topn`** keeps them in `DATA_DIR/knot-topn/`: a small SQLite head (`head.db`) for the newest minutes and compressed, read-only block files under `blocks/`. Every 15 minutes of settled traffic becomes a block. Blocks merge into hours, and once a day is complete, into a day. It adds a **daily** tier, so ranges over 30 days read one row set per day.
+
+Measured on generated traffic at 4 collectors over 30 days, `topn` used 148 MB on disk against 2.16 GB for `sql`. A 30-day view took about 0.4 s against 1.6 s. Writing a day of traffic stayed at about a minute, while `sql` slowed as its file grew. Peak memory was about 1.3 times higher.
+
+| Setting | `topn` tier |
+| --- | --- |
+| `KNOT_DNSTAP_RAW_RETENTION` | minutes |
+| `KNOT_DNSTAP_ROLLUP_RETENTION` | hours |
+| `KNOT_DNSTAP_DAILY_RETENTION` (default 400 days) | days |
+| `KNOT_DNSTAP_MAX_BYTES` (default no limit) | size cap for the whole directory |
+
+**Switching engines.** History is not copied between engines. Switching to `topn` starts with no dnstap history. The rows already in `knot.db` stay there, so setting `sql` again shows them, but traffic received while `topn` was on is not in `knot.db`. Retention keeps running on `knot.db` with either engine. Include `knot-topn/` in [backups](../install-and-upgrade.md#back-up) when you use it.

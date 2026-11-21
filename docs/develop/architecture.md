@@ -208,10 +208,12 @@ Executables live in `cmd/`: `certainstats` (the server), `certainstats-collector
 | `minify` | Asset minification and SRI hashes |
 | `networkmonitor`, `networkservice` | Network monitor model and adapters; the service that syncs and ingests them |
 | `notifications` | Notification dispatch and webhook sending |
+| `rblk` | certainstats' own record block format (`.rblk`), used by CrowdSec with `CROWDSEC_ENGINE=rblk`; see [custom storage formats](storage-formats.md) |
 | `response` | JSON response helpers |
 | `routine` | The background routine: sweeps and hourly maintenance |
 | `security` | Rate limits, proxies, CSRF, origin checks |
 | `store` | Storage interfaces; `store/sqlite` implements them |
+| `tblk` | certainstats' own count block format (`.blk`), used by Knot with `KNOT_ENGINE=topn`; see [custom storage formats](storage-formats.md) |
 | `tsdbopts` | Shared TSDB options |
 | `web` | Server-rendered pages and the in-place router |
 | `ws` | Browser WebSockets and the broadcaster |

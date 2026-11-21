@@ -15,6 +15,7 @@ import (
 	log "certainstats/internal/logger"
 	"certainstats/internal/metrics"
 	apiresponse "certainstats/internal/response"
+	"certainstats/internal/tblk"
 
 	"github.com/go-chi/chi/v5"
 )
@@ -25,7 +26,7 @@ func userID(r *http.Request) string {
 }
 
 func fail(w http.ResponseWriter, what string, err error) {
-	if errors.Is(err, ctsdb.ErrBusy) {
+	if errors.Is(err, ctsdb.ErrBusy) || errors.Is(err, tblk.ErrBusy) {
 		apiresponse.Error(w, http.StatusServiceUnavailable, err.Error())
 		return
 	}
@@ -410,7 +411,7 @@ func (t *Type) queries(w http.ResponseWriter, r *http.Request) {
 		}
 		q.Client, widened = p, wide
 	}
-	b, err := t.Store.Dnstap(r.Context(), q, dim, limit)
+	b, err := t.dnstapRows().Dnstap(r.Context(), q, dim, limit)
 	if err != nil {
 		if strings.HasPrefix(err.Error(), "unknown dimension") {
 			apiresponse.Error(w, http.StatusBadRequest, "dim must be one of qname, zone, qtype, rcode, client, size")

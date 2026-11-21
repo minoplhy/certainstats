@@ -32,7 +32,6 @@ const (
 	DefaultDnstapSocket = "/run/certainstats/dnstap.sock"
 	defaultZoneStatsMax = 200
 	defaultTop          = 1000
-	defaultClients      = 50
 	defaultClientTop    = 1000
 
 	// startGrace is how long after start an unreachable Knot counts as still starting.
@@ -405,7 +404,7 @@ func (r *runner) flushPass() {
 	t := r.m.tap
 	r.m.mu.Lock()
 	for _, mn := range t.agg.take(now) {
-		for _, p := range split(mn.bucket(t.top, defaultClients, t.clientTop), frameBudget) {
+		for _, p := range split(mn.bucket(t.top, t.clientTop), frameBudget) {
 			r.m.pending = append(r.m.pending, pendingPart{d: p})
 		}
 	}

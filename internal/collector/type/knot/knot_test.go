@@ -129,6 +129,14 @@ func TestZonesKeepSerialChangeTimes(t *testing.T) {
 	}
 }
 
+func sumRows(b Breakdown) int64 {
+	var n int64
+	for _, r := range b.Rows {
+		n += r.Count
+	}
+	return n
+}
+
 func bucketAt(minute int64) wire.Dnstap {
 	return wire.Dnstap{
 		MinuteMs: minute,
@@ -228,8 +236,11 @@ func TestDnstapStoreQueriesRollupAndPrune(t *testing.T) {
 	if sum+names.Other != 300 || len(names.Rows) > 3 {
 		t.Fatalf("hourly names do not add up: %+v", names)
 	}
+	// The cap of 1 cuts networks with the bound rule: the busiest stays, the
+	// rest fold into Other with the cut as the error, and the sums still match.
+	// These minutes come from an older collector, so the list is unbounded.
 	hc, err := s.Dnstap(ctx, hq, "client", 10)
-	if err != nil || len(hc.Rows) != 2 || hc.Rows[0] != (Row{"192.0.2.0/24", 210}) || hc.Rows[1] != (Row{"2001:db8:1::/48", 90}) {
+	if err != nil || hc.Rows[0] != (Row{"192.0.2.0/24", 210}) || sumRows(hc)+hc.Other != 300 || hc.ErrBound == 0 || hc.Bounded || !hc.Approximate {
 		t.Fatalf("hourly clients: %+v %v", hc, err)
 	}
 
@@ -357,7 +368,11 @@ func TestDnstapStateJSONNames(t *testing.T) {
 }
 
 func TestDnstapClientFilter(t *testing.T) {
-	s := openStore(t)
+	t.Run(EngineSQL, func(t *testing.T) { testDnstapClientFilter(t, openStore(t)) })
+	t.Run(EngineTopN, func(t *testing.T) { k, _ := openTopNStore(t, 1000); testDnstapClientFilter(t, k) })
+}
+
+func testDnstapClientFilter(t *testing.T, s dnstapStore) {
 	ctx := context.Background()
 	now := time.Date(2026, 11, 16, 12, 30, 0, 0, time.UTC).UnixMilli()
 	start := hourOf(now) - hourMs
@@ -369,7 +384,8 @@ func TestDnstapClientFilter(t *testing.T) {
 	pfx := func(raw string) netip.Prefix { return netip.MustParsePrefix(raw) }
 	q := Query{UserID: "u1", Start: start, End: now, Client: pfx("192.0.0.0/16")}
 	b, err := s.Dnstap(ctx, q, "qname", 10)
-	if err != nil || b.Total != 210 || b.Exact || len(b.Rows) != 2 || b.Rows[0] != (Row{"www.example.com.", 150}) || b.Rows[1] != (Row{"nope.example.com.", 60}) || b.Approximate {
+	if err != nil || b.Total != 210 || b.Exact || len(b.Rows) != 2 || b.Rows[0] != (Row{"www.example.com.", 150}) || b.Rows[1] != (Row{"nope.example.com.", 60}) || b.Other != 0 || b.Bounded || !b.Approximate {
+		// An older collector's client rows carry no cut, so they are unbounded.
 		t.Fatalf("names of 192.0/16: %+v %v", b, err)
 	}
 	// An IPv6 /48 inside a /32; its Other row is counted apart and marks the list approximate.

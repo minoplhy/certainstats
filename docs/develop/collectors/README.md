@@ -69,6 +69,8 @@ Removing a collector keeps its row, with a token that can never match.
 
 Time series go to `internal/collector/tsdb`, which owns the collector TSDB and its own read limiter (8 concurrent reads, 503 after waiting 2 seconds).
 
+Data a TSDB can't hold, such as unbounded keys, goes to certainstats' own block formats: `internal/tblk` for counts and `internal/rblk` for records. See [custom storage formats](../storage-formats.md).
+
 ### Alert rules and incidents
 
 Alert rules of every collector type share the main database.
